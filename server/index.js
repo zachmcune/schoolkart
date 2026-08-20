@@ -74,7 +74,7 @@ function cleanHex(n, fallback) {
 }
 
 function cleanTrack(raw) {
-  return String(raw || "").replace(/[^sSLRHCKPt]/g, "").slice(0, 80);
+  return String(raw || "").replace(/[^sSLRHCKPtrM0-9]/g, "").slice(0, 120);
 }
 
 var rooms = new Map();

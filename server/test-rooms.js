@@ -115,7 +115,9 @@ waitHealth()
         assert(html.indexOf('rel="manifest"') !== -1, "web app manifest link");
         assert(html.indexOf("apple-mobile-web-app-capable") !== -1, "iOS home screen capable");
         assert(html.indexOf('apple-mobile-web-app-title" content="SchoolKart"') !== -1, "iOS title");
-        assert(html.indexOf('SK_BUILD = "mp38"') !== -1, "cache bump mp38");
+        assert(html.indexOf('SK_BUILD = "mp39"') !== -1, "cache bump mp39");
+        assert(html.indexOf("tile-map") !== -1, "modular tile map");
+        assert(html.indexOf("btn-tile-rot") !== -1, "rotate control");
         assert(html.indexOf("Default · Campus Loop") !== -1, "Campus Loop default control");
         assert(html.indexOf("tile-board") !== -1, "drag tile board");
         assert(html.indexOf("tile-palette") !== -1, "tile palette");
@@ -138,7 +140,7 @@ waitHealth()
           .then(function (sr) {
             return sr.text().then(function (sw) {
               assert(sr.status === 200, "sw 200");
-              assert(sw.indexOf('BUILD = "mp38"') !== -1, "SW build matches cache");
+              assert(sw.indexOf('BUILD = "mp39"') !== -1, "SW build matches cache");
               assert(/cache:\s*"no-store"/.test(sw), "network-first no-store");
               assert(sw.indexOf("websocket") !== -1, "SW leaves websocket alone");
             });

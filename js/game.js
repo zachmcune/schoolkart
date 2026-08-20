@@ -233,6 +233,7 @@
     tilePalette: document.getElementById("tile-palette"),
     tileBoard: document.getElementById("tile-board"),
     tileTrash: document.getElementById("tile-trash"),
+    tileRot: document.getElementById("btn-tile-rot"),
     lights: [
       document.getElementById("rl0"),
       document.getElementById("rl1"),
@@ -339,7 +340,7 @@
   var RIBBON_SEGS = 360;
 
   function cleanTrack(raw) {
-    return String(raw || "").replace(/[^sSLRHCKPt]/g, "").slice(0, 80);
+    return String(raw || "").replace(/[^sSLRHCKPtrM0-9]/g, "").slice(0, 120);
   }
 
   function addLine(ax, az, bx, bz, name) {
@@ -571,10 +572,164 @@
     autoClosePath();
   }
 
+  var MAP_W = 8;
+  var MAP_H = 6;
+  var MAP_CELL = 88;
+  var MAP_DXY = [
+    [1, 0],
+    [0, 1],
+    [-1, 0],
+    [0, -1],
+  ];
+  var MAP_TYPES = {
+    s: { ports: [0, 2], name: "straight" },
+    r: { ports: [0, 1], name: "90" },
+    H: { ports: [0, 1], name: "hairpin" },
+    C: { ports: [0, 2], name: "chicane" },
+    P: { ports: [0, 2], name: "pit" },
+    t: { ports: [], name: "tree" },
+  };
+
+  function mapKey(x, y) {
+    return x + "," + y;
+  }
+
+  function parseMap(code) {
+    var pieces = [];
+    if (!code || code.charAt(0) !== "M") return pieces;
+    var i;
+    for (i = 1; i + 3 < code.length; i += 4) {
+      var t = code.charAt(i);
+      var x = +code.charAt(i + 1);
+      var y = +code.charAt(i + 2);
+      var r = +code.charAt(i + 3);
+      if (!MAP_TYPES[t]) continue;
+      if (x < 0 || y < 0 || x >= MAP_W || y >= MAP_H || r < 0 || r > 3 || isNaN(x) || isNaN(y) || isNaN(r)) continue;
+      pieces.push({ t: t, x: x, y: y, r: r });
+    }
+    return pieces;
+  }
+
+  function encodeMap(pieces) {
+    if (!pieces || !pieces.length) return "";
+    var s = "M";
+    var i;
+    for (i = 0; i < pieces.length && s.length + 4 <= 120; i++) {
+      s += pieces[i].t + pieces[i].x + pieces[i].y + pieces[i].r;
+    }
+    return s;
+  }
+
+  function portsFor(t, r) {
+    var base = MAP_TYPES[t] && MAP_TYPES[t].ports;
+    if (!base || !base.length) return [];
+    return [(base[0] + r) & 3, (base[1] + r) & 3];
+  }
+
+  function portWorld(x, y, dir) {
+    var cx = -200 + (x + 0.5) * MAP_CELL;
+    var cz = SF_Z + (y + 0.5) * MAP_CELL;
+    var h = MAP_CELL * 0.5;
+    if (dir === 0) return { x: cx + h, z: cz };
+    if (dir === 1) return { x: cx, z: cz + h };
+    if (dir === 2) return { x: cx - h, z: cz };
+    return { x: cx, z: cz - h };
+  }
+
+  function emitMapPiece(p, fromPort) {
+    var ps = portsFor(p.t, p.r);
+    var outPort = ps[0] === fromPort ? ps[1] : ps[0];
+    var inH = (fromPort + 2) & 3;
+    var turn = ((outPort - inH) + 4) & 3;
+    var outDeg = outPort * 90;
+    if (p.t === "P") {
+      placePitHere();
+      pathLine(MAP_CELL, "start");
+    } else if (p.t === "s") {
+      pathLine(MAP_CELL, "short");
+    } else if (p.t === "r") {
+      if (turn === 1) pathArc(MAP_CELL * 0.42, 90, "the90");
+      else if (turn === 3) pathArc(MAP_CELL * 0.42, -90, "the90");
+      else pathLine(MAP_CELL * 0.7, "short");
+    } else if (p.t === "H") {
+      pathArc(MAP_CELL * 0.2, turn === 1 || turn === 2 ? 180 : -180, "hairpin");
+    } else if (p.t === "C") {
+      pathArc(14, 62, "chicane");
+      pathLine(16, "chicane");
+      pathArc(11, -80, "chicane");
+    } else {
+      pathLine(MAP_CELL * 0.6, "short");
+    }
+    pathSnap(outDeg, 14, p.t === "H" ? "hairpin" : p.t === "C" ? "chicane" : "close");
+  }
+
+  function buildMapPath(code) {
+    var pieces = parseMap(code);
+    var by = {};
+    var i;
+    for (i = 0; i < pieces.length; i++) {
+      by[mapKey(pieces[i].x, pieces[i].y)] = pieces[i];
+      if (pieces[i].t === "t") {
+        stampTrees.push({
+          x: -200 + (pieces[i].x + 0.5) * MAP_CELL,
+          z: SF_Z + (pieces[i].y + 0.5) * MAP_CELL,
+        });
+      }
+    }
+    var track = pieces.filter(function (p) {
+      return p.t !== "t";
+    });
+    if (!track.length) {
+      setDefaultPit();
+      buildCampusPath();
+      return;
+    }
+    var start = null;
+    for (i = 0; i < track.length; i++) {
+      if (track[i].t === "P") {
+        start = track[i];
+        break;
+      }
+    }
+    if (!start) start = track[0];
+    var ports = portsFor(start.t, start.r);
+    var fromPort = ports[0];
+    var enter = portWorld(start.x, start.y, fromPort);
+    _x = enter.x;
+    _z = enter.z;
+    _h = ((fromPort + 2) & 3) * Math.PI * 0.5;
+    var visited = {};
+    var cur = start;
+    var hadPit = false;
+    var guard = 0;
+    while (cur && guard++ < 64) {
+      var k = mapKey(cur.x, cur.y);
+      if (visited[k]) break;
+      visited[k] = 1;
+      emitMapPiece(cur, fromPort);
+      if (cur.t === "P") hadPit = true;
+      var ps = portsFor(cur.t, cur.r);
+      var outPort = ps[0] === fromPort ? ps[1] : ps[0];
+      if (outPort == null) break;
+      var nx = cur.x + MAP_DXY[outPort][0];
+      var ny = cur.y + MAP_DXY[outPort][1];
+      var np = by[mapKey(nx, ny)];
+      if (!np || np.t === "t") break;
+      var back = (outPort + 2) & 3;
+      if (portsFor(np.t, np.r).indexOf(back) === -1) break;
+      fromPort = back;
+      cur = np;
+    }
+    if (!hadPit) clearPit();
+    autoClosePath();
+  }
+
   function rebuildPath(code) {
     resetPathCursor();
-    if (code) buildCodePath(code);
-    else {
+    if (code) {
+      if (code.charAt(0) === "M") buildMapPath(code);
+      else buildCodePath(code);
+    } else {
       setDefaultPit();
       buildCampusPath();
     }
@@ -1246,6 +1401,7 @@
   function restoreCampusLoop() {
     if (trackCode) pushTrackUndo();
     tilePick = "";
+    tileSel = "";
     if (hud.trackPaste) hud.trackPaste.value = "";
     applyTrack("", true, true);
     if (net) {
@@ -1283,19 +1439,86 @@
   }
 
   var TILE_LABEL = {
-    s: "short",
-    S: "long",
-    L: "left 90",
-    R: "right 90",
+    s: "straight",
+    r: "90",
     H: "hairpin",
     C: "chicane",
-    K: "kink",
     P: "pit",
     t: "tree",
   };
   var trackUndo = [];
   var tilePick = "";
+  var tileSel = "";
   var editorDrag = null;
+  var _tileArt = {};
+
+  function tileArt(type, rot, size) {
+    var key = type + rot + ":" + size;
+    if (_tileArt[key]) return _tileArt[key];
+    var c = document.createElement("canvas");
+    c.width = c.height = size;
+    var ctx = c.getContext("2d");
+    ctx.fillStyle = "#5a564e";
+    ctx.fillRect(0, 0, size, size);
+    ctx.save();
+    ctx.translate(size * 0.5, size * 0.5);
+    ctx.rotate((rot || 0) * Math.PI * 0.5);
+    ctx.translate(-size * 0.5, -size * 0.5);
+    function asphaltBand(x, y, w, h) {
+      ctx.fillStyle = "#8d97a6";
+      ctx.fillRect(x - 3, y - 3, w + 6, h + 6);
+      ctx.fillStyle = "#3a3e46";
+      ctx.fillRect(x, y, w, h);
+      ctx.fillStyle = "#ff2038";
+      ctx.fillRect(x, y, w, 3);
+      ctx.fillStyle = "#fff6ee";
+      ctx.fillRect(x, y + h - 3, w, 3);
+    }
+    if (type === "t") {
+      ctx.fillStyle = "#6a4020";
+      ctx.fillRect(size * 0.44, size * 0.48, size * 0.12, size * 0.28);
+      ctx.fillStyle = "#4ea03c";
+      ctx.beginPath();
+      ctx.arc(size * 0.5, size * 0.4, size * 0.22, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (type === "r") {
+      asphaltBand(size * 0.5, size * 0.36, size * 0.5, size * 0.28);
+      asphaltBand(size * 0.36, size * 0.5, size * 0.28, size * 0.5);
+    } else if (type === "H") {
+      ctx.strokeStyle = "#8d97a6";
+      ctx.lineWidth = size * 0.36;
+      ctx.beginPath();
+      ctx.arc(size * 0.5, size * 0.58, size * 0.28, Math.PI, 0);
+      ctx.stroke();
+      ctx.strokeStyle = "#3a3e46";
+      ctx.lineWidth = size * 0.22;
+      ctx.beginPath();
+      ctx.arc(size * 0.5, size * 0.58, size * 0.28, Math.PI, 0);
+      ctx.stroke();
+    } else if (type === "C") {
+      ctx.strokeStyle = "#8d97a6";
+      ctx.lineWidth = size * 0.34;
+      ctx.beginPath();
+      ctx.moveTo(0, size * 0.38);
+      ctx.bezierCurveTo(size * 0.35, size * 0.1, size * 0.65, size * 0.9, size, size * 0.62);
+      ctx.stroke();
+      ctx.strokeStyle = "#3a3e46";
+      ctx.lineWidth = size * 0.2;
+      ctx.beginPath();
+      ctx.moveTo(0, size * 0.38);
+      ctx.bezierCurveTo(size * 0.35, size * 0.1, size * 0.65, size * 0.9, size, size * 0.62);
+      ctx.stroke();
+    } else {
+      asphaltBand(0, size * 0.36, size, size * 0.28);
+      if (type === "P") {
+        ctx.fillStyle = "#2ec8c3";
+        ctx.fillRect(size * 0.28, size * 0.12, size * 0.44, size * 0.2);
+      }
+    }
+    ctx.restore();
+    _tileArt[key] = c.toDataURL();
+    return _tileArt[key];
+  }
 
   function paintTrackEditor() {
     if (!hud.trackView) return;
@@ -1307,31 +1530,58 @@
       var pal = hud.tilePalette.querySelectorAll("[data-tile]");
       var pi;
       for (pi = 0; pi < pal.length; pi++) {
-        pal[pi].classList.toggle("picked", pal[pi].getAttribute("data-tile") === tilePick);
+        var pt = pal[pi].getAttribute("data-tile");
+        pal[pi].classList.toggle("picked", pt === tilePick);
+        pal[pi].style.backgroundImage = "url(" + tileArt(pt, 0, 72) + ")";
+        pal[pi].textContent = "";
+        pal[pi].setAttribute("aria-label", TILE_LABEL[pt] || pt);
       }
     }
     if (!hud.tileBoard) return;
-    var n = trackCode.length;
-    var slots = Math.min(80, Math.max(n + 6, 16));
-    var html = "";
+    var by = {};
+    var pieces = parseMap(trackCode);
     var i;
-    for (i = 0; i < slots; i++) {
-      var ch = i < n ? trackCode.charAt(i) : "";
-      if (ch) {
-        html +=
-          '<div class="tile-cell" data-cell="' +
-          i +
-          '" data-tile="' +
-          ch +
-          '" role="button" tabindex="0">' +
-          (TILE_LABEL[ch] || ch) +
-          "</div>";
-      } else {
-        html += '<div class="tile-cell empty" data-cell="' + i + '" role="button" tabindex="0"></div>';
+    for (i = 0; i < pieces.length; i++) by[mapKey(pieces[i].x, pieces[i].y)] = pieces[i];
+    var html = "";
+    var y;
+    var x;
+    for (y = 0; y < MAP_H; y++) {
+      for (x = 0; x < MAP_W; x++) {
+        var k = mapKey(x, y);
+        var p = by[k];
+        var sel = tileSel === k;
+        if (p) {
+          html +=
+            '<div class="tile-cell' +
+            (sel ? " picked" : "") +
+            '" data-x="' +
+            x +
+            '" data-y="' +
+            y +
+            '" data-tile="' +
+            p.t +
+            '" data-rot="' +
+            p.r +
+            '" role="button" tabindex="0" style="background-image:url(' +
+            tileArt(p.t, p.r, 72) +
+            ')"></div>';
+        } else {
+          html +=
+            '<div class="tile-cell empty" data-x="' +
+            x +
+            '" data-y="' +
+            y +
+            '" role="button" tabindex="0"></div>';
+        }
       }
     }
-    if (!n) html += '<div class="board-empty">Campus Loop · drop a tile</div>';
+    if (trackCode && trackCode.charAt(0) !== "M") {
+      html += '<div class="board-empty">Stamp code · Default Campus Loop or drop a piece</div>';
+    } else if (!pieces.length) {
+      html += '<div class="board-empty">Campus Loop · drop a piece</div>';
+    }
     hud.tileBoard.innerHTML = html;
+    if (hud.tileRot) hud.tileRot.disabled = !tileSel;
   }
 
   function pushTrackUndo() {
@@ -1350,32 +1600,64 @@
     if (net && net.active && net.isHost() && net.setTrack) net.setTrack(trackCode);
   }
 
-  function insertTileAt(ch, at) {
-    if (!ch || !TILE_LABEL[ch]) return;
-    var arr = trackCode.split("");
-    if (arr.length >= 80) return;
-    if (at == null || at > arr.length) at = arr.length;
-    if (at < 0) at = 0;
-    arr.splice(at, 0, ch);
-    commitTrack(arr.join(""));
+  function placePiece(t, x, y, r) {
+    if (!MAP_TYPES[t] || x < 0 || y < 0 || x >= MAP_W || y >= MAP_H) return;
+    var pieces = parseMap(trackCode).filter(function (p) {
+      return !(p.x === x && p.y === y);
+    });
+    pieces.push({ t: t, x: x, y: y, r: r || 0 });
+    tileSel = mapKey(x, y);
+    commitTrack(encodeMap(pieces));
   }
 
-  function moveTileAt(from, to) {
-    var arr = trackCode.split("");
-    if (from < 0 || from >= arr.length) return;
-    if (to == null || to > arr.length) to = arr.length;
-    if (to < 0) to = 0;
-    var ch = arr.splice(from, 1)[0];
-    if (to > from) to -= 1;
-    arr.splice(to, 0, ch);
-    commitTrack(arr.join(""));
+  function movePiece(x0, y0, x1, y1) {
+    if (x0 === x1 && y0 === y1) return;
+    var pieces = parseMap(trackCode);
+    var moving = null;
+    var occ = null;
+    var i;
+    for (i = 0; i < pieces.length; i++) {
+      if (pieces[i].x === x0 && pieces[i].y === y0) moving = pieces[i];
+      if (pieces[i].x === x1 && pieces[i].y === y1) occ = pieces[i];
+    }
+    if (!moving) return;
+    if (occ) {
+      occ.x = x0;
+      occ.y = y0;
+    }
+    moving.x = x1;
+    moving.y = y1;
+    tileSel = mapKey(x1, y1);
+    commitTrack(encodeMap(pieces));
   }
 
-  function deleteTileAt(from) {
-    var arr = trackCode.split("");
-    if (from < 0 || from >= arr.length) return;
-    arr.splice(from, 1);
-    commitTrack(arr.join(""));
+  function deletePiece(x, y) {
+    var next = encodeMap(
+      parseMap(trackCode).filter(function (p) {
+        return !(p.x === x && p.y === y);
+      })
+    );
+    if (tileSel === mapKey(x, y)) tileSel = "";
+    commitTrack(next);
+  }
+
+  function rotatePiece(x, y) {
+    var pieces = parseMap(trackCode);
+    var i;
+    for (i = 0; i < pieces.length; i++) {
+      if (pieces[i].x === x && pieces[i].y === y) {
+        pieces[i].r = (pieces[i].r + 1) & 3;
+        tileSel = mapKey(x, y);
+        commitTrack(encodeMap(pieces));
+        return;
+      }
+    }
+  }
+
+  function rotateSelected() {
+    if (!tileSel) return;
+    var p = tileSel.split(",");
+    rotatePiece(+p[0], +p[1]);
   }
 
   var sky = {
@@ -4425,6 +4707,7 @@
       if (state !== "title") return;
       state = "track";
       tilePick = "";
+      tileSel = "";
       editorDrag = null;
       setScreen("track");
       paintTrackEditor();
@@ -4435,12 +4718,15 @@
     while (el && el !== document.body) {
       if (el.getAttribute) {
         if (el.id === "tile-trash") return { kind: "trash", el: el };
-        if (el.hasAttribute("data-cell")) {
+        if (el.id === "btn-tile-rot") return { kind: "rot", el: el };
+        if (el.hasAttribute("data-x") && el.hasAttribute("data-y")) {
           return {
             kind: "cell",
             el: el,
-            index: +el.getAttribute("data-cell"),
+            x: +el.getAttribute("data-x"),
+            y: +el.getAttribute("data-y"),
             ch: el.getAttribute("data-tile") || "",
+            rot: +(el.getAttribute("data-rot") || 0),
           };
         }
         if (el.hasAttribute("data-tile") && el.classList.contains("palette-tile")) {
@@ -4470,8 +4756,8 @@
 
   function isEditorChrome(el) {
     while (el && el !== document.body) {
-      if (el.id === "track-paste") return true;
-      if (el.classList && (el.classList.contains("lobby-btn") || el.classList.contains("lobby-row"))) return true;
+      if (el.id === "track-paste" || el.id === "btn-tile-rot") return true;
+      if (el.classList && (el.classList.contains("lobby-btn") || el.classList.contains("lobby-row") || el.classList.contains("tile-rot"))) return true;
       el = el.parentNode;
     }
     return false;
@@ -4482,14 +4768,16 @@
     if (hit.kind === "cell" && !hit.ch) return;
     var ghost = document.createElement("div");
     ghost.className = "tile-ghost";
-    ghost.textContent = TILE_LABEL[hit.ch] || hit.ch;
+    ghost.style.backgroundImage = "url(" + tileArt(hit.ch, hit.rot || 0, 72) + ")";
     document.body.appendChild(ghost);
     ghost.style.left = e.clientX + "px";
     ghost.style.top = e.clientY + "px";
     editorDrag = {
       from: hit.kind,
       ch: hit.ch,
-      index: hit.kind === "cell" ? hit.index : -1,
+      rot: hit.rot || 0,
+      x: hit.x,
+      y: hit.y,
       ghost: ghost,
       pointerId: e.pointerId,
       x0: e.clientX,
@@ -4522,7 +4810,9 @@
     var live = editorDrag.live;
     var from = editorDrag.from;
     var ch = editorDrag.ch;
-    var index = editorDrag.index;
+    var rot = editorDrag.rot;
+    var sx = editorDrag.x;
+    var sy = editorDrag.y;
     killGhost();
     clearDropMarks();
     editorDrag = null;
@@ -4531,20 +4821,27 @@
       if (from === "palette") {
         tilePick = tilePick === ch ? "" : ch;
         paintTrackEditor();
-      } else if (from === "cell" && tilePick) {
-        insertTileAt(tilePick, index);
+      } else if (from === "cell") {
+        var key = mapKey(sx, sy);
+        if (tilePick && !ch) placePiece(tilePick, sx, sy, 0);
+        else if (tileSel === key && ch) rotatePiece(sx, sy);
+        else {
+          tileSel = ch ? key : "";
+          if (tilePick && !ch) placePiece(tilePick, sx, sy, 0);
+          else paintTrackEditor();
+        }
       }
       return;
     }
     if (from === "palette") {
-      if (over && over.kind === "cell") insertTileAt(ch, over.index);
+      if (over && over.kind === "cell") placePiece(ch, over.x, over.y, 0);
       return;
     }
     if (from === "cell") {
-      if (over && over.kind === "cell") moveTileAt(index, over.index);
-      else if (over && over.kind === "trash") deleteTileAt(index);
+      if (over && over.kind === "cell") movePiece(sx, sy, over.x, over.y);
+      else if (over && over.kind === "trash") deletePiece(sx, sy);
       else if (isEditorChrome(document.elementFromPoint(x, y))) return;
-      else deleteTileAt(index);
+      else deletePiece(sx, sy);
     }
   }
 
@@ -4553,8 +4850,13 @@
     if (!root) return;
     root.addEventListener("pointerdown", function (e) {
       if (e.button != null && e.button !== 0) return;
-      if (e.target && (e.target.tagName === "INPUT" || e.target.closest && e.target.closest("input,button.lobby-btn"))) return;
+      if (e.target && (e.target.tagName === "INPUT" || (e.target.closest && e.target.closest("input,button.lobby-btn")))) return;
       var hit = tileFromNode(e.target);
+      if (hit && hit.kind === "rot") {
+        e.preventDefault();
+        rotateSelected();
+        return;
+      }
       if (!hit || (hit.kind !== "palette" && hit.kind !== "cell")) return;
       e.preventDefault();
       startEditorDrag(e, hit);
@@ -4578,7 +4880,13 @@
       hud.tileBoard.addEventListener("click", function (e) {
         if (editorDrag) return;
         var hit = tileFromNode(e.target);
-        if (hit && hit.kind === "cell" && tilePick) insertTileAt(tilePick, hit.index);
+        if (hit && hit.kind === "cell" && tilePick && !hit.ch) placePiece(tilePick, hit.x, hit.y, 0);
+      });
+    }
+    if (hud.tileRot) {
+      hud.tileRot.addEventListener("click", function (e) {
+        e.preventDefault();
+        rotateSelected();
       });
     }
   }
@@ -4587,6 +4895,7 @@
   if (btnTrackUndo) {
     btnTrackUndo.addEventListener("click", function () {
       if (!trackUndo.length) {
+        if (trackCode.charAt(0) === "M") return;
         applyTrack(trackCode.slice(0, -1), true);
         return;
       }

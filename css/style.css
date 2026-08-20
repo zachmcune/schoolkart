@@ -786,42 +786,49 @@ kbd {
 .palette-tile,
 .tile-cell,
 .tile-ghost,
-.tile-trash {
-  min-width: 56px;
-  min-height: 56px;
+.tile-trash,
+.tile-rot {
+  min-width: 52px;
+  min-height: 52px;
   display: flex;
   align-items: center;
   justify-content: center;
   text-align: center;
   font-family: inherit;
-  font-size: 12px;
+  font-size: 13px;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   border-radius: 8px;
   border: 2px solid var(--teal);
-  background: var(--panel);
+  background-color: #3f3c36;
+  background-size: cover;
+  background-position: center;
   color: var(--text);
-  padding: 4px 6px;
-  line-height: 1.15;
+  padding: 0;
   touch-action: none;
   cursor: grab;
 }
 
+.palette-tile {
+  width: 64px;
+  height: 64px;
+  flex: 0 0 64px;
+}
+
 .palette-tile.picked,
 .tile-cell.picked {
-  outline: 2px solid var(--gold);
+  outline: 3px solid var(--gold);
   border-color: var(--gold);
 }
 
-.tile-board {
+.tile-map {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(56px, 1fr));
-  gap: 8px;
-  width: min(760px, 96vw);
-  min-height: 120px;
-  max-height: min(42vh, 280px);
-  overflow: auto;
-  padding: 8px;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 4px;
+  width: min(720px, 96vw);
+  max-height: min(48vh, 360px);
+  overflow: hidden;
+  padding: 6px;
   margin: 0 0 8px;
   background: rgba(22, 14, 10, 0.55);
   border: 2px solid rgba(46, 200, 195, 0.35);
@@ -831,13 +838,16 @@ kbd {
 }
 
 .tile-cell {
-  background: rgba(22, 14, 10, 0.35);
-  border-color: rgba(46, 200, 195, 0.35);
+  aspect-ratio: 1;
+  min-width: 0;
+  min-height: 0;
+  background-color: #2a2722;
+  border-color: rgba(46, 200, 195, 0.28);
   cursor: grab;
 }
 
 .tile-cell.empty {
-  color: var(--muted);
+  background-image: none;
   border-style: dashed;
   cursor: copy;
 }
@@ -851,11 +861,25 @@ kbd {
 .tile-ghost {
   position: fixed;
   z-index: 30;
+  width: 64px;
+  height: 64px;
   pointer-events: none;
   margin: 0;
-  opacity: 0.92;
+  opacity: 0.94;
   transform: translate(-50%, -50%);
   box-shadow: 0 8px 18px rgba(0, 0, 0, 0.45);
+}
+
+.tile-rot {
+  min-width: 96px;
+  min-height: 48px;
+  cursor: pointer;
+  border-color: var(--gold);
+}
+
+.tile-rot:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 
 .editor-dock {
