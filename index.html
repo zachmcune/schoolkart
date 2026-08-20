@@ -6,11 +6,11 @@
   <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <!-- sk-build mp17: getaway-only launch, pit grab, hairpin dump -->
+  <!-- sk-build mp18: hold-W getaway, pit grab, outline map, F1 cars -->
   <meta name="theme-color" content="#1a120e" />
   <title>SchoolKart — Campus Loop</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect fill='%231a120e' width='64' height='64'/><rect fill='%232ec8c3' x='8' y='28' width='48' height='10'/><rect fill='%23f4efe6' x='22' y='16' width='20' height='8'/></svg>" />
-  <link rel="stylesheet" href="css/style.css?v=mp17" />
+  <link rel="stylesheet" href="css/style.css?v=mp18" />
 </head>
 <body>
   <div id="game">
@@ -64,7 +64,7 @@
         <b id="rev-fill"></b>
         <span id="rev-needle"></span>
       </div>
-      <div id="rev-hint">Hold W — land the needle in the green at lights-out</div>
+      <div id="rev-hint">HOLD W — park the needle in the green. Tap misses.</div>
     </div>
 
     <div id="callouts">
@@ -80,7 +80,7 @@
         <li><strong>W</strong> gas · <strong>Space</strong> brake · <strong>S</strong> reverse · A/D steer. Wind the straights. Late into the hairpin = dump. Lift in the chicane. Fresh tires to carry the sweeper.</li>
         <li><strong>Fuel is the clock.</strong> Ticks even if you coast. One box in 5 laps — skip it and limp home.</li>
         <li><strong>Peel LEFT</strong> off the straight into a side pit lane (bypass). Halfway <em>in that lane</em> the crew grabs you, services, then you drive out and merge back.</li>
-        <li><strong>Lights start:</strong> the car is locked until GO. Hold <strong>W</strong> to park the needle in the green — hit it at lights-out for a launch. Miss low = sluggish. Miss high = wheelspin. Space is brake after GO, not a plant.</li>
+        <li><strong>Lights start:</strong> locked until GO. <strong>Hold W</strong> to park the needle in the green. Miss = sluggish getaway only. After GO: SLUGGISH / GOOD / GREAT.</li>
       </ul>
       <div class="lobby-row">
         <input id="display-name" class="lobby-input name-input" maxlength="14" placeholder="YOUR NAME" autocomplete="nickname" spellcheck="false" autocapitalize="words" />
@@ -143,7 +143,7 @@
   </div>
 
   <script>
-    window.SK_BUILD = "mp17";
+    window.SK_BUILD = "mp18";
     try {
       if (window.caches) {
         caches.keys().then(function (keys) {
@@ -160,8 +160,8 @@
       document.write('<script src="https://unpkg.com/three@0.160.1/build/three.min.js"><\/script>');
     }
   </script>
-  <script src="js/config.js?v=mp17"></script>
-  <script src="js/net.js?v=mp17"></script>
-  <script src="js/game.js?v=mp17"></script>
+  <script src="js/config.js?v=mp18"></script>
+  <script src="js/net.js?v=mp18"></script>
+  <script src="js/game.js?v=mp18"></script>
 </body>
 </html>

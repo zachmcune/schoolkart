@@ -37,6 +37,10 @@
   var PIT_HOLD = 2.5;
   var REV_SWEET_LO = 0.58;
   var REV_SWEET_HI = 0.8;
+  var REV_GREAT_LO = 0.64;
+  var REV_GREAT_HI = 0.74;
+  var REV_HOLD = 0.69;
+  var GETAWAY_T = 1.5;
   var ASPHALT = 8.6;
   var GRASS_MAX = 8.5;
   var GRASS_ROLL = 4;
@@ -69,12 +73,13 @@
   var PIT_LANE = { x0: 8, x1: 118, z0: -67.4, z1: -56.6 };
   var PIT_GRAB = { x0: 58, x1: 90, z0: -67.4, z1: -56.6 };
   var PIT_PAVE = [
-    { x0: -80, x1: 24, z0: -73.2, z1: -62.0 },
-    { x0: -28, x1: 40, z0: -69.0, z1: -56.6 },
+    { x0: -90, x1: 36, z0: -74.0, z1: -58.0 },
+    { x0: -20, x1: 50, z0: -71.6, z1: -56.0 },
+    { x0: 8, x1: 118, z0: -71.6, z1: -56.0 },
     PIT_LANE,
     PIT_GRAB,
-    { x0: 96, x1: 155, z0: -69.0, z1: -56.6 },
-    { x0: 124, x1: 180, z0: -73.2, z1: -62.0 },
+    { x0: 96, x1: 160, z0: -71.6, z1: -56.0 },
+    { x0: 124, x1: 185, z0: -74.0, z1: -62.0 },
   ];
 
   var keys = Object.create(null);
@@ -840,7 +845,7 @@
     gond.add(strutR);
     gond.position.set(1.8, -5.6, 0);
     g.add(gond);
-    g.scale.setScalar(2.35);
+    g.scale.setScalar(2.55);
     return g;
   }
 
@@ -929,11 +934,11 @@
     var north = Math.random() > 0.5;
     var x = 70 + Math.random() * 90;
     if (north) {
-      sky.from = new THREE.Vector3(x - 20, 34, -190);
-      sky.to = new THREE.Vector3(x + 40, 40, 170);
+      sky.from = new THREE.Vector3(x - 20, 28, -190);
+      sky.to = new THREE.Vector3(x + 40, 34, 170);
     } else {
-      sky.from = new THREE.Vector3(x + 40, 36, 175);
-      sky.to = new THREE.Vector3(x - 20, 40, -185);
+      sky.from = new THREE.Vector3(x + 40, 30, 175);
+      sky.to = new THREE.Vector3(x - 20, 34, -185);
     }
     sky.planeU = 0;
     sky.plane.visible = true;
@@ -961,10 +966,10 @@
   function updateSky(dt) {
     sky.t += dt;
     if (sky.blimp) {
-      var a = sky.t * 0.052;
-      var bx = -40 + Math.cos(a) * 102;
-      var bz = 22 + Math.sin(a) * 86;
-      var by = 42 + Math.sin(a * 2.1) * 2.4;
+      var a = sky.t * 0.06;
+      var bx = -20 + Math.cos(a) * 118;
+      var bz = -8 + Math.sin(a) * 72;
+      var by = 32 + Math.sin(a * 2.1) * 2;
       sky.blimp.position.set(bx, by, bz);
       sky.blimp.rotation.set(0, -a - Math.PI * 0.5, Math.sin(a) * 0.05);
     }
@@ -975,8 +980,8 @@
           sky.planeLap !== player.lap &&
           player.z < SF_Z + 16 &&
           player.z > SF_Z - 16 &&
-          player.x > -40 &&
-          Math.cos(player.heading) > 0.4
+          player.x > -90 &&
+          Math.cos(player.heading) > 0.35
         ) {
           launchPlane();
           sky.planeLap = player.lap;
@@ -1036,33 +1041,63 @@
 
   function makeCar(bodyColor, wingColor, num) {
     var g = new THREE.Group();
-    var body = carMat(bodyColor, 0.28);
-    var wing = carMat(wingColor || TEAL_DEEP, 0.22);
-    var halo = carMat(0xf4efe6, 0.18);
+    var accent = wingColor || TEAL_DEEP;
+    var body = carMat(bodyColor, 0.3);
+    var wing = carMat(accent, 0.24);
+    var halo = carMat(0xf4efe6, 0.2);
 
-    var nose = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.28, 0.42), body);
-    nose.position.set(1.55, 0.38, 0);
+    var nose = new THREE.Mesh(new THREE.BoxGeometry(2.35, 0.22, 0.34), body);
+    nose.position.set(1.85, 0.34, 0);
     g.add(nose);
-    var tub = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.42, 0.72), body);
+    var tip = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.16, 0.2), body);
+    tip.position.set(3.15, 0.3, 0);
+    g.add(tip);
+    var tub = new THREE.Mesh(new THREE.BoxGeometry(1.55, 0.38, 0.62), body);
     tub.position.set(0.15, 0.42, 0);
     g.add(tub);
-    var cover = new THREE.Mesh(new THREE.BoxGeometry(1.3, 0.38, 0.62), body);
-    cover.position.set(-0.85, 0.5, 0);
+    var cover = new THREE.Mesh(new THREE.BoxGeometry(1.45, 0.36, 0.52), body);
+    cover.position.set(-1.05, 0.5, 0);
     g.add(cover);
-    var airbox = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.38, 0.32), body);
-    airbox.position.set(-0.55, 0.82, 0);
+    var airbox = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.36, 0.28), body);
+    airbox.position.set(-0.55, 0.84, 0);
     g.add(airbox);
+    var podL = new THREE.Mesh(new THREE.BoxGeometry(1.35, 0.32, 0.42), body);
+    podL.position.set(-0.15, 0.36, 0.58);
+    g.add(podL);
+    var podR = podL.clone();
+    podR.position.z = -0.58;
+    g.add(podR);
+    var inletL = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.22, 0.3), wing);
+    inletL.position.set(0.55, 0.4, 0.58);
+    g.add(inletL);
+    var inletR = inletL.clone();
+    inletR.position.z = -0.58;
+    g.add(inletR);
 
-    var fw = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.08, 1.85), wing);
-    fw.position.set(2.35, 0.22, 0);
+    var fw = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.07, 2.05), wing);
+    fw.position.set(3.35, 0.18, 0);
     g.add(fw);
-    addBox(2.35, 0.28, 0.92, 0.32, 0.28, 0.08, TEAL_DEEP, g);
-    addBox(2.35, 0.28, -0.92, 0.32, 0.28, 0.08, TEAL_DEEP, g);
-    var rw = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.08, 1.55), wing);
-    rw.position.set(-1.7, 0.95, 0);
+    var fw2 = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.05, 1.7), wing);
+    fw2.position.set(3.12, 0.26, 0);
+    g.add(fw2);
+    var endL = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.32, 0.08), wing);
+    endL.position.set(3.32, 0.28, 1.02);
+    g.add(endL);
+    var endR = endL.clone();
+    endR.position.z = -1.02;
+    g.add(endR);
+    var rw = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.08, 1.62), wing);
+    rw.position.set(-1.95, 1.02, 0);
     g.add(rw);
-    addBox(-1.7, 0.75, 0.78, 0.2, 0.5, 0.08, TEAL_DEEP, g);
-    addBox(-1.7, 0.75, -0.78, 0.2, 0.5, 0.08, TEAL_DEEP, g);
+    var rw2 = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.05, 1.35), wing);
+    rw2.position.set(-1.95, 1.12, 0);
+    g.add(rw2);
+    var pylonL = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.55, 0.07), wing);
+    pylonL.position.set(-1.95, 0.72, 0.78);
+    g.add(pylonL);
+    var pylonR = pylonL.clone();
+    pylonR.position.z = -0.78;
+    g.add(pylonR);
 
     if (num) {
       var tex = numberDecal(num);
@@ -1070,33 +1105,33 @@
         new THREE.PlaneGeometry(0.55, 0.4),
         new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide })
       );
-      side.position.set(-0.15, 0.62, 0.38);
+      side.position.set(-0.15, 0.52, 0.8);
       g.add(side);
       var side2 = side.clone();
-      side2.position.z = -0.38;
+      side2.position.z = -0.8;
       side2.rotation.y = Math.PI;
       g.add(side2);
       var rear = new THREE.Mesh(
         new THREE.PlaneGeometry(0.42, 0.32),
         new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide })
       );
-      rear.position.set(-1.72, 0.95, 0);
+      rear.position.set(-1.96, 1.02, 0);
       rear.rotation.y = Math.PI * 0.5;
       g.add(rear);
     }
 
-    var haloM = new THREE.Mesh(new THREE.TorusGeometry(0.34, 0.045, 6, 10, Math.PI), halo);
+    var haloM = new THREE.Mesh(new THREE.TorusGeometry(0.36, 0.048, 6, 10, Math.PI), halo);
     haloM.rotation.x = Math.PI * 0.5;
     haloM.rotation.z = Math.PI * 0.5;
-    haloM.position.set(0.15, 0.78, 0);
+    haloM.position.set(0.2, 0.8, 0);
     g.add(haloM);
 
     var wheels = [];
     var spots = [
-      [1.15, 0.28, 0.78, true],
-      [1.15, 0.28, -0.78, true],
-      [-1.15, 0.3, 0.8, false],
-      [-1.15, 0.3, -0.8, false],
+      [1.35, 0.28, 0.82, true],
+      [1.35, 0.28, -0.82, true],
+      [-1.25, 0.3, 0.86, false],
+      [-1.25, 0.3, -0.86, false],
     ];
     var rubber = carMat(0x4a4a4a, 0.14);
     var sidewall = new THREE.MeshBasicMaterial({ color: 0xf0e6d2, side: THREE.DoubleSide });
@@ -1205,23 +1240,21 @@
   }
 
   function inPitLane(r) {
+    var leftOfRace = SF_Z + ASPHALT + 1;
     return (
       inRect(r.x, r.z, PIT_LANE) ||
-      (onPitPavement(r.x, r.z) &&
-        r.x >= PIT_LANE.x0 &&
-        r.z >= PIT_LANE.z0 - 2 &&
-        r.z <= PIT_LANE.z1 + 2)
+      (r.x >= PIT_LANE.x0 - 4 &&
+        r.x <= PIT_LANE.x1 + 8 &&
+        r.z > leftOfRace &&
+        r.z < PIT_LANE.z1 + 3)
     );
   }
 
   function inPitGrab(r) {
     var mid = (PIT_LANE.x0 + PIT_LANE.x1) * 0.5;
-    return (
-      r.x >= mid &&
-      onPitPavement(r.x, r.z) &&
-      r.z >= PIT_LANE.z0 - 2.5 &&
-      r.z <= PIT_LANE.z1 + 2.5
-    );
+    var leftOfRace = SF_Z + ASPHALT + 1.2;
+    // Off the racing line, into the LEFT split, past halfway — that is the box.
+    return r.x >= mid && r.x <= PIT_LANE.x1 + 10 && r.z > leftOfRace && r.z < PIT_LANE.z1 + 4;
   }
 
   function updateLaps(r) {
@@ -1258,8 +1291,15 @@
     var empty = isPlayer && r.fuel <= 0;
     var maxV = empty ? LIMP_SPEED : MAX_SPEED;
     var accel = empty ? LIMP_ACCEL : ACCEL;
-    if (isPlayer && launchT > 0) accel *= launchMul;
-    else if (isPlayer) launchMul = 1;
+    if (isPlayer && state === "racing" && raceTime > GETAWAY_T) {
+      launchT = 0;
+      launchMul = 1;
+    }
+    if (isPlayer && launchT > 0 && r.speed < 20) accel *= launchMul;
+    else if (isPlayer) {
+      launchMul = 1;
+      if (r.speed >= 20) launchT = 0;
+    }
 
     if (isPlayer && state === "racing") {
       r.fuel -= IDLE_FUEL * dt;
@@ -1527,21 +1567,20 @@
   function applyLaunch() {
     launchMul = 1;
     launchT = 0;
-    if (revs >= REV_SWEET_LO && revs <= REV_SWEET_HI) {
+    if (revs >= REV_GREAT_LO && revs <= REV_GREAT_HI) {
       launchMul = 1.2;
-      launchT = 1.05;
-      launchCall = "LAUNCH";
-    } else if (revs > REV_SWEET_HI) {
-      launchMul = 0.58;
-      launchT = 1.35;
-      player.slide += (Math.random() - 0.5) * 10;
-      launchCall = "WHEELSPIN";
+      launchT = GETAWAY_T;
+      launchCall = "GREAT";
+    } else if (revs >= REV_SWEET_LO && revs <= REV_SWEET_HI) {
+      launchMul = 1.08;
+      launchT = GETAWAY_T;
+      launchCall = "GOOD";
     } else {
-      launchMul = 0.52;
-      launchT = 1.45;
+      launchMul = 0.55;
+      launchT = GETAWAY_T;
       launchCall = "SLUGGISH";
     }
-    launchCallT = 1.15;
+    launchCallT = 2;
   }
 
   function persistMe() {
@@ -1688,10 +1727,11 @@
     else if (launchCallT > 0) warn = launchCall;
     else if (state === "racing" && player.fuel <= 0) warn = "EMPTY — LIMP HOME";
     else if (state === "racing" && player.tires < 40) warn = "TIRES LOOSE — don't carry the sweeper";
-    else if (state === "racing" && player.fuel < 38) warn = "PIT WINDOW — peel LEFT off the straight";
+    else if (state === "racing" && player.fuel < 38) warn = "PIT WINDOW — peel LEFT into the teal lane";
     hud.warn.textContent = warn;
     hud.warn.classList.toggle("hidden", !warn);
     hud.warn.classList.toggle("late", lateJoinT > 0);
+    hud.warn.classList.toggle("launch", launchCallT > 0);
     paintMini();
     paintRaceNames();
   }
@@ -1723,24 +1763,37 @@
     var w = hud.mini.width;
     var h = hud.mini.height;
     ctx.clearRect(0, 0, w, h);
-    ctx.fillStyle = "rgba(18, 12, 8, 0.55)";
+    ctx.fillStyle = "rgba(18, 12, 8, 0.72)";
     ctx.beginPath();
     ctx.arc(w * 0.5, h * 0.5, w * 0.5 - 1, 0, Math.PI * 2);
     ctx.fill();
-    ctx.strokeStyle = "#2ec8c3";
-    ctx.lineWidth = 2.2;
-    ctx.beginPath();
-    var i;
-    for (i = 0; i < miniPts.length; i += 2) {
-      var p = miniXY(miniPts[i], miniPts[i + 1], w, h, 10);
-      if (i === 0) ctx.moveTo(p.x, p.y);
-      else ctx.lineTo(p.x, p.y);
+    if (miniPts.length >= 4) {
+      ctx.beginPath();
+      var i;
+      for (i = 0; i < miniPts.length; i += 2) {
+        var p = miniXY(miniPts[i], miniPts[i + 1], w, h, 8);
+        if (i === 0) ctx.moveTo(p.x, p.y);
+        else ctx.lineTo(p.x, p.y);
+      }
+      ctx.closePath();
+      ctx.strokeStyle = "#0a2a28";
+      ctx.lineWidth = 7;
+      ctx.stroke();
+      ctx.strokeStyle = "#2ec8c3";
+      ctx.lineWidth = 3.4;
+      ctx.stroke();
     }
-    ctx.closePath();
+    var pitA = miniXY(PIT_LANE.x0, (PIT_LANE.z0 + PIT_LANE.z1) * 0.5, w, h, 8);
+    var pitB = miniXY(PIT_LANE.x1, (PIT_LANE.z0 + PIT_LANE.z1) * 0.5, w, h, 8);
+    ctx.strokeStyle = "#e8b86d";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(pitA.x, pitA.y);
+    ctx.lineTo(pitB.x, pitB.y);
     ctx.stroke();
     if (!mpMode) {
-      paintMiniDot(ctx, cpus[0].x, cpus[0].z, "#d4a017", 3);
-      paintMiniDot(ctx, cpus[1].x, cpus[1].z, "#b4532e", 3);
+      paintMiniDot(ctx, cpus[0].x, cpus[0].z, "#d4a017", 4);
+      paintMiniDot(ctx, cpus[1].x, cpus[1].z, "#b4532e", 4);
     } else {
       Object.keys(remotes).forEach(function (id) {
         var r = remotes[id].r;
@@ -1752,11 +1805,11 @@
         }
         var hex = (SKINS[slot % SKINS.length].color | 0).toString(16);
         while (hex.length < 6) hex = "0" + hex;
-        paintMiniDot(ctx, r.x, r.z, "#" + hex, 3);
+        paintMiniDot(ctx, r.x, r.z, "#" + hex, 4);
       });
       Object.keys(hostBots).forEach(function (id) {
         var br = hostBots[id];
-        paintMiniDot(ctx, br.x, br.z, "#d4a017", 3);
+        paintMiniDot(ctx, br.x, br.z, "#d4a017", 4);
       });
     }
     var you = miniXY(player.x, player.z, w, h, 10);
@@ -1816,8 +1869,13 @@
 
   function tickStart(dt) {
     var input = playerInput();
-    if (input.throttle) revs = clamp(revs + dt * 0.7, 0, 1);
-    else revs = clamp(revs - dt * 0.45, 0, 1);
+    if (input.throttle) {
+      if (revs < REV_SWEET_LO) revs = clamp(revs + dt * 0.9, 0, REV_HOLD);
+      else revs += (REV_HOLD - revs) * (1 - Math.pow(0.05, dt));
+      if (revs > REV_SWEET_HI) revs = REV_SWEET_HI - 0.01;
+    } else {
+      revs = clamp(revs - dt * 0.6, 0, 1);
+    }
     setRevSound(true);
     paintRevs();
 

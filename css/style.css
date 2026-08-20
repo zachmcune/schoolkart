@@ -206,6 +206,13 @@ textarea {
   letter-spacing: 0.12em;
 }
 
+.banner.warn.launch {
+  font-size: 42px;
+  letter-spacing: 0.18em;
+  color: #fff;
+  background: rgba(20, 143, 140, 0.94);
+}
+
 .banner.warn.late {
   background: rgba(122, 16, 16, 0.94);
   color: #fff4d8;

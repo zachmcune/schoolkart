@@ -73,6 +73,6 @@ npm test
 
 Repo is also a static site (HTML + CSS + JS + Three.js from CDN). Public Pages currently deploys from this branch (`cursor/campus-loop-playable-f645`). Use Railway as the school link.
 
-`index.html` is marked `no-store`. JS/CSS are versioned (`?v=mp17`) so a **normal reload** picks up the lobby.
+`index.html` is marked `no-store`. JS/CSS are versioned (`?v=mp18`) so a **normal reload** picks up the lobby.
 
 No bundler. Keyboard only. Light enough for school Chrome / integrated graphics.
