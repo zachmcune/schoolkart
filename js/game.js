@@ -665,23 +665,25 @@
     );
   }
 
-  function campus7Tex() {
+  function blimpLetterTex() {
     var c = document.createElement("canvas");
-    c.width = 256;
-    c.height = 64;
+    c.width = 512;
+    c.height = 128;
     var ctx = c.getContext("2d");
     ctx.fillStyle = "#148f8c";
-    ctx.fillRect(0, 0, 256, 64);
+    ctx.fillRect(0, 0, 512, 128);
     ctx.save();
-    ctx.translate(256, 0);
+    ctx.translate(512, 0);
     ctx.scale(-1, 1);
     ctx.fillStyle = "#f4efe6";
-    ctx.font = "bold 34px Trebuchet MS, sans-serif";
+    ctx.font = "bold 72px Trebuchet MS, Impact, sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText("CAMPUS 7", 128, 34);
+    ctx.fillText("LIAM IS COOL", 256, 68);
     ctx.restore();
-    return new THREE.CanvasTexture(c);
+    var tex = new THREE.CanvasTexture(c);
+    tex.minFilter = THREE.LinearFilter;
+    return tex;
   }
 
   function makeBlimpMesh() {
@@ -728,13 +730,13 @@
     addFin(Math.PI * 0.5);
     addFin(-Math.PI * 0.5);
 
-    var letterTex = campus7Tex();
+    var letterTex = blimpLetterTex();
     var letterMat = new THREE.MeshBasicMaterial({ map: letterTex, side: THREE.DoubleSide });
-    var letterA = new THREE.Mesh(new THREE.PlaneGeometry(7.6, 1.9), letterMat);
-    letterA.position.set(0.8, 0.15, 4.95);
+    var letterA = new THREE.Mesh(new THREE.PlaneGeometry(12.4, 3.1), letterMat);
+    letterA.position.set(0.6, 0.2, 5.05);
     g.add(letterA);
     var letterB = letterA.clone();
-    letterB.position.z = -4.95;
+    letterB.position.z = -5.05;
     letterB.rotation.y = Math.PI;
     g.add(letterB);
 
