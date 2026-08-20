@@ -471,12 +471,12 @@ kbd {
 #roster li {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
+  gap: 8px;
   margin: 6px 0;
   padding: 6px 10px;
   border-left: 3px solid var(--teal);
   background: var(--panel);
+  cursor: pointer;
 }
 
 #roster li.ghost {
@@ -487,15 +487,13 @@ kbd {
   border-left-color: var(--gold);
 }
 
-#roster .who {
-  min-width: 0;
+#roster li.pick {
+  outline: 2px solid var(--teal);
 }
 
-#roster .tiny {
-  flex: 0 0 auto;
-  font-size: 12px;
-  letter-spacing: 0.08em;
-  padding: 4px 8px;
+#roster .star {
+  color: var(--gold);
+  width: 1em;
 }
 
 .host-tools {
@@ -506,20 +504,24 @@ kbd {
   display: none;
 }
 
-.speed-row {
-  align-items: center;
+.host-row {
+  align-items: stretch;
 }
 
-.speed-label {
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--muted);
-  font-size: 13px;
+.bot-pair {
+  display: flex;
+  gap: 0;
 }
 
-.speed-btn.on {
-  background: var(--teal);
-  color: var(--ink);
+.bot-pair .lobby-btn:first-child {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.bot-pair .lobby-btn:last-child {
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  border-left: 0;
 }
 
 .race-names {

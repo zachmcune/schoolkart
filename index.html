@@ -6,11 +6,11 @@
   <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <!-- sk-build mp15: lobby names, kick, CPUs, speed -->
+  <!-- sk-build mp17: getaway-only launch, pit grab, hairpin dump -->
   <meta name="theme-color" content="#1a120e" />
   <title>SchoolKart — Campus Loop</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect fill='%231a120e' width='64' height='64'/><rect fill='%232ec8c3' x='8' y='28' width='48' height='10'/><rect fill='%23f4efe6' x='22' y='16' width='20' height='8'/></svg>" />
-  <link rel="stylesheet" href="css/style.css?v=mp15" />
+  <link rel="stylesheet" href="css/style.css?v=mp17" />
 </head>
 <body>
   <div id="game">
@@ -104,14 +104,13 @@
       <p id="lobby-status" class="sub">Waiting…</p>
       <ul id="roster"></ul>
       <div id="host-tools" class="host-tools hidden">
-        <div class="lobby-row">
-          <button type="button" class="lobby-btn" id="btn-add-bot">Add CPU</button>
-        </div>
-        <div class="lobby-row speed-row">
-          <span class="speed-label">Speed</span>
-          <button type="button" class="lobby-btn speed-btn" data-speed="0.75">0.75</button>
-          <button type="button" class="lobby-btn speed-btn" data-speed="1">1</button>
-          <button type="button" class="lobby-btn speed-btn" data-speed="1.25">1.25</button>
+        <div class="lobby-row host-row">
+          <button type="button" class="lobby-btn" id="btn-kick">Kick</button>
+          <span class="bot-pair">
+            <button type="button" class="lobby-btn" id="btn-add-bot">+Bot</button>
+            <button type="button" class="lobby-btn" id="btn-remove-bot">−Bot</button>
+          </span>
+          <button type="button" class="lobby-btn" id="btn-speed">1x</button>
         </div>
       </div>
       <p id="lobby-err"></p>
@@ -119,7 +118,7 @@
         <button type="button" class="lobby-btn" id="btn-grid">Grid up</button>
         <button type="button" class="lobby-btn" id="btn-leave">Leave</button>
       </div>
-      <p class="go">Host grids up, kicks, adds CPUs, and sets speed. Same handling as solo.</p>
+      <p class="go">Host: tap a name, then Kick. Enter grids up.</p>
     </div>
 
     <div id="countdown" class="screen hidden">
@@ -144,7 +143,7 @@
   </div>
 
   <script>
-    window.SK_BUILD = "mp15";
+    window.SK_BUILD = "mp17";
     try {
       if (window.caches) {
         caches.keys().then(function (keys) {
@@ -161,8 +160,8 @@
       document.write('<script src="https://unpkg.com/three@0.160.1/build/three.min.js"><\/script>');
     }
   </script>
-  <script src="js/config.js?v=mp15"></script>
-  <script src="js/net.js?v=mp15"></script>
-  <script src="js/game.js?v=mp15"></script>
+  <script src="js/config.js?v=mp17"></script>
+  <script src="js/net.js?v=mp17"></script>
+  <script src="js/game.js?v=mp17"></script>
 </body>
 </html>

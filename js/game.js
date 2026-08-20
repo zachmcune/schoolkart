@@ -65,19 +65,16 @@
   }
 
   // F1 bypass, LEFT of the south S/F straight (infield / +Z).
-  // Racing line stays at z=SF_Z. This peels OFF, runs parallel, rejoins.
-  // Grab only HALFWAY IN the side lane — clipping the entry does not count.
-  var PIT_LANE = { x0: 18, x1: 88, z0: -56.6, z1: -48.2 };
-  var PIT_GRAB = { x0: 53, x1: 72, z0: -56.6, z1: -48.2 };
+  // Long peel, parallel lane, merge back. Grab HALFWAY IN the side lane.
+  var PIT_LANE = { x0: 8, x1: 118, z0: -67.4, z1: -56.6 };
+  var PIT_GRAB = { x0: 58, x1: 90, z0: -67.4, z1: -56.6 };
   var PIT_PAVE = [
-    { x0: -16, x1: 16, z0: -72.2, z1: -62.0 },
-    { x0: 2, x1: 28, z0: -66.0, z1: -51.5 },
-    { x0: 12, x1: 36, z0: -60.0, z1: -48.2 },
+    { x0: -80, x1: 24, z0: -73.2, z1: -62.0 },
+    { x0: -28, x1: 40, z0: -69.0, z1: -56.6 },
     PIT_LANE,
     PIT_GRAB,
-    { x0: 70, x1: 96, z0: -60.0, z1: -48.2 },
-    { x0: 82, x1: 110, z0: -66.0, z1: -51.5 },
-    { x0: 94, x1: 124, z0: -72.2, z1: -62.0 },
+    { x0: 96, x1: 155, z0: -69.0, z1: -56.6 },
+    { x0: 124, x1: 180, z0: -73.2, z1: -62.0 },
   ];
 
   var keys = Object.create(null);
@@ -107,6 +104,8 @@
   var remotes = {};
   var hostBots = {};
   var gameSpeed = 1;
+  var lobbyPick = "";
+  var SPEED_STEPS = [1, 1.25, 0.75];
   var lastNetSend = 0;
   var playerGridX = GRID_P2_X;
   var playerGridZ = GRID_P2_Z;
@@ -175,6 +174,7 @@
     raceNames: document.getElementById("race-names"),
     hostTools: document.getElementById("host-tools"),
     nameInput: document.getElementById("display-name"),
+    speedBtn: document.getElementById("btn-speed"),
     lights: [
       document.getElementById("rl0"),
       document.getElementById("rl1"),
@@ -213,9 +213,8 @@
     if (n !== 0.75 && n !== 1.25) n = 1;
     gameSpeed = n;
     if (net) net.speed = n;
-    var btns = document.querySelectorAll("[data-speed]");
-    for (var i = 0; i < btns.length; i++) {
-      btns[i].classList.toggle("on", +btns[i].getAttribute("data-speed") === gameSpeed);
+    if (hud.speedBtn) {
+      hud.speedBtn.textContent = n === 1.25 ? "1.25x" : n === 0.75 ? "0.75x" : "1x";
     }
   }
 
@@ -576,22 +575,22 @@
     addBox((PIT_LANE.x0 + PIT_LANE.x1) * 0.5, 0.115, PIT_LANE.z0, PIT_LANE.x1 - PIT_LANE.x0, 0.03, 0.34, 0xffe566);
     addBox((PIT_LANE.x0 + PIT_LANE.x1) * 0.5, 0.115, PIT_LANE.z1, PIT_LANE.x1 - PIT_LANE.x0, 0.03, 0.34, 0x7cffd4);
     // Pit wall between the racing line and the bypass — this is a side lane.
-    addBox(50, 0.82, -61.4, 52, 1.55, 0.62, 0x2a2018);
-    addBox(50, 1.62, -61.4, 52, 0.12, 0.7, TEAL);
+    addBox(62, 0.82, -69.6, 70, 1.55, 0.62, 0x2a2018);
+    addBox(62, 1.62, -69.6, 70, 0.12, 0.7, TEAL);
     var pitDecal = labelPlane("PIT", 7.2, 2.8, "#0a2a28", "#2ec8c3");
     pitDecal.rotation.x = -Math.PI * 0.5;
-    pitDecal.position.set(62, 0.16, -52.4);
+    pitDecal.position.set(72, 0.16, -62.0);
     scene.add(pitDecal);
     var inDecal = labelPlane("IN", 5.4, 2.2, "#102018", "#ffe566");
     inDecal.rotation.x = -Math.PI * 0.5;
-    inDecal.position.set(6, 0.16, -64);
+    inDecal.position.set(-20, 0.16, -66);
     scene.add(inDecal);
     var outDecal = labelPlane("OUT", 5.8, 2.2, "#102018", "#7cffd4");
     outDecal.rotation.x = -Math.PI * 0.5;
-    outDecal.position.set(104, 0.16, -64);
+    outDecal.position.set(148, 0.16, -66);
     scene.add(outDecal);
     for (var hsh = 0; hsh < 5; hsh++) {
-      addBox(54 + hsh * 3.6, 0.14, -52.4, 1.15, 0.02, 7.4, 0xffffff);
+      addBox(62 + hsh * 3.6, 0.14, -62.0, 1.15, 0.02, 9.2, 0xffffff);
     }
 
     var stripe = new THREE.Mesh(
@@ -1206,12 +1205,23 @@
   }
 
   function inPitLane(r) {
-    return inRect(r.x, r.z, PIT_LANE);
+    return (
+      inRect(r.x, r.z, PIT_LANE) ||
+      (onPitPavement(r.x, r.z) &&
+        r.x >= PIT_LANE.x0 &&
+        r.z >= PIT_LANE.z0 - 2 &&
+        r.z <= PIT_LANE.z1 + 2)
+    );
   }
 
   function inPitGrab(r) {
     var mid = (PIT_LANE.x0 + PIT_LANE.x1) * 0.5;
-    return inPitLane(r) && r.x >= mid;
+    return (
+      r.x >= mid &&
+      onPitPavement(r.x, r.z) &&
+      r.z >= PIT_LANE.z0 - 2.5 &&
+      r.z <= PIT_LANE.z1 + 2.5
+    );
   }
 
   function updateLaps(r) {
@@ -1249,6 +1259,7 @@
     var maxV = empty ? LIMP_SPEED : MAX_SPEED;
     var accel = empty ? LIMP_ACCEL : ACCEL;
     if (isPlayer && launchT > 0) accel *= launchMul;
+    else if (isPlayer) launchMul = 1;
 
     if (isPlayer && state === "racing") {
       r.fuel -= IDLE_FUEL * dt;
@@ -1301,6 +1312,15 @@
     var maxYaw = STEER_RATE * steerScale * tireFeel * surface;
     var latDemand = Math.abs(steer) * Math.abs(r.speed) * 0.155;
     var maxLat = MAX_LAT * tireFeel * surface;
+    if (info.name === "hairpin" && !info.grass) {
+      var hpOk = 17;
+      if (r.speed > hpOk) {
+        var over = (r.speed - hpOk) / 14;
+        maxYaw *= 1 / (1 + over * 5);
+        r.slide += (steer !== 0 ? steer : 1) * over * 22 * dt;
+        if (isPlayer && over > 0.3) r.tires -= 2.8 * dt * over;
+      }
+    }
     if (latDemand > maxLat && Math.abs(steer) > 0.05) {
       var slip = (latDemand - maxLat) / Math.max(6, maxLat);
       maxYaw *= 1 / (1 + slip * 2.1);
@@ -1505,21 +1525,23 @@
   }
 
   function applyLaunch() {
+    launchMul = 1;
+    launchT = 0;
     if (revs >= REV_SWEET_LO && revs <= REV_SWEET_HI) {
-      launchMul = 1.22;
-      launchT = 1.15;
+      launchMul = 1.2;
+      launchT = 1.05;
       launchCall = "LAUNCH";
     } else if (revs > REV_SWEET_HI) {
-      launchMul = 0.48;
+      launchMul = 0.58;
       launchT = 1.35;
-      player.slide += (Math.random() - 0.5) * 12;
+      player.slide += (Math.random() - 0.5) * 10;
       launchCall = "WHEELSPIN";
     } else {
-      launchMul = 0.4;
-      launchT = 1.55;
+      launchMul = 0.52;
+      launchT = 1.45;
       launchCall = "SLUGGISH";
     }
-    launchCallT = 1.3;
+    launchCallT = 1.15;
   }
 
   function persistMe() {
@@ -2072,10 +2094,19 @@
     hud.lobbyErr.textContent = net.err || "";
     if (hud.hostTools) hud.hostTools.classList.toggle("hidden", !net.isHost());
     if (hud.gridBtn) hud.gridBtn.classList.toggle("hidden", !net.isHost());
+    var still = false;
+    (net.players || []).forEach(function (p) {
+      if (p.id === lobbyPick) still = true;
+    });
+    if (!still) lobbyPick = "";
     hud.roster.innerHTML = "";
     (net.players || []).forEach(function (p) {
       var li = document.createElement("li");
       var skin = SKINS[p.slot % SKINS.length];
+      li.setAttribute("data-id", p.id);
+      var star = document.createElement("span");
+      star.className = "star";
+      star.textContent = p.id === net.hostId ? "★" : "";
       var who = document.createElement("span");
       who.className = "who";
       who.textContent =
@@ -2083,25 +2114,12 @@
         (p.name || skin.name) +
         "  #" +
         skin.num +
-        (p.id === net.hostId ? " · host" : "") +
         (p.ghost || (!p.connected && !p.bot) ? " · ghost" : "");
+      li.appendChild(star);
       li.appendChild(who);
-      if (p.ghost || (!p.connected && !p.bot)) li.className = "ghost";
+      if (p.ghost || (!p.connected && !p.bot)) li.classList.add("ghost");
       if (p.bot) li.classList.add("bot");
-      if (net.isHost() && p.id !== net.id) {
-        var btn = document.createElement("button");
-        btn.type = "button";
-        btn.className = "lobby-btn tiny";
-        btn.setAttribute("data-id", p.id);
-        if (p.bot) {
-          btn.setAttribute("data-act", "unbot");
-          btn.textContent = "Remove";
-        } else {
-          btn.setAttribute("data-act", "kick");
-          btn.textContent = "Kick";
-        }
-        li.appendChild(btn);
-      }
+      if (p.id === lobbyPick) li.classList.add("pick");
       hud.roster.appendChild(li);
     });
     paintRaceNames();
@@ -2114,7 +2132,7 @@
     (net.players || []).forEach(function (p) {
       var li = document.createElement("li");
       var skin = SKINS[p.slot % SKINS.length];
-      li.textContent = (p.name || skin.name) + " #" + skin.num;
+      li.textContent = (p.id === net.hostId ? "★ " : "") + (p.name || skin.name) + " #" + skin.num;
       if (p.id === net.id) li.className = "me";
       else if (p.bot) li.className = "bot";
       hud.raceNames.appendChild(li);
@@ -2238,7 +2256,13 @@
     var simDt = dt;
     if ((state === "start" || state === "racing") && mpMode) simDt = dt * gameSpeed;
     if (pitFlash > 0) pitFlash -= dt;
-    if (launchT > 0) launchT -= dt;
+    if (launchT > 0) {
+      launchT -= dt;
+      if (launchT <= 0) {
+        launchT = 0;
+        launchMul = 1;
+      }
+    }
     if (launchCallT > 0) launchCallT -= dt;
     if (lateJoinT > 0) lateJoinT -= dt;
 
@@ -2478,16 +2502,39 @@
   var btnGrid = document.getElementById("btn-grid");
   var btnLeave = document.getElementById("btn-leave");
   var btnAddBot = document.getElementById("btn-add-bot");
+  var btnRemoveBot = document.getElementById("btn-remove-bot");
+  var btnKick = document.getElementById("btn-kick");
   var joinCode = document.getElementById("join-code");
   if (hud.roster) {
     hud.roster.addEventListener("click", function (e) {
       var t = e.target;
-      while (t && t !== hud.roster && (!t.getAttribute || !t.getAttribute("data-act"))) t = t.parentNode;
-      if (!t || t === hud.roster || !net || !net.isHost()) return;
-      var act = t.getAttribute("data-act");
-      var id = t.getAttribute("data-id");
-      if (act === "kick") net.kick(id);
-      if (act === "unbot") net.removeBot(id);
+      while (t && t !== hud.roster && (!t.getAttribute || !t.getAttribute("data-id"))) t = t.parentNode;
+      if (!t || t === hud.roster) return;
+      lobbyPick = t.getAttribute("data-id") || "";
+      paintRoster();
+    });
+  }
+  if (btnKick) {
+    btnKick.addEventListener("click", function () {
+      if (!net || !net.isHost()) return;
+      var id = lobbyPick;
+      var p;
+      if (id) {
+        for (var i = 0; i < (net.players || []).length; i++) {
+          if (net.players[i].id === id) p = net.players[i];
+        }
+      }
+      if (!p || p.bot || p.id === net.hostId) {
+        p = null;
+        for (var j = 0; j < (net.players || []).length; j++) {
+          var cand = net.players[j];
+          if (!cand.bot && cand.id !== net.hostId) {
+            p = cand;
+            break;
+          }
+        }
+      }
+      if (p) net.kick(p.id);
     });
   }
   if (btnAddBot) {
@@ -2495,11 +2542,30 @@
       if (net && net.isHost()) net.addBot();
     });
   }
-  var speedBtns = document.querySelectorAll("[data-speed]");
-  for (var sb = 0; sb < speedBtns.length; sb++) {
-    speedBtns[sb].addEventListener("click", function (ev) {
+  if (btnRemoveBot) {
+    btnRemoveBot.addEventListener("click", function () {
       if (!net || !net.isHost()) return;
-      net.setSpeed(+ev.currentTarget.getAttribute("data-speed"));
+      var bot = null;
+      for (var i = 0; i < (net.players || []).length; i++) {
+        if (net.players[i].bot && net.players[i].id === lobbyPick) bot = net.players[i];
+      }
+      if (!bot) {
+        for (var j = (net.players || []).length - 1; j >= 0; j--) {
+          if (net.players[j].bot) {
+            bot = net.players[j];
+            break;
+          }
+        }
+      }
+      if (bot) net.removeBot(bot.id);
+    });
+  }
+  if (hud.speedBtn) {
+    hud.speedBtn.addEventListener("click", function () {
+      if (!net || !net.isHost()) return;
+      var i = SPEED_STEPS.indexOf(gameSpeed);
+      if (i < 0) i = 0;
+      net.setSpeed(SPEED_STEPS[(i + 1) % SPEED_STEPS.length]);
     });
   }
   if (hud.nameInput) {

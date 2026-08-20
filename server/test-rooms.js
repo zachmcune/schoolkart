@@ -226,7 +226,7 @@ waitHealth()
                       }),
                       "refresh sees the other cars"
                     );
-                    var mid = (14 + 72) * 0.5;
+                    var mid = (8 + 118) * 0.5;
                     assert(10 < mid, "entry x does not grab");
                     console.log("OK rooms", room.code, "late+rejoin");
                     c.close();
