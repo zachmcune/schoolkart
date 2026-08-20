@@ -972,42 +972,8 @@
       trackRoot.add(leaf);
     }
 
-    addInfieldGrass();
     placeWalls();
     drawWalls();
-  }
-
-  function addInfieldGrass() {
-    var grassMat = new THREE.MeshLambertMaterial({
-      color: 0x4ea03c,
-      emissive: 0x184018,
-      side: THREE.DoubleSide,
-    });
-    function patch(x, z, w, d) {
-      if (onPitPavement(x, z)) return;
-      var info = projectTrack(x, z);
-      if (info.dist < ASPHALT + RUNOFF + 5.5) return;
-      var mesh = new THREE.Mesh(new THREE.BoxGeometry(w, 0.1, d), grassMat);
-      mesh.position.set(x, 0.055, z);
-      trackRoot.add(mesh);
-    }
-    var rings = [
-      { off: ASPHALT + RUNOFF + 9, w: 38, d: 26, step: 185 },
-      { off: ASPHALT + RUNOFF + 38, w: 54, d: 38, step: 220 },
-      { off: ASPHALT + RUNOFF + 74, w: 72, d: 48, step: 260 },
-    ];
-    var ri;
-    for (ri = 0; ri < rings.length; ri++) {
-      var ring = rings[ri];
-      var s;
-      for (s = 70 + ri * 45; s < TRACK_LEN - 40; s += ring.step) {
-        var p = centerlinePoint(s);
-        if (p.name === "start" || skipLeftBarrier(p)) continue;
-        var nx = -Math.sin(p.h);
-        var nz = Math.cos(p.h);
-        patch(p.x + nx * ring.off, p.z + nz * ring.off, ring.w, ring.d);
-      }
-    }
   }
 
   function wallSeg(ax, az, bx, bz, thick, kind, silent) {
@@ -1156,10 +1122,17 @@
     addBox(28, 4.8, -36, 14, 9.6, 16, 0xa34628);
     addBox(28, 10, -36, 16, 0.9, 18, 0x7a301c);
     addBox(-36, 3.8, -28, 18, 7.6, 10, 0xc4683a);
-    addBox(8, 0.12, -30, 22, 0.1, 28, 0x4ea03c);
-    addBox(48, 0.08, -46, 36, 0.1, 18, 0x4ea03c);
-    addBox(-36, 0.1, 18, 32, 0.08, 24, 0x4ea03c);
-    addBox(42, 0.1, 72, 18, 0.08, 16, 0x4ea03c);
+    var grassMat = new THREE.MeshBasicMaterial({ color: 0x6edc4c, side: THREE.DoubleSide });
+    function campusQuad(x, z, w, d) {
+      var mesh = new THREE.Mesh(new THREE.BoxGeometry(w, 0.12, d), grassMat);
+      mesh.position.set(x, 0.08, z);
+      scene.add(mesh);
+    }
+    campusQuad(10, -47, 78, 16);
+    campusQuad(8, -33, 48, 28);
+    campusQuad(-22, -30, 36, 26);
+    campusQuad(46, -38, 40, 32);
+    campusQuad(6, -12, 56, 30);
     addBox(-48, 4.4, 96, 22, 8.8, 14, 0xa34628);
     addBox(-48, 9.2, 96, 24, 0.8, 16, 0x7a301c);
 
