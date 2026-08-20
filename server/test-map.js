@@ -122,6 +122,7 @@ var code = [
   sliceFn("placeWalls"),
   "function puffHit() {}",
   "function poseCar(r) { if (r.mesh && r.mesh.position) r.mesh.position.set(r.x, 0, r.z); }",
+  sliceFn("hitKeepYaw"),
   sliceFn("bashCars"),
   sliceFn("bashWall"),
   sliceFn("bashAllWalls"),
@@ -145,6 +146,7 @@ var code = [
   "  slotOnPath: slotOnPath,",
   "  placeWalls: placeWalls,",
   "  bashAllWalls: bashAllWalls,",
+  "  bashWall: bashWall,",
   "  bashCars: bashCars,",
   "  speedKph: speedKph,",
   "  menuTrackName: menuTrackName,",
@@ -656,6 +658,25 @@ sim.bashCars(aCar, bCar);
 sim.bashCars(aCar, bCar);
 sim.bashCars(aCar, bCar);
 assert(Math.hypot(aCar.x - bCar.x, aCar.z - bCar.z) >= 3.2, "bots/player cannot occupy the same space");
+
+var grazeH = 0.22;
+var graze = blankCar(0, 2.7, grazeH, 24);
+graze.slide = 0;
+var grazeImp = sim.bashWall(graze, { ax: -30, az: 4, bx: 30, bz: 4, thick: 0.55 });
+assert(grazeImp > 0, "wall graze actually hits");
+assert(Math.abs(angDiff(graze.heading, grazeH)) < 0.22, "wall graze keeps heading, dh=" + angDiff(graze.heading, grazeH));
+assert(Math.abs(angDiff(graze.heading, Math.PI)) > 1.2, "wall graze does not snap 180");
+assert(graze.speed < 24, "wall graze loses some speed");
+
+var nose = blankCar(3.8, 0, 0, 26);
+sim.bashWall(nose, { ax: 5, az: -40, bx: 5, bz: 40, thick: 0.55 });
+assert(Math.abs(angDiff(nose.heading, 0)) < 0.45, "head-on is a short spin, not a yaw teleport, h=" + nose.heading);
+assert(Math.abs(angDiff(nose.heading, Math.PI)) > 1.6, "head-on does not snap to 180");
+assert(nose.speed < 12, "head-on kills most forward speed");
+
+assert(src.indexOf("hitKeepYaw") !== -1, "hits shove without atan2 yaw snap");
+assert(!/function bashWall\([\s\S]{0,700}heading = Math.atan2/.test(src), "bashWall does not snap heading to velocity");
+assert(!/function bashCars\([\s\S]{0,900}heading = Math.atan2/.test(src), "bashCars does not snap heading to velocity");
 
 var loopCarSpd = blankCar(0, -80, 0, 30);
 assert(sim.speedKph(loopCarSpd) === Math.round(30 * 3.15), "speedo matches velocity, not a stuck 0");

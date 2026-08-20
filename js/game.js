@@ -3709,6 +3709,29 @@
     updateLaps(r);
   }
 
+  function hitKeepYaw(r, vx, vz, nx, nz, impact) {
+    vx *= 0.82;
+    vz *= 0.82;
+    if (impact > 10) {
+      vx *= 0.7;
+      vz *= 0.7;
+    }
+    var c = Math.cos(r.heading);
+    var s = Math.sin(r.heading);
+    r.speed = vx * c + vz * s;
+    r.slide = -vx * s + vz * c;
+    var into = clamp(-(c * nx + s * nz), 0, 1);
+    var side = c * nz - s * nx;
+    var dir = side >= 0 ? 1 : -1;
+    if (into > 0.72) {
+      r.heading += dir * clamp(impact * 0.016, 0.1, 0.36);
+      r.slide += dir * clamp(impact * 0.2, 2.2, 8.5);
+    } else {
+      r.heading += dir * clamp(impact * 0.006 * (1 - into), 0, 0.1);
+      r.slide += dir * impact * 0.14;
+    }
+  }
+
   function bashCars(a, b) {
     var dx = b.x - a.x;
     var dz = b.z - a.z;
@@ -3743,19 +3766,8 @@
     bvx -= j * nx;
     bvz -= j * nz;
     var impact = Math.abs(rel);
-    a.speed = Math.hypot(avx, avz) * (a.speed < 0 ? -1 : 1) * 0.82;
-    b.speed = Math.hypot(bvx, bvz) * (b.speed < 0 ? -1 : 1) * 0.82;
-    if (Math.hypot(avx, avz) > 0.6) a.heading = Math.atan2(avz, avx);
-    if (Math.hypot(bvx, bvz) > 0.6) b.heading = Math.atan2(bvz, bvx);
-    var spin = clamp(impact * 0.045, 0, 0.9);
-    a.heading += (Math.random() - 0.5) * spin;
-    b.heading -= (Math.random() - 0.5) * spin;
-    a.slide += -nz * impact * 0.18;
-    b.slide += nz * impact * 0.18;
-    if (impact > 10) {
-      a.speed *= 0.7;
-      b.speed *= 0.7;
-    }
+    hitKeepYaw(a, avx, avz, -nx, -nz, impact);
+    hitKeepYaw(b, bvx, bvz, nx, nz, impact);
     poseCar(a);
     poseCar(b);
     if (impact > 4 && !(a.hitFxT > 0) && !(b.hitFxT > 0)) {
@@ -3796,11 +3808,7 @@
     vx += j * nx;
     vz += j * nz;
     var impact = Math.abs(rel);
-    r.speed = Math.hypot(vx, vz) * (r.speed < 0 ? -1 : 1) * 0.82;
-    if (Math.hypot(vx, vz) > 0.6) r.heading = Math.atan2(vz, vx);
-    r.heading += (Math.random() - 0.5) * clamp(impact * 0.045, 0, 0.9);
-    r.slide += -nz * impact * 0.18;
-    if (impact > 10) r.speed *= 0.7;
+    hitKeepYaw(r, vx, vz, nx, nz, impact);
     poseCar(r);
     if (impact > 4 && !(r.hitFxT > 0)) {
       r.hitFxT = 0.16;
