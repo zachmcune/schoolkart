@@ -51,9 +51,9 @@
   var RH = 12;
   var RS = 52;
 
-  // Pit lane is pavement, not grass: it overlaps the south-straight ribbon
-  // and continues inward so the teal box is on asphalt the whole way.
-  var PIT_LANE = { x0: -24, x1: 76, z0: SF_Z - 2, z1: SF_Z + 20 };
+  // One paved pit lane = entry AND exit. Overlaps the south-straight ribbon
+  // so you peel in and rejoin on the same asphalt. No grass hop either way.
+  var PIT_LANE = { x0: -28, x1: X1, z0: SF_Z - ASPHALT, z1: SF_Z + 20 };
   var PIT_BOX = { x0: 4, x1: 28, z0: SF_Z + 4, z1: SF_Z + 17 };
 
   var keys = Object.create(null);
@@ -391,6 +391,9 @@
 
     for (var ch = 0; ch < 3; ch++) {
       addBox(-10 + ch * 4, 0.1, SF_Z + 3.2, 1.6, 0.04, 0.45, 0x2ec8c3);
+    }
+    for (var ex = 0; ex < 5; ex++) {
+      addBox(34 + ex * 10, 0.1, SF_Z + 1.2, 2.2, 0.04, 0.4, 0xf4efe6);
     }
 
     var stripe = new THREE.Mesh(
@@ -852,13 +855,12 @@
     hud.tireFill.style.background = tires < 40 ? "linear-gradient(90deg,#8a5a10,#ffd36a)" : "";
 
     var boxed = state === "racing" && inPitBox(player);
-    var holding = boxed && keys.Space;
+    var pct = Math.min(100, Math.round((pitTimer / PIT_HOLD) * 100));
     hud.pitting.classList.toggle("hidden", !boxed && pitFlash <= 0);
     if (pitFlash > 0) hud.pitting.textContent = "SERVICED";
-    else if (holding) {
-      hud.pitting.textContent =
-        "PITTING  " + Math.min(100, Math.round((pitTimer / PIT_HOLD) * 100)) + "%";
-    } else if (boxed) hud.pitting.textContent = "HOLD SPACE";
+    else if (boxed && keys.Space) hud.pitting.textContent = "PITTING  " + pct + "%";
+    else if (boxed && pitTimer > 0) hud.pitting.textContent = "HOLD SPACE  " + pct + "%";
+    else if (boxed) hud.pitting.textContent = "HOLD SPACE";
 
     var warn = "";
     if (state === "racing" && player.fuel <= 0) warn = "EMPTY — LIMP HOME";
@@ -908,8 +910,10 @@
     } else if (state === "racing") {
       raceTime += dt;
       var input = playerInput();
-      var pitting = inPitBox(player) && input.space;
-      if (pitting) {
+      var boxed = inPitBox(player);
+      if (!boxed) {
+        pitTimer = 0;
+      } else if (input.space) {
         pitTimer += dt;
         input.brake = true;
         input.throttle = false;
@@ -920,8 +924,6 @@
           pitTimer = 0;
           pitFlash = 1.2;
         }
-      } else {
-        pitTimer = 0;
       }
       applyMotion(player, input.steer, input.throttle, input.brake, dt, true);
       updateLaps(player);
