@@ -3902,6 +3902,9 @@
   }
 
   function playerInput() {
+    if (portraitRaceBlock()) {
+      return { steer: 0, throttle: false, reverse: false, brake: false };
+    }
     var up = keys.ArrowUp || keys.KeyW;
     var down = keys.ArrowDown || keys.KeyS;
     var left = keys.ArrowLeft || keys.KeyA;
@@ -3909,7 +3912,7 @@
     var steer = 0;
     if (left) steer += 1;
     if (right) steer -= 1;
-    // Designer lock: Chromebooks / any keyboard machine stay WASD/Space only.
+    // Keyboard / Chromebook = no gas/brake overlay. Still not a portrait race.
     if (!isPhoneLike()) {
       return {
         steer: steer,
@@ -3917,9 +3920,6 @@
         reverse: !!down,
         brake: !!keys.Space,
       };
-    }
-    if (portraitRaceBlock()) {
-      return { steer: 0, throttle: false, reverse: false, brake: false };
     }
     var keySteer = !!(left || right);
     return {
@@ -5007,11 +5007,12 @@
   }
 
   function portraitRaceBlock() {
-    return isPhoneLike() && (state === "start" || state === "racing") && window.innerHeight > window.innerWidth;
+    // Viewport only. Keyboard, Chromebook UA, and fine pointer do not
+    // unlock a tall-window race — they only hide the gas/brake pads.
+    return (state === "start" || state === "racing") && window.innerHeight > window.innerWidth;
   }
 
   function lockLandscape() {
-    if (!isPhoneLike()) return;
     var so = window.screen && screen.orientation;
     if (!so || typeof so.lock !== "function") return;
     try {
@@ -5021,7 +5022,6 @@
   }
 
   function unlockOrientation() {
-    if (!isPhoneLike()) return;
     var so = window.screen && screen.orientation;
     if (!so || typeof so.unlock !== "function") return;
     try {
@@ -5064,19 +5064,20 @@
       clearTouchDrive();
       touchCtl.gyroNeedCal = true;
     }
+    document.documentElement.classList.toggle("race-live", drive);
     document.documentElement.classList.toggle("race-portrait", blocked);
     if (hud.touchLayer) hud.touchLayer.classList.toggle("hidden", !(phone && drive && !blocked));
     if (hud.rotateHint) {
       hud.rotateHint.classList.toggle("hidden", !blocked);
     }
     if (hud.tiltBtn) {
-      hud.tiltBtn.classList.toggle("hidden", !(phone && drive && needsTiltTap()));
+      hud.tiltBtn.classList.toggle("hidden", !(phone && drive && needsTiltTap() && !blocked));
     }
     if (hud.revHint && phone) {
       hud.revHint.textContent = "HOLD the right half to climb — lift to catch the green. Past the mark dumps.";
     }
-    if (drive && phone) lockLandscape();
-    else if (!phone || state === "title" || state === "track") unlockOrientation();
+    if (drive) lockLandscape();
+    else unlockOrientation();
     if (phone && !touchCtl.hintShown && !blocked) showFirstMobileHint();
   }
 

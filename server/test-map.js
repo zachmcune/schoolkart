@@ -659,6 +659,34 @@ assert(sim.speedKph(loopCarSpd) === Math.round(30 * 3.15), "speedo matches veloc
 assert(src.indexOf("lockRacePath") !== -1 && src.indexOf("isDriveableLoop") !== -1, "open/junk boards refuse and bounce to Loop");
 assert(src.indexOf('lock("landscape")') !== -1 && src.indexOf("portraitRaceBlock") !== -1, "race is landscape-only");
 assert(src.indexOf('lock("portrait")') === -1, "never lock portrait");
+assert(sliceFn("portraitRaceBlock").indexOf("isPhoneLike") === -1, "portrait gate ignores phone/keyboard/Chromebook");
+assert(/if \(portraitRaceBlock\(\)\) \{[\s\S]{0,280}return;/.test(src), "tick returns before motion when the window is tall");
+
+var portraitGate = new Function(
+  "state",
+  "window",
+  sliceFn("portraitRaceBlock") + "; return portraitRaceBlock();"
+);
+assert(portraitGate("racing", { innerWidth: 390, innerHeight: 844 }) === true, "tall phone window gates");
+assert(portraitGate("start", { innerWidth: 400, innerHeight: 900 }) === true, "tall start window gates");
+assert(portraitGate("racing", { innerWidth: 844, innerHeight: 390 }) === false, "wide window races");
+assert(portraitGate("title", { innerWidth: 390, innerHeight: 844 }) === false, "title may stay portrait");
+assert(portraitGate("racing", { innerWidth: 500, innerHeight: 900 }) === true, "tall desktop window also gates");
+
+function fuelAfter(seconds, w, h) {
+  var blocked = portraitGate("racing", { innerWidth: w, innerHeight: h });
+  var car = blankCar(0, -80, 0, 30);
+  car.fuel = 100;
+  var t = 0;
+  while (t < seconds) {
+    if (!blocked) sim.applyMotion(car, 0, true, false, false, 0.016, true);
+    t += 0.016;
+  }
+  return car.fuel;
+}
+assert(fuelAfter(3.2, 390, 844) === 100, "portrait window cannot burn fuel");
+assert(fuelAfter(3.2, 500, 900) === 100, "tall browser window cannot burn fuel");
+assert(fuelAfter(3.2, 844, 390) < 98.2, "landscape still burns idle+throttle");
 assert(src.indexOf("_rotLock") !== -1, "rotate is debounced so one tap is 90 not 180");
 assert(src.indexOf("rotateSelected();") !== -1 && !/tileRot\.addEventListener\("click"[\s\S]{0,80}rotateSelected/.test(src), "Rotate button does not double-fire");
 assert(src.indexOf("title-track") !== -1, "title menu label is live");

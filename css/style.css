@@ -739,12 +739,34 @@ html.race-portrait #view,
 html.race-portrait #hud,
 html.race-portrait #rev-wrap,
 html.race-portrait #touch-layer,
-html.race-portrait #mobile-hint {
+html.race-portrait #mobile-hint,
+html.race-portrait #countdown {
   visibility: hidden;
 }
 
-html.race-portrait #rotate-hint {
+html.race-portrait #rotate-hint,
+html.race-portrait #rotate-hint.hidden {
+  display: flex !important;
+  visibility: visible !important;
   z-index: 40;
+}
+
+@media (orientation: portrait) {
+  html.race-live #view,
+  html.race-live #hud,
+  html.race-live #rev-wrap,
+  html.race-live #touch-layer,
+  html.race-live #mobile-hint,
+  html.race-live #countdown {
+    visibility: hidden;
+  }
+
+  html.race-live #rotate-hint,
+  html.race-live #rotate-hint.hidden {
+    display: flex !important;
+    visibility: visible !important;
+    z-index: 40;
+  }
 }
 
 html.race-portrait #tilt-btn {
