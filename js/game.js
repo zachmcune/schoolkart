@@ -1961,21 +1961,22 @@
   }
 
   var AI_AGGRO = {
-    pace: 0.95,
-    look: 0.88,
-    brake: 0.8,
-    hairpin: 16.7,
-    chicane: 23,
-    the90: 27,
-    sweeper: 39,
-    tight: 0.92,
-    lineOff: -0.2,
+    pace: 0.97,
+    look: 0.86,
+    brake: 0.76,
+    hairpin: 16.8,
+    chicane: 24,
+    the90: 28,
+    sweeper: 40,
+    tight: 0.94,
+    lineOff: -0.15,
     pitLap: 3,
     pitFuel: 18,
     pitTires: 26,
-    launch: 0.74,
-    wobble: 0.08,
+    launch: 0.88,
+    wobble: 0.06,
     overshoot: 1,
+    hunter: 1,
   };
   var AI_TIDY = {
     pace: 0.91,
@@ -2050,11 +2051,29 @@
     return apex + (base - apex) * t * t;
   }
 
+  function eachRival(self, fn) {
+    function one(o) {
+      if (!o || o === self || !o.mesh || !o.mesh.visible || o.finished) return;
+      fn(o);
+    }
+    one(player);
+    if (!mpMode) {
+      one(cpus[0]);
+      one(cpus[1]);
+    }
+    var id;
+    for (id in remotes) {
+      if (Object.prototype.hasOwnProperty.call(remotes, id)) one(remotes[id].r);
+    }
+    for (id in hostBots) {
+      if (Object.prototype.hasOwnProperty.call(hostBots, id)) one(hostBots[id]);
+    }
+  }
+
   function avoidRams(r, steer) {
-    function nudge(o) {
-      if (!o || o === r || !o.mesh || !o.mesh.visible || o.finished) return;
-      var fx = Math.cos(r.heading);
-      var fz = Math.sin(r.heading);
+    var fx = Math.cos(r.heading);
+    var fz = Math.sin(r.heading);
+    eachRival(r, function (o) {
       var rx = o.x - r.x;
       var rz = o.z - r.z;
       var fwd = rx * fx + rz * fz;
@@ -2062,20 +2081,67 @@
       if (fwd > 0.4 && fwd < 8.5 && Math.abs(lat) < 2.7) {
         steer += lat >= 0 ? -0.42 : 0.42;
       }
-    }
-    nudge(player);
-    if (!mpMode) {
-      nudge(cpus[0]);
-      nudge(cpus[1]);
-    }
-    var id;
-    for (id in remotes) {
-      if (Object.prototype.hasOwnProperty.call(remotes, id)) nudge(remotes[id].r);
-    }
-    for (id in hostBots) {
-      if (Object.prototype.hasOwnProperty.call(hostBots, id)) nudge(hostBots[id]);
-    }
+    });
     return clamp(steer, -1, 1);
+  }
+
+  var _prey = { r: null, d: 999, fwd: 0, lat: 0 };
+  var _hunt = { on: false, tx: 0, tz: 0, want: 0, noLift: false, dive: false };
+
+  function pickPrey(hunter) {
+    _prey.r = null;
+    _prey.d = 999;
+    _prey.fwd = 0;
+    _prey.lat = 0;
+    var fx = Math.cos(hunter.heading);
+    var fz = Math.sin(hunter.heading);
+    var best = 1e9;
+    eachRival(hunter, function (o) {
+      if (o.pitServicing) return;
+      var rx = o.x - hunter.x;
+      var rz = o.z - hunter.z;
+      var d = Math.hypot(rx, rz);
+      if (d < 0.7 || d > 36) return;
+      var fwd = rx * fx + rz * fz;
+      var lat = -rx * fz + rz * fx;
+      var score = d;
+      if (fwd < -6) score += 16;
+      if (o.kind === "player" && d < 28 && fwd > -8) score -= 12;
+      if (score < best) {
+        best = score;
+        _prey.r = o;
+        _prey.d = d;
+        _prey.fwd = fwd;
+        _prey.lat = lat;
+      }
+    });
+    return _prey;
+  }
+
+  function planHunt(r, p, want) {
+    _hunt.on = false;
+    _hunt.noLift = false;
+    _hunt.dive = false;
+    _hunt.want = want;
+    if (!p.hunter) return _hunt;
+    var prey = pickPrey(r);
+    if (!prey.r) return _hunt;
+    var lead = prey.d * 0.14;
+    if (lead > 3.2) lead = 3.2;
+    if (lead < 0.45) lead = 0.45;
+    _hunt.tx = prey.r.x + Math.cos(prey.r.heading) * lead;
+    _hunt.tz = prey.r.z + Math.sin(prey.r.heading) * lead;
+    var close = Math.min(MAX_SPEED * 0.98, (prey.r.speed || 0) + 8);
+    if (close < want) close = want;
+    _hunt.want = close;
+    _hunt.on = true;
+    if (prey.fwd > -2.2 && prey.fwd < 15 && Math.abs(prey.lat) < 4.4) {
+      _hunt.tx = prey.r.x;
+      _hunt.tz = prey.r.z;
+      _hunt.noLift = true;
+      _hunt.want = MAX_SPEED * 0.98;
+    }
+    return _hunt;
   }
 
   function updateCpu(r, dt) {
@@ -2147,6 +2213,14 @@
     want = Math.min(want, approachWant(want, scan.dKink, 50 * p.brake, 24));
     if (r.fuel <= 0) want = Math.min(want, LIMP_SPEED);
 
+    var hunt = planHunt(r, p, want);
+    if (p.hunter && hunt.on && (scan.dHair < 88 || proj.name === "hairpin")) {
+      hunt.dive = true;
+      hunt.noLift = true;
+      hunt.want = Math.max(hunt.want, 22);
+      want = hunt.want;
+    }
+
     var target = centerlinePoint(r.s + look);
     var nx = -Math.sin(target.h);
     var nz = Math.cos(target.h);
@@ -2154,8 +2228,14 @@
     if (p.wideEntry && scan.dTight > 14 && scan.dTight < 52) off -= 1.45;
     var tx = target.x + nx * off;
     var tz = target.z + nz * off;
+    if (hunt.on) {
+      tx = hunt.tx;
+      tz = hunt.tz;
+      want = hunt.want;
+    }
     var peeling = false;
-    if (r.wantPit && !r.didPit && PIT_META.on) {
+    var midHit = hunt.on && hunt.noLift && _prey.d < 8;
+    if (r.wantPit && !r.didPit && PIT_META.on && !midHit) {
       var east = Math.cos(r.heading) > 0.25;
       var onSf = Math.abs(r.z - SF_Z) < 24 && r.x > -70 && r.x < PIT_GRAB.x1 + 2;
       if (east && onSf) {
@@ -2166,12 +2246,12 @@
       }
     }
     if (inPitLane(r) && !r.pitServicing) {
-      if (r.wantPit && !r.didPit) {
+      if (r.wantPit && !r.didPit && !midHit) {
         peeling = true;
         tx = clamp(r.x + 22, PIT_GRAB.x0 + 2, (PIT_GRAB.x0 + PIT_GRAB.x1) * 0.5);
         tz = (PIT_LANE.z0 + PIT_LANE.z1) * 0.5;
         want = Math.min(want, 16);
-      } else {
+      } else if (!midHit) {
         tx = Math.min(r.x + 28, PIT_LANE.x1 + 24);
         tz = SF_Z + 2;
         want = Math.min(want, 20);
@@ -2180,9 +2260,10 @@
 
     var desiredH = Math.atan2(tz - r.z, tx - r.x);
     var err = Math.atan2(Math.sin(desiredH - r.heading), Math.cos(desiredH - r.heading));
-    var steer = clamp(err * 1.5, -1, 1);
+    var steer = clamp(err * (hunt.on ? 2.05 : 1.5), -1, 1);
     var recover = proj.grass || proj.dist > 4.6;
-    if (recover && !peeling) {
+    var keepHit = p.hunter && hunt.on && hunt.noLift && !proj.grass;
+    if (recover && !peeling && !keepHit) {
       var home = Math.atan2(proj.z - r.z, proj.x - r.x);
       var herr = Math.atan2(Math.sin(home - r.heading), Math.cos(home - r.heading));
       steer = clamp(steer * 0.18 + herr * 1.55, -1, 1);
@@ -2193,15 +2274,19 @@
     if (p.wobble && (r.aiT % 3.6) < 0.28) {
       steer = clamp(steer + Math.sin(r.aiT * 9 + (r.s || 0)) * p.wobble, -1, 1);
     }
-    steer = avoidRams(r, steer);
+    if (!p.hunter) steer = avoidRams(r, steer);
 
     var reverse = false;
-    if (recover && proj.grass && r.speed < 5 && proj.dist > 7) {
+    if (recover && proj.grass && r.speed < 5 && proj.dist > 7 && !keepHit) {
       var out = Math.cos(r.heading) * (proj.x - r.x) + Math.sin(r.heading) * (proj.z - r.z);
       if (out < -0.15) reverse = true;
     }
     var throttle = !reverse && r.speed < want - 0.4;
     var brake = !reverse && r.speed > want + 2.2;
+    if (hunt.on && hunt.noLift) {
+      throttle = !reverse;
+      brake = false;
+    }
     applyMotion(r, steer, throttle, brake, reverse, dt, false);
     updateLaps(r);
   }

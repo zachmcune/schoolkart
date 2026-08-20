@@ -86,7 +86,7 @@ var code = [
   "var mpMode = false;",
   "var remotes = {};",
   "var hostBots = {};",
-  "var player = { x: -9999, z: -9999, heading: 0, mesh: { visible: false }, finished: false };",
+  "var player = { x: -9999, z: -9999, heading: 0, speed: 0, kind: 'player', mesh: { visible: false }, finished: false, pitServicing: false };",
   "var cpus = [];",
   sliceFn("clamp"),
   sliceFn("inRect"),
@@ -111,11 +111,16 @@ var code = [
   sliceAssign("AI_AGGRO"),
   sliceAssign("AI_TIDY"),
   sliceAssign("AI_MESSY"),
-  "var _scan = { dHair: 999, dChi: 999, dSweep: 999, d90: 999, dKink: 999 };",
+  "var _scan = { dHair: 999, dChi: 999, dSweep: 999, d90: 999, dKink: 999, dTight: 999, tightR: 99 };",
   sliceFn("aiOf"),
   sliceFn("scanAhead"),
   sliceFn("approachWant"),
+  sliceFn("eachRival"),
   sliceFn("avoidRams"),
+  "var _prey = { r: null, d: 999, fwd: 0, lat: 0 };",
+  "var _hunt = { on: false, tx: 0, tz: 0, want: 0, noLift: false, dive: false };",
+  sliceFn("pickPrey"),
+  sliceFn("planHunt"),
   sliceFn("updateCpu"),
   "function poseCar(r) { if (r.mesh) { r.mesh.position.x = r.x; r.mesh.position.z = r.z; } }",
   "setDefaultPit();",
@@ -124,6 +129,7 @@ var code = [
   "  TRACK_LEN: TRACK_LEN,",
   "  PATH: PATH,",
   "  runBot: runBot,",
+  "  runHunt: runHunt,",
   "  centerlinePoint: centerlinePoint,",
   "  projectTrack: projectTrack,",
   "  AI_AGGRO: AI_AGGRO,",
@@ -168,6 +174,38 @@ var code = [
   "    grass: grass, asphalt: asphalt, maxOff: maxOff, emptyT: emptyT, grassBy: grassBy,",
   "    hairFast: hairFast, reverseT: reverseT, boxT: boxT, x: r.x, z: r.z, speed: r.speed",
   "  };",
+  "}",
+  "function blankBot(name, x, z, spd) {",
+  "  return {",
+  "    kind: 'cpu', name: name, x: x, z: z, heading: 0, speed: spd, slide: 0,",
+  "    fuel: 100, tires: 100, lap: 1, passedHalf: false, lastX: x, s: TRACK_LEN - 14, lastS: TRACK_LEN - 14,",
+  "    brakeHold: 0, finished: false, finishTime: 0,",
+  "    wantPit: false, didPit: false, pitServicing: false, pitTimer: 0, pitUsedVisit: false,",
+  "    launchMul: 1, launchT: 0, launchArmed: true, aiT: 0,",
+  "    mesh: { visible: true, position: { x: x, y: 0, z: z, set: function(a,b,c){ this.x=a; this.y=b; this.z=c; } }, rotation: { set: function(){}, x:0, y:0, z:0 }, userData: {} }",
+  "  };",
+  "}",
+  "function runHunt(name, seconds) {",
+  "  player.x = 10; player.z = SF_Z; player.heading = 0; player.speed = 20;",
+  "  player.kind = 'player'; player.finished = false; player.pitServicing = false;",
+  "  player.mesh = { visible: true };",
+  "  var r = blankBot(name, -4, SF_Z + 0.2, 26);",
+  "  var d0 = Math.hypot(player.x - r.x, player.z - r.z);",
+  "  var minD = d0;",
+  "  var hitT = 0;",
+  "  var dt = 1/30;",
+  "  raceTime = 2;",
+  "  for (var t = 0; t < seconds; t += dt) {",
+  "    player.x += Math.cos(player.heading) * player.speed * dt;",
+  "    player.z += Math.sin(player.heading) * player.speed * dt;",
+  "    updateCpu(r, dt);",
+  "    var d = Math.hypot(player.x - r.x, player.z - r.z);",
+  "    if (d < minD) minD = d;",
+  "    if (d < 2.55) hitT += dt;",
+  "  }",
+  "  var endD = Math.hypot(player.x - r.x, player.z - r.z);",
+  "  player.x = -9999; player.z = -9999; player.mesh.visible = false;",
+  "  return { name: name, d0: d0, minD: minD, endD: endD, hitT: hitT };",
   "}",
 ].join("\n");
 
@@ -253,5 +291,23 @@ assert(sim.AI_AGGRO.brake < sim.AI_TIDY.brake, "Bowie brakes later");
 assert(sim.AI_AGGRO.pitFuel < sim.AI_TIDY.pitFuel, "Bowie pits later");
 assert(sim.AI_MESSY.lineOff > 0.8, "messy runs wide");
 assert(sim.AI_AGGRO.overshoot === 1, "Bowie can overshoot the 180");
+assert(sim.AI_AGGRO.hunter === 1, "BowieKnife99 is the hunter");
+assert(!sim.AI_TIDY.hunter && !sim.AI_MESSY.hunter, "only Bowie hunts");
+
+var hunt = sim.runHunt("BowieKnife99", 2.6);
+var dodge = sim.runHunt("Hall Monitor", 2.6);
+console.log(
+  "hunt Bowie minD=" +
+    hunt.minD.toFixed(2) +
+    " hitT=" +
+    hunt.hitT.toFixed(2) +
+    " tidy minD=" +
+    dodge.minD.toFixed(2) +
+    " hitT=" +
+    dodge.hitT.toFixed(2)
+);
+assert(hunt.minD < 1.0, "Bowie closes to wreck range (" + hunt.minD.toFixed(2) + ")");
+assert(dodge.minD > hunt.minD + 0.35, "tidy does not divebomb the player");
+assert(hunt.hitT > 0, "Bowie reaches bash radius");
 
 console.log("OK bot AI Campus Loop", sim.TRACK_LEN.toFixed(1));
