@@ -1668,6 +1668,34 @@ function proveSpeedSteer() {
   assert(Math.abs(angDiff(parkRev.heading, hR)) > 0.006, "once reversing, A/D bites");
 }
 
+function proveUnweld() {
+  sim.lockRacePath("");
+  var start = sim.centerlinePoint(24);
+  var go = blankCar(start.x, start.z, start.h, 0);
+  go.fuel = 100;
+  go.tires = 100;
+  var x0 = go.x;
+  var z0 = go.z;
+  var t;
+  for (t = 0; t < 0.45; t += 1 / 60) sim.applyMotion(go, 0, true, true, false, 1 / 60, true);
+  assert(go.speed > 1.2, "stop then W launches even if Space is down, speed=" + go.speed.toFixed(2));
+  assert(Math.hypot(go.x - x0, go.z - z0) > 0.25, "W from 0 moves the car");
+  var back = blankCar(start.x, start.z, start.h, 0);
+  back.fuel = 100;
+  back.tires = 100;
+  for (t = 0; t < 0.45; t += 1 / 60) sim.applyMotion(back, 0, false, true, true, 1 / 60, true);
+  assert(back.speed < -1.2, "stop then S reverses even if Space is down, speed=" + back.speed.toFixed(2));
+  var park = blankCar(start.x, start.z, start.h, 0);
+  park.fuel = 100;
+  park.tires = 100;
+  var h0 = park.heading;
+  sim.applyMotion(park, 1, false, false, false, 1 / 60, true);
+  assert(Math.abs(angDiff(park.heading, h0)) < 0.001, "parked A/D still dead");
+  assert(src.indexOf("r.unweld") !== -1, "standstill W/S ignore a stuck brake");
+  assert(src.indexOf("spaceBrakeArmed") !== -1, "Space must be released after a stop");
+  assert(src.indexOf("fromMove * 0.92") === -1, "speedo matches motion, not a discounted guess");
+}
+
 function proveCarHits() {
   sim.lockRacePath("");
   sim.placeWalls();
@@ -1768,6 +1796,7 @@ proveChicaneSteer("", "Campus Loop chicane");
 proveChicaneSteer(sim.encodeMap(zig), "custom zig-zag chicane board");
 proveChicaneSteer(sim.encodeMap(kitPieces()), "custom kit chicane+sweeper");
 proveSpeedSteer();
+proveUnweld();
 proveCarHits();
 proveTileIcons();
 provePitPctSticky();

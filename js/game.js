@@ -137,6 +137,7 @@
   var pitVisit = false;
   var pitAwayT = 0;
   var pitBanner = "";
+  var spaceBrakeArmed = true;
   var lastTs = 0;
   var lastDt = 0.016;
   var camYaw = 0.6;
@@ -3464,6 +3465,7 @@
     pitVisit = false;
     pitAwayT = 0;
     pitBanner = "";
+    spaceBrakeArmed = true;
     revs = 0;
     launchMul = 1;
     launchT = 0;
@@ -3559,6 +3561,8 @@
   }
 
   function applyMotion(r, steer, throttle, brake, reverse, dt, isPlayer) {
+    if (!isFinite(r.speed)) r.speed = 0;
+    if (!isFinite(r.slide)) r.slide = 0;
     var info = projectTrack(r.x, r.z);
     var surface = info.grass ? 0.5 : 1;
     var tire = clamp(r.tires / 100, 0, 1);
@@ -3591,7 +3595,17 @@
       if (r.fuel < 0) r.fuel = 0;
     }
 
-    if (brake) {
+    // Steer is dead at 0. Throttle is not. A stuck Space after a stop
+    // used to win this if/else and weld W/S until reload.
+    var parked = Math.abs(r.speed) <= 0.35;
+    if (parked && (throttle || reverse)) r.unweld = true;
+    if (!throttle && !reverse) r.unweld = false;
+    if (Math.abs(r.speed) > 16) r.unweld = false;
+    if ((throttle || reverse) && (parked || r.unweld)) {
+      r.brakeHold = 0;
+      if (throttle) r.speed += accel * dt;
+      else r.speed -= REVERSE_ACCEL * dt;
+    } else if (brake) {
       r.brakeHold = Math.min(1, (r.brakeHold || 0) + dt / 0.2);
       var v01 = clamp(Math.abs(r.speed) / MAX_SPEED, 0, 1);
       // Modulate: tap/wind-out is a squeeze. Hairpin speed still bites.
@@ -4406,12 +4420,17 @@
     if (left) steer += 1;
     if (right) steer -= 1;
     // Keyboard / Chromebook = no gas/brake overlay. Still not a portrait race.
+    var wantBrake = !!(keys.Space || touchCtl.brake);
+    // After a stop, Space must be released before it bites again.
+    // Chromebooks drop keyup and a held Space welded W/S.
+    if (Math.abs(player.speed) <= 0.35) spaceBrakeArmed = false;
+    var brake = !!(wantBrake && spaceBrakeArmed && Math.abs(player.speed) > 0.35);
     if (!isPhoneLike()) {
       return {
         steer: steer,
         throttle: !!up,
         reverse: !!down,
-        brake: !!keys.Space,
+        brake: brake,
       };
     }
     var keySteer = !!(left || right);
@@ -4419,7 +4438,7 @@
       steer: keySteer ? steer : touchCtl.steer || 0,
       throttle: !!(up || touchCtl.gas),
       reverse: !!(down || touchCtl.rev),
-      brake: !!(keys.Space || touchCtl.brake),
+      brake: brake,
     };
   }
 
@@ -4686,7 +4705,7 @@
     _hudZ = player.z;
     var live = speedKph(player);
     var fromMove = lastDt > 0.0001 ? (moved / lastDt) * 3.15 : 0;
-    if (hud.speed) hud.speed.textContent = String(Math.round(Math.max(live, fromMove * 0.92)));
+    if (hud.speed) hud.speed.textContent = String(Math.round(Math.max(live, fromMove)));
     if (hud.lap) hud.lap.textContent = player.lap + "/" + LAPS;
     if (hud.time) hud.time.textContent = formatTime(raceTime);
     var fuel = clamp(player.fuel, 0, 100);
@@ -5428,6 +5447,10 @@
       applyMotion(player, input.steer, input.throttle, input.brake, input.reverse, simDt, true);
       bashAllWalls(player);
       emitRacerFx(player, input, simDt, true);
+      if (!pitServicing && (input.throttle || input.reverse) && Math.abs(player.speed) <= 0.35) {
+        if (input.throttle) player.speed += ACCEL * simDt;
+        else player.speed -= REVERSE_ACCEL * simDt;
+      }
       if (!pitServicing && !pitUsedVisit && inPitGrab(player)) {
         pitServicing = true;
         pitVisit = true;
@@ -5459,6 +5482,10 @@
         bashAllWalls(cpus[1]);
         emitRacerFx(cpus[0], null, simDt, false);
         emitRacerFx(cpus[1], null, simDt, false);
+        if (!pitServicing && (input.throttle || input.reverse) && Math.abs(player.speed) <= 0.35) {
+          if (input.throttle) player.speed += ACCEL * simDt;
+          else player.speed -= REVERSE_ACCEL * simDt;
+        }
       }
       chaseCamera(dt);
       if (player.finished) finishRace();
@@ -5689,6 +5716,7 @@
       if (touchCtl.pads[id] === "brake") brake = true;
     }
     touchCtl.gas = gas;
+    if (touchCtl.brake && !brake) spaceBrakeArmed = true;
     touchCtl.brake = brake;
   }
 
@@ -5863,6 +5891,9 @@
       return;
     }
     keys[e.code] = down;
+    if (e.code === "Space") {
+      if (!down || !e.repeat) spaceBrakeArmed = true;
+    }
     if (down) {
       if (
         e.code === "KeyW" ||
@@ -5917,6 +5948,7 @@
   });
   window.addEventListener("blur", function () {
     keys = Object.create(null);
+    spaceBrakeArmed = true;
     touchCtl.pads = {};
     touchCtl.gas = false;
     touchCtl.brake = false;
