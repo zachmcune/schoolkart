@@ -8,7 +8,8 @@
    and serviced ~2.5s, then released to drive out. One service per visit.
    Start: PRE-START blue flash, five reds at 1s, hold 0.2–3s all ON,
    lights out = GO. Fuel starts then. Car is locked to the grid until GO.
-   W is a timing game — land the needle in the green for a launch.
+   W is a timing game — climb through the green, lift to catch it.
+   Hold to max dumps a spin on lights-out.
    Walls: ONLY outside the 180 / chicane / sweeper. They collide.
    FX lock: two fat launch puffs, thin grey worn streaks, short white
    slip, one spinout burst, one sharp hit spark. */
@@ -43,7 +44,8 @@
   var REV_SWEET_HI = 0.8;
   var REV_GREAT_LO = 0.64;
   var REV_GREAT_HI = 0.74;
-  var REV_HOLD = 0.69;
+  var REV_CLIMB = 0.55;
+  var REV_DROP = 0.72;
   var GETAWAY_T = 1.5;
   var ASPHALT = 8.6;
   var GRASS_MAX = 8.5;
@@ -2154,11 +2156,7 @@
       return;
     }
     var p = aiOf(r);
-    if (!r.launchArmed) {
-      r.launchMul = p.launch;
-      r.launchT = GETAWAY_T;
-      r.launchArmed = true;
-    }
+    if (!r.launchArmed) applyCpuLaunch(r, p);
     var proj = projectTrack(r.x, r.z);
     r.s = proj.s;
 
@@ -2644,27 +2642,74 @@
     if (hud.revNeedle) hud.revNeedle.style.left = pct + "%";
     if (hud.revWrap) {
       hud.revWrap.classList.toggle("sweet", revs >= REV_SWEET_LO && revs <= REV_SWEET_HI);
+      hud.revWrap.classList.toggle("hot", revs > REV_SWEET_HI);
     }
+  }
+
+  function gradeLaunch(rev) {
+    if (rev > REV_SWEET_HI) return "DUMP";
+    if (rev >= REV_GREAT_LO && rev <= REV_GREAT_HI) return "GREAT";
+    if (rev >= REV_SWEET_LO && rev <= REV_SWEET_HI) return "GOOD";
+    return "SLUGGISH";
+  }
+
+  function dumpLaunch(r) {
+    if (!r) return;
+    var dir = Math.random() < 0.5 ? -1 : 1;
+    r.slide += dir * 10.5;
+    r.heading += dir * 0.62;
+    r.speed = 0;
+    r.spinFx = true;
+    var back = -Math.cos(r.heading);
+    var side = -Math.sin(r.heading);
+    spawnFx("burst", r.x, 0.28, r.z, back * 0.8, 0.9, side * 0.8);
   }
 
   function applyLaunch() {
     launchMul = 1;
-    launchT = 0;
-    if (revs >= REV_GREAT_LO && revs <= REV_GREAT_HI) {
-      launchMul = 1.2;
-      launchT = GETAWAY_T;
-      launchCall = "GREAT";
-    } else if (revs >= REV_SWEET_LO && revs <= REV_SWEET_HI) {
-      launchMul = 1.08;
-      launchT = GETAWAY_T;
-      launchCall = "GOOD";
+    launchT = GETAWAY_T;
+    launchCall = gradeLaunch(revs);
+    if (launchCall === "GREAT") launchMul = 1.2;
+    else if (launchCall === "GOOD") launchMul = 1.08;
+    else if (launchCall === "DUMP") {
+      launchMul = 0.5;
+      dumpLaunch(player);
     } else {
       launchMul = 0.55;
-      launchT = GETAWAY_T;
-      launchCall = "SLUGGISH";
     }
     launchCallT = 2;
-    launchPuffs(player);
+    if (launchCall !== "DUMP") launchPuffs(player);
+  }
+
+  function applyCpuLaunch(r, p) {
+    r.launchArmed = true;
+    r.launchT = GETAWAY_T;
+    var roll = Math.random();
+    var kind;
+    if (p && p.hunter) {
+      if (roll < 0.24) kind = "DUMP";
+      else if (roll < 0.42) kind = "SLUGGISH";
+      else if (roll < 0.72) kind = "GOOD";
+      else kind = "GREAT";
+    } else if (p && p.launch >= 1) {
+      if (roll < 0.1) kind = "SLUGGISH";
+      else if (roll < 0.18) kind = "DUMP";
+      else if (roll < 0.55) kind = "GOOD";
+      else kind = "GREAT";
+    } else {
+      if (roll < 0.28) kind = "SLUGGISH";
+      else if (roll < 0.48) kind = "DUMP";
+      else if (roll < 0.86) kind = "GOOD";
+      else kind = "GREAT";
+    }
+    if (kind === "GREAT") r.launchMul = 1.2;
+    else if (kind === "GOOD") r.launchMul = 1.08;
+    else if (kind === "DUMP") {
+      r.launchMul = 0.5;
+      dumpLaunch(r);
+    } else {
+      r.launchMul = 0.55;
+    }
   }
 
   function persistMe() {
@@ -2816,7 +2861,8 @@
     hud.warn.textContent = warn;
     hud.warn.classList.toggle("hidden", !warn);
     hud.warn.classList.toggle("late", lateJoinT > 0);
-    hud.warn.classList.toggle("launch", launchCallT > 0);
+    hud.warn.classList.toggle("launch", launchCallT > 0 && launchCall !== "DUMP");
+    hud.warn.classList.toggle("dump", launchCallT > 0 && launchCall === "DUMP");
     paintMini();
     paintRaceNames();
   }
@@ -2955,11 +3001,9 @@
   function tickStart(dt) {
     var input = playerInput();
     if (input.throttle) {
-      if (revs < REV_SWEET_LO) revs = clamp(revs + dt * 0.9, 0, REV_HOLD);
-      else revs += (REV_HOLD - revs) * (1 - Math.pow(0.05, dt));
-      if (revs > REV_SWEET_HI) revs = REV_SWEET_HI - 0.01;
+      revs = clamp(revs + dt * REV_CLIMB, 0, 1);
     } else {
-      revs = clamp(revs - dt * 0.6, 0, 1);
+      revs = clamp(revs - dt * REV_DROP, 0, 1);
     }
     setRevSound(true);
     paintRevs();
@@ -3602,7 +3646,7 @@
       hud.tiltBtn.classList.toggle("hidden", !(phone && drive && needsTiltTap()));
     }
     if (hud.revHint && phone) {
-      hud.revHint.textContent = "HOLD the right half — park the needle in the green.";
+      hud.revHint.textContent = "HOLD the right half to climb — lift to catch the green. Past the mark dumps.";
     }
     if (phone && !touchCtl.hintShown) showFirstMobileHint();
   }

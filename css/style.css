@@ -213,6 +213,13 @@ textarea {
   background: rgba(20, 143, 140, 0.94);
 }
 
+.banner.warn.dump {
+  font-size: 42px;
+  letter-spacing: 0.18em;
+  color: #fff4d8;
+  background: rgba(122, 16, 16, 0.94);
+}
+
 .banner.warn.late {
   background: rgba(122, 16, 16, 0.94);
   color: #fff4d8;
@@ -384,6 +391,10 @@ kbd {
 
 #rev-wrap.sweet #rev-sweet {
   background: rgba(61, 255, 154, 0.62);
+}
+
+#rev-wrap.hot #rev-fill {
+  background: linear-gradient(90deg, #ffe08a, #ff2d8a, #7a1010);
 }
 
 #rev-fill {

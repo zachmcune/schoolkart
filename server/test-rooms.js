@@ -115,7 +115,8 @@ waitHealth()
         assert(html.indexOf('rel="manifest"') !== -1, "web app manifest link");
         assert(html.indexOf("apple-mobile-web-app-capable") !== -1, "iOS home screen capable");
         assert(html.indexOf('apple-mobile-web-app-title" content="SchoolKart"') !== -1, "iOS title");
-        assert(html.indexOf('SK_BUILD = "mp29"') !== -1, "cache bump mp29");
+        assert(html.indexOf('SK_BUILD = "mp30"') !== -1, "cache bump mp30");
+        assert(html.indexOf("Past the mark dumps") !== -1, "rev hint is timing not park");
         return fetch("http://127.0.0.1:" + PORT + "/manifest.json")
           .then(function (mr) {
             return mr.json().then(function (man) {
@@ -133,7 +134,7 @@ waitHealth()
           .then(function (sr) {
             return sr.text().then(function (sw) {
               assert(sr.status === 200, "sw 200");
-              assert(sw.indexOf('BUILD = "mp29"') !== -1, "SW build matches cache");
+              assert(sw.indexOf('BUILD = "mp30"') !== -1, "SW build matches cache");
               assert(/cache:\s*"no-store"/.test(sw), "network-first no-store");
               assert(sw.indexOf("websocket") !== -1, "SW leaves websocket alone");
             });

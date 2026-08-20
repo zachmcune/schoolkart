@@ -54,6 +54,10 @@ var code = [
   "var THROTTLE_FUEL = 0.12;",
   "var PIT_HOLD = 2.5;",
   "var GETAWAY_T = 1.5;",
+  "var REV_SWEET_LO = 0.58;",
+  "var REV_SWEET_HI = 0.8;",
+  "var REV_GREAT_LO = 0.64;",
+  "var REV_GREAT_HI = 0.74;",
   "var ASPHALT = 8.6;",
   "var GRASS_MAX = 8.5;",
   "var GRASS_ROLL = 4;",
@@ -121,6 +125,10 @@ var code = [
   "var _hunt = { on: false, tx: 0, tz: 0, want: 0, noLift: false, dive: false };",
   sliceFn("pickPrey"),
   sliceFn("planHunt"),
+  sliceFn("gradeLaunch"),
+  "function spawnFx() {}",
+  "function dumpLaunch() {}",
+  "function applyCpuLaunch(r) { r.launchArmed = true; r.launchMul = 1; r.launchT = 0; }",
   sliceFn("updateCpu"),
   "function poseCar(r) { if (r.mesh) { r.mesh.position.x = r.x; r.mesh.position.z = r.z; } }",
   "setDefaultPit();",
@@ -130,6 +138,7 @@ var code = [
   "  PATH: PATH,",
   "  runBot: runBot,",
   "  runHunt: runHunt,",
+  "  gradeLaunch: gradeLaunch,",
   "  centerlinePoint: centerlinePoint,",
   "  projectTrack: projectTrack,",
   "  AI_AGGRO: AI_AGGRO,",
@@ -143,7 +152,7 @@ var code = [
   "    fuel: 100, tires: 100, lap: 1, passedHalf: false, lastX: gridX, s: s0, lastS: s0,",
   "    brakeHold: 0, finished: false, finishTime: 0,",
   "    wantPit: false, didPit: false, pitServicing: false, pitTimer: 0, pitUsedVisit: false,",
-  "    launchMul: 1, launchT: 0, launchArmed: false, aiT: 0,",
+  "    launchMul: 1, launchT: 0, launchArmed: true, aiT: 0,",
   "    mesh: { visible: true, position: { x: gridX, y: 0, z: gridZ, set: function(x,y,z){ this.x=x; this.y=y; this.z=z; } }, rotation: { set: function(){}, x:0, y:0, z:0 }, userData: {} }",
   "  };",
   "  var dt = 1/30;",
@@ -291,6 +300,11 @@ assert(sim.AI_AGGRO.brake < sim.AI_TIDY.brake, "Bowie brakes later");
 assert(sim.AI_AGGRO.pitFuel < sim.AI_TIDY.pitFuel, "Bowie pits later");
 assert(sim.AI_MESSY.lineOff > 0.8, "messy runs wide");
 assert(sim.AI_AGGRO.overshoot === 1, "Bowie can overshoot the 180");
+assert(sim.gradeLaunch(0.2) === "SLUGGISH", "below green is sluggish");
+assert(sim.gradeLaunch(0.6) === "GOOD", "green is GOOD");
+assert(sim.gradeLaunch(0.69) === "GREAT", "sweet spot is GREAT");
+assert(sim.gradeLaunch(0.81) === "DUMP", "past the mark dumps");
+assert(sim.gradeLaunch(1) === "DUMP", "at max is a fail");
 assert(sim.AI_AGGRO.hunter === 1, "BowieKnife99 is the hunter");
 assert(!sim.AI_TIDY.hunter && !sim.AI_MESSY.hunter, "only Bowie hunts");
 
