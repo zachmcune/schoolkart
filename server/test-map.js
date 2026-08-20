@@ -1657,10 +1657,15 @@ function proveSpeedSteer() {
   var dFast = yawProbe(fast, 1);
   assert(dSlow > 0.006, "rolling yaw, dH=" + dSlow.toFixed(4));
   assert(dFast > dSlow * 1.15, "more speed = more yaw, slow=" + dSlow.toFixed(4) + " fast=" + dFast.toFixed(4));
-  var rev = blankCar(start.x, start.z, start.h, -6);
-  rev.fuel = 100;
-  rev.tires = 100;
-  assert(yawProbe(rev, 1) > 0.006, "S reverse still yaws so a parked car can unstick");
+  var parkRev = blankCar(start.x, start.z, start.h, 0);
+  parkRev.fuel = 100;
+  parkRev.tires = 100;
+  var pr;
+  for (pr = 0; pr < 0.35; pr += 1 / 60) sim.applyMotion(parkRev, 0, false, false, true, 1 / 60, true);
+  assert(parkRev.speed < -1, "S reverse is how a parked car gets moving, speed=" + parkRev.speed.toFixed(2));
+  var hR = parkRev.heading;
+  sim.applyMotion(parkRev, 1, false, false, true, 1 / 60, true);
+  assert(Math.abs(angDiff(parkRev.heading, hR)) > 0.006, "once reversing, A/D bites");
 }
 
 function proveCarHits() {
@@ -1679,22 +1684,31 @@ function proveCarHits() {
   sim.bashCars(bumper, victim);
   var tap = Math.abs(angDiff(victim.heading, hV));
   assert(tap < 0.12, "straight rear tap is a wiggle, dH=" + tap.toFixed(4));
-  var qVic = blankCar(p.x, p.z, p.h, 16);
-  qVic.fuel = 100;
-  qVic.tires = 100;
-  var hQ = qVic.heading;
   var qn = Math.hypot(hx * 0.5 + sx * 0.86, hz * 0.5 + sz * 0.86) || 1;
-  sim.hitCarFeel(qVic, hx * 14, hz * 14, (hx * 0.5 + sx * 0.86) / qn, (hz * 0.5 + sz * 0.86) / qn, 18);
-  var quarter = Math.abs(angDiff(qVic.heading, hQ));
-  assert(quarter > 0.14, "rear-quarter side hit yaws / can spin, dH=" + quarter.toFixed(4));
-  var side = blankCar(p.x, p.z, p.h + Math.PI * 0.5, 32);
-  var prey = blankCar(p.x + 2.2, p.z, p.h, 16);
-  side.fuel = prey.fuel = 100;
-  side.tires = prey.tires = 100;
-  var hP = prey.heading;
-  sim.bashCars(side, prey);
-  var ram = Math.abs(angDiff(prey.heading, hP));
-  assert(ram > tap, "ram spins more than a tap, ram=" + ram.toFixed(4) + " tap=" + tap.toFixed(4));
+  var qnx = (hx * 0.5 + sx * 0.86) / qn;
+  var qnz = (hz * 0.5 + sz * 0.86) / qn;
+  var qTap = blankCar(p.x, p.z, p.h, 16);
+  qTap.fuel = 100;
+  qTap.tires = 100;
+  var hTap = qTap.heading;
+  sim.hitCarFeel(qTap, hx * 14, hz * 14, qnx, qnz, 6);
+  var qWiggle = Math.abs(angDiff(qTap.heading, hTap));
+  assert(qWiggle < 0.08, "rear-quarter tap is a wiggle, dH=" + qWiggle.toFixed(4));
+  var qRam = blankCar(p.x, p.z, p.h, 16);
+  qRam.fuel = 100;
+  qRam.tires = 100;
+  var hRam = qRam.heading;
+  sim.hitCarFeel(qRam, hx * 14, hz * 14, qnx, qnz, 18);
+  var qSpin = Math.abs(angDiff(qRam.heading, hRam));
+  assert(qSpin > 0.18 && qSpin > qWiggle * 2, "rear-quarter ram spins, dH=" + qSpin.toFixed(4));
+  var face = blankCar(p.x, p.z, p.h, 22);
+  face.fuel = 100;
+  face.tires = 100;
+  var hF = face.heading;
+  var spd0 = face.speed;
+  sim.hitCarFeel(face, hx * 10, hz * 10, -hx, -hz, 16);
+  assert(Math.abs(angDiff(face.heading, hF)) < 0.06, "front hit shoves, does not spin");
+  assert(face.speed < spd0, "front hit dumps speed");
 }
 
 function proveTileIcons() {

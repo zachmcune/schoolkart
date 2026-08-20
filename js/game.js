@@ -4049,8 +4049,9 @@
   }
 
   function hitCarFeel(r, vx, vz, nx, nz, impact) {
-    // n points from the other car toward us. Rear-quarter side hit
-    // yaws that way and can spin out. Wall graze stays a slide.
+    // n points from the other car toward us.
+    // Rear quarter yaws that way: tap = wiggle, ram = spin.
+    // Front shoves. Wall graze stays a slide (hitKeepYaw).
     var c = Math.cos(r.heading);
     var s = Math.sin(r.heading);
     var fwd = c * nx + s * nz;
@@ -4062,22 +4063,15 @@
     r.speed = vx * c + vz * s;
     r.slide = -vx * s + vz * c;
     if (tail > 0.25 && hip > 0.28) {
-      r.speed *= 0.7;
-      r.heading += dir * clamp(impact * 0.03 * (0.4 + hip), 0.14, 0.82);
-      r.slide += dir * clamp(impact * 0.26, 3, 14);
-      r.hitYawT = 0.3;
-      return;
-    }
-    if (impact < 8 && tail > 0.5) {
-      r.slide += dir * clamp(impact * 0.18, 0.4, 2.4);
-      r.heading += dir * clamp(impact * 0.003, 0, 0.035);
-      r.hitYawT = 0.08;
-      return;
-    }
-    if (impact > 15 && (hip > 0.35 || nose > 0.55)) {
-      r.speed *= 0.62;
-      r.heading += dir * clamp(impact * 0.022, 0.18, 0.7);
-      r.slide += dir * clamp(impact * 0.28, 4, 12);
+      if (impact < 8) {
+        r.slide += dir * clamp(impact * 0.16, 0.35, 2.2);
+        r.heading += dir * clamp(impact * 0.004, 0.006, 0.045);
+        r.hitYawT = 0.08;
+        return;
+      }
+      r.speed *= 0.68;
+      r.heading += dir * clamp(impact * 0.028 * (0.45 + hip), 0.2, 0.85);
+      r.slide += dir * clamp(impact * 0.28, 4, 14);
       r.hitYawT = 0.32;
       return;
     }
@@ -4086,6 +4080,13 @@
       r.slide += dir * clamp(impact * 0.08, 0, 2.2);
       r.heading += dir * clamp(impact * 0.002, 0, 0.03);
       r.hitYawT = 0.1;
+      return;
+    }
+    if (impact > 15 && hip > 0.35) {
+      r.speed *= 0.62;
+      r.heading += dir * clamp(impact * 0.022, 0.18, 0.7);
+      r.slide += dir * clamp(impact * 0.28, 4, 12);
+      r.hitYawT = 0.32;
       return;
     }
     r.speed *= 0.85;
