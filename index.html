@@ -6,7 +6,7 @@
   <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <!-- sk-build mp36: courtyard + S/F infield grass, not under halls -->
+  <!-- sk-build mp37: drag-and-drop track tile editor -->
   <meta name="theme-color" content="#1a120e" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -16,7 +16,7 @@
   <link rel="manifest" href="manifest.json" />
   <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png" />
   <link rel="apple-touch-icon" href="apple-touch-icon.png" />
-  <link rel="stylesheet" href="css/style.css?v=mp36" />
+  <link rel="stylesheet" href="css/style.css?v=mp37" />
 </head>
 <body>
   <div id="game">
@@ -154,22 +154,25 @@
     </div>
 
     <div id="track-screen" class="screen hidden">
-      <p class="eyebrow">Stamp a loop</p>
+      <p class="eyebrow">Drag a tile</p>
       <h1>TRACK</h1>
       <p class="sub" id="track-code-view">Campus Loop</p>
-      <p class="editor-help">Straight / 90 / hairpin / chicane / pit / tree. Empty code = Campus Loop. Share the short string.</p>
-      <div class="tile-row" id="tile-row">
-        <button type="button" class="lobby-btn tile" data-tile="s">short</button>
-        <button type="button" class="lobby-btn tile" data-tile="S">long</button>
-        <button type="button" class="lobby-btn tile" data-tile="L">left 90</button>
-        <button type="button" class="lobby-btn tile" data-tile="R">right 90</button>
-        <button type="button" class="lobby-btn tile" data-tile="H">hairpin</button>
-        <button type="button" class="lobby-btn tile" data-tile="C">chicane</button>
-        <button type="button" class="lobby-btn tile" data-tile="P">pit</button>
-        <button type="button" class="lobby-btn tile" data-tile="t">tree</button>
+      <p class="editor-help">Pull a tile onto the board. Drag to move. Trash or off-board deletes. Tap a palette tile, then a cell, still works. Empty = Campus Loop.</p>
+      <div id="tile-palette" class="tile-palette" aria-label="Tile palette">
+        <div class="palette-tile" data-tile="s" role="button" tabindex="0">short</div>
+        <div class="palette-tile" data-tile="S" role="button" tabindex="0">long</div>
+        <div class="palette-tile" data-tile="L" role="button" tabindex="0">left 90</div>
+        <div class="palette-tile" data-tile="R" role="button" tabindex="0">right 90</div>
+        <div class="palette-tile" data-tile="H" role="button" tabindex="0">hairpin</div>
+        <div class="palette-tile" data-tile="C" role="button" tabindex="0">chicane</div>
+        <div class="palette-tile" data-tile="K" role="button" tabindex="0">kink</div>
+        <div class="palette-tile" data-tile="P" role="button" tabindex="0">pit</div>
+        <div class="palette-tile" data-tile="t" role="button" tabindex="0">tree</div>
       </div>
-      <div class="lobby-row">
-        <input id="track-paste" class="lobby-input name-input" maxlength="80" placeholder="PASTE CODE" autocomplete="off" spellcheck="false" autocapitalize="characters" />
+      <div id="tile-board" class="tile-board" aria-label="Tile board"></div>
+      <div class="editor-dock">
+        <button type="button" class="tile-trash" id="tile-trash">Trash</button>
+        <input id="track-paste" class="lobby-input name-input track-share" maxlength="80" placeholder="SHARE STRING" autocomplete="off" spellcheck="false" autocapitalize="characters" />
       </div>
       <div class="lobby-row">
         <button type="button" class="lobby-btn" id="btn-track-undo">Undo</button>
@@ -190,7 +193,7 @@
   </div>
 
   <script>
-    window.SK_BUILD = "mp36";
+    window.SK_BUILD = "mp37";
     try {
       if (window.caches) {
         caches.keys().then(function (keys) {
@@ -201,7 +204,7 @@
       }
     } catch (e) {}
     if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.register("sw.js?v=mp36").catch(function () {});
+      navigator.serviceWorker.register("sw.js?v=mp37").catch(function () {});
     }
   </script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.160.1/build/three.min.js"></script>
@@ -210,8 +213,8 @@
       document.write('<script src="https://unpkg.com/three@0.160.1/build/three.min.js"><\/script>');
     }
   </script>
-  <script src="js/config.js?v=mp36"></script>
-  <script src="js/net.js?v=mp36"></script>
-  <script src="js/game.js?v=mp36"></script>
+  <script src="js/config.js?v=mp37"></script>
+  <script src="js/net.js?v=mp37"></script>
+  <script src="js/game.js?v=mp37"></script>
 </body>
 </html>

@@ -230,6 +230,9 @@
     trackScreen: document.getElementById("track-screen"),
     trackView: document.getElementById("track-code-view"),
     trackPaste: document.getElementById("track-paste"),
+    tilePalette: document.getElementById("tile-palette"),
+    tileBoard: document.getElementById("tile-board"),
+    tileTrash: document.getElementById("tile-trash"),
     lights: [
       document.getElementById("rl0"),
       document.getElementById("rl1"),
@@ -1262,12 +1265,100 @@
     applyTrack(st, false);
   }
 
+  var TILE_LABEL = {
+    s: "short",
+    S: "long",
+    L: "left 90",
+    R: "right 90",
+    H: "hairpin",
+    C: "chicane",
+    K: "kink",
+    P: "pit",
+    t: "tree",
+  };
+  var trackUndo = [];
+  var tilePick = "";
+  var editorDrag = null;
+
   function paintTrackEditor() {
     if (!hud.trackView) return;
     hud.trackView.textContent = trackCode || "Campus Loop";
     if (hud.trackPaste && document.activeElement !== hud.trackPaste) {
       hud.trackPaste.value = trackCode;
     }
+    if (hud.tilePalette) {
+      var pal = hud.tilePalette.querySelectorAll("[data-tile]");
+      var pi;
+      for (pi = 0; pi < pal.length; pi++) {
+        pal[pi].classList.toggle("picked", pal[pi].getAttribute("data-tile") === tilePick);
+      }
+    }
+    if (!hud.tileBoard) return;
+    var n = trackCode.length;
+    var slots = Math.min(80, Math.max(n + 6, 16));
+    var html = "";
+    var i;
+    for (i = 0; i < slots; i++) {
+      var ch = i < n ? trackCode.charAt(i) : "";
+      if (ch) {
+        html +=
+          '<div class="tile-cell" data-cell="' +
+          i +
+          '" data-tile="' +
+          ch +
+          '" role="button" tabindex="0">' +
+          (TILE_LABEL[ch] || ch) +
+          "</div>";
+      } else {
+        html += '<div class="tile-cell empty" data-cell="' + i + '" role="button" tabindex="0"></div>';
+      }
+    }
+    if (!n) html += '<div class="board-empty">Campus Loop · drop a tile</div>';
+    hud.tileBoard.innerHTML = html;
+  }
+
+  function pushTrackUndo() {
+    trackUndo.push(trackCode);
+    if (trackUndo.length > 40) trackUndo.shift();
+  }
+
+  function commitTrack(next) {
+    next = cleanTrack(next);
+    if (next === trackCode) {
+      paintTrackEditor();
+      return;
+    }
+    pushTrackUndo();
+    applyTrack(next, true);
+    if (net && net.active && net.isHost() && net.setTrack) net.setTrack(trackCode);
+  }
+
+  function insertTileAt(ch, at) {
+    if (!ch || !TILE_LABEL[ch]) return;
+    var arr = trackCode.split("");
+    if (arr.length >= 80) return;
+    if (at == null || at > arr.length) at = arr.length;
+    if (at < 0) at = 0;
+    arr.splice(at, 0, ch);
+    commitTrack(arr.join(""));
+  }
+
+  function moveTileAt(from, to) {
+    var arr = trackCode.split("");
+    if (from < 0 || from >= arr.length) return;
+    if (to == null || to > arr.length) to = arr.length;
+    if (to < 0) to = 0;
+    var ch = arr.splice(from, 1)[0];
+    if (to > from) to -= 1;
+    arr.splice(to, 0, ch);
+    commitTrack(arr.join(""));
+  }
+
+  function deleteTileAt(from) {
+    var arr = trackCode.split("");
+    if (from < 0 || from >= arr.length) return;
+    arr.splice(from, 1);
+    commitTrack(arr.join(""));
   }
 
   var sky = {
@@ -4312,34 +4403,183 @@
   var btnTrackCampus = document.getElementById("btn-track-campus");
   var btnTrackCopy = document.getElementById("btn-track-copy");
   var btnTrackDone = document.getElementById("btn-track-done");
-  var tileRow = document.getElementById("tile-row");
   if (btnTrack) {
     btnTrack.addEventListener("click", function () {
       if (state !== "title") return;
       state = "track";
+      tilePick = "";
+      editorDrag = null;
       setScreen("track");
       paintTrackEditor();
     });
   }
-  if (tileRow) {
-    tileRow.addEventListener("click", function (e) {
-      var t = e.target;
-      while (t && t !== tileRow && !t.getAttribute("data-tile")) t = t.parentNode;
-      if (!t || t === tileRow) return;
-      var ch = t.getAttribute("data-tile");
-      if (!ch || trackCode.length >= 80) return;
-      applyTrack(trackCode + ch, true);
-      if (net && net.active && net.isHost() && net.setTrack) net.setTrack(trackCode);
-    });
+
+  function tileFromNode(el) {
+    while (el && el !== document.body) {
+      if (el.getAttribute) {
+        if (el.id === "tile-trash") return { kind: "trash", el: el };
+        if (el.hasAttribute("data-cell")) {
+          return {
+            kind: "cell",
+            el: el,
+            index: +el.getAttribute("data-cell"),
+            ch: el.getAttribute("data-tile") || "",
+          };
+        }
+        if (el.hasAttribute("data-tile") && el.classList.contains("palette-tile")) {
+          return { kind: "palette", el: el, ch: el.getAttribute("data-tile") };
+        }
+      }
+      el = el.parentNode;
+    }
+    return null;
   }
+
+  function clearDropMarks() {
+    var marks = document.querySelectorAll(".tile-cell.drop, .tile-trash.drop");
+    var i;
+    for (i = 0; i < marks.length; i++) marks[i].classList.remove("drop");
+  }
+
+  function killGhost() {
+    if (editorDrag && editorDrag.ghost && editorDrag.ghost.parentNode) {
+      editorDrag.ghost.parentNode.removeChild(editorDrag.ghost);
+    }
+  }
+
+  function hitAt(x, y) {
+    return tileFromNode(document.elementFromPoint(x, y));
+  }
+
+  function isEditorChrome(el) {
+    while (el && el !== document.body) {
+      if (el.id === "track-paste") return true;
+      if (el.classList && (el.classList.contains("lobby-btn") || el.classList.contains("lobby-row"))) return true;
+      el = el.parentNode;
+    }
+    return false;
+  }
+
+  function startEditorDrag(e, hit) {
+    if (!hit || (hit.kind !== "palette" && hit.kind !== "cell")) return;
+    if (hit.kind === "cell" && !hit.ch) return;
+    var ghost = document.createElement("div");
+    ghost.className = "tile-ghost";
+    ghost.textContent = TILE_LABEL[hit.ch] || hit.ch;
+    document.body.appendChild(ghost);
+    ghost.style.left = e.clientX + "px";
+    ghost.style.top = e.clientY + "px";
+    editorDrag = {
+      from: hit.kind,
+      ch: hit.ch,
+      index: hit.kind === "cell" ? hit.index : -1,
+      ghost: ghost,
+      pointerId: e.pointerId,
+      x0: e.clientX,
+      y0: e.clientY,
+      live: false,
+    };
+    try {
+      hit.el.setPointerCapture(e.pointerId);
+    } catch (err) {}
+  }
+
+  function moveEditorDrag(e) {
+    if (!editorDrag || e.pointerId !== editorDrag.pointerId) return;
+    var dx = e.clientX - editorDrag.x0;
+    var dy = e.clientY - editorDrag.y0;
+    if (!editorDrag.live && dx * dx + dy * dy > 36) editorDrag.live = true;
+    if (!editorDrag.ghost) return;
+    editorDrag.ghost.style.left = e.clientX + "px";
+    editorDrag.ghost.style.top = e.clientY + "px";
+    if (!editorDrag.live) return;
+    clearDropMarks();
+    var over = hitAt(e.clientX, e.clientY);
+    if (over && over.el && (over.kind === "cell" || over.kind === "trash")) over.el.classList.add("drop");
+  }
+
+  function endEditorDrag(e) {
+    if (!editorDrag || (e && e.pointerId !== editorDrag.pointerId && e.pointerId != null)) return;
+    var x = e && e.clientX != null ? e.clientX : editorDrag.x0;
+    var y = e && e.clientY != null ? e.clientY : editorDrag.y0;
+    var live = editorDrag.live;
+    var from = editorDrag.from;
+    var ch = editorDrag.ch;
+    var index = editorDrag.index;
+    killGhost();
+    clearDropMarks();
+    editorDrag = null;
+    var over = hitAt(x, y);
+    if (!live) {
+      if (from === "palette") {
+        tilePick = tilePick === ch ? "" : ch;
+        paintTrackEditor();
+      } else if (from === "cell" && tilePick) {
+        insertTileAt(tilePick, index);
+      }
+      return;
+    }
+    if (from === "palette") {
+      if (over && over.kind === "cell") insertTileAt(ch, over.index);
+      return;
+    }
+    if (from === "cell") {
+      if (over && over.kind === "cell") moveTileAt(index, over.index);
+      else if (over && over.kind === "trash") deleteTileAt(index);
+      else if (isEditorChrome(document.elementFromPoint(x, y))) return;
+      else deleteTileAt(index);
+    }
+  }
+
+  function bindTrackEditor() {
+    var root = hud.trackScreen;
+    if (!root) return;
+    root.addEventListener("pointerdown", function (e) {
+      if (e.button != null && e.button !== 0) return;
+      if (e.target && (e.target.tagName === "INPUT" || e.target.closest && e.target.closest("input,button.lobby-btn"))) return;
+      var hit = tileFromNode(e.target);
+      if (!hit || (hit.kind !== "palette" && hit.kind !== "cell")) return;
+      e.preventDefault();
+      startEditorDrag(e, hit);
+    });
+    root.addEventListener("pointermove", function (e) {
+      if (editorDrag) {
+        e.preventDefault();
+        moveEditorDrag(e);
+      }
+    });
+    root.addEventListener("pointerup", endEditorDrag);
+    root.addEventListener("pointercancel", endEditorDrag);
+    document.addEventListener(
+      "touchmove",
+      function (e) {
+        if (editorDrag) e.preventDefault();
+      },
+      { passive: false }
+    );
+    if (hud.tileBoard) {
+      hud.tileBoard.addEventListener("click", function (e) {
+        if (editorDrag) return;
+        var hit = tileFromNode(e.target);
+        if (hit && hit.kind === "cell" && tilePick) insertTileAt(tilePick, hit.index);
+      });
+    }
+  }
+  bindTrackEditor();
+
   if (btnTrackUndo) {
     btnTrackUndo.addEventListener("click", function () {
-      applyTrack(trackCode.slice(0, -1), true);
+      if (!trackUndo.length) {
+        applyTrack(trackCode.slice(0, -1), true);
+        return;
+      }
+      applyTrack(trackUndo.pop(), true);
+      if (net && net.active && net.isHost() && net.setTrack) net.setTrack(trackCode);
     });
   }
   if (btnTrackCampus) {
     btnTrackCampus.addEventListener("click", function () {
-      applyTrack("", true);
+      commitTrack("");
     });
   }
   if (btnTrackCopy) {
@@ -4358,13 +4598,16 @@
     btnTrackDone.addEventListener("click", function () {
       if (hud.trackPaste) applyTrack(hud.trackPaste.value, true);
       if (net && net.active && net.isHost() && net.setTrack) net.setTrack(trackCode);
+      killGhost();
+      tilePick = "";
+      editorDrag = null;
       state = "title";
       setScreen("title");
     });
   }
   if (hud.trackPaste) {
     hud.trackPaste.addEventListener("change", function () {
-      applyTrack(hud.trackPaste.value, true);
+      commitTrack(hud.trackPaste.value);
     });
   }
 
