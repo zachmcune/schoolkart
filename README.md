@@ -85,7 +85,7 @@ npm test
 
 Repo is a static site (HTML + CSS + JS + Three.js from CDN). Public Pages currently deploys from this branch (`cursor/campus-loop-playable-f645`).
 
-`index.html` is marked `no-store`. JS/CSS are versioned (`?v=mp3`) so a **normal reload** picks up the lobby — Chromebooks should not need a hard-refresh.
+`index.html` is marked `no-store`. JS/CSS are versioned (`?v=mp4`) so a **normal reload** picks up the lobby — Chromebooks should not need a hard-refresh.
 
 After a server change, **redeploy the same Railway service** (`server-production-d6c9`) so late join / refresh get `enter` + `raceTime`. Pages-only cannot restore another machine’s fuel.
 

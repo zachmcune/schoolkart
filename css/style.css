@@ -25,6 +25,12 @@ body {
   -webkit-user-select: none;
 }
 
+input,
+textarea {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
 #game {
   position: relative;
   width: 100%;
@@ -420,7 +426,6 @@ kbd {
 
 .lobby-input {
   width: 140px;
-  text-transform: uppercase;
   text-align: center;
 }
 

@@ -1632,7 +1632,18 @@
     requestAnimationFrame(tick);
   }
 
+  function typingField(el) {
+    return el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA");
+  }
+
   function onKey(e, down) {
+    if (typingField(e.target)) {
+      if (down && e.code === "Enter" && e.target.id === "join-code") {
+        openFriends("join", e.target.value);
+        e.preventDefault();
+      }
+      return;
+    }
     keys[e.code] = down;
     if (down) ensureAudio();
     if (down && (e.code === "Space" || e.code === "Enter")) {
@@ -1767,6 +1778,27 @@
   var btnGrid = document.getElementById("btn-grid");
   var btnLeave = document.getElementById("btn-leave");
   var joinCode = document.getElementById("join-code");
+  if (joinCode) {
+    function keepJoinFocus() {
+      joinCode.focus();
+    }
+    joinCode.addEventListener("pointerdown", keepJoinFocus);
+    joinCode.addEventListener("mousedown", keepJoinFocus);
+    joinCode.addEventListener("touchstart", keepJoinFocus, { passive: true });
+    joinCode.addEventListener("input", function () {
+      var caret = joinCode.selectionStart;
+      var next = String(joinCode.value || "")
+        .toUpperCase()
+        .replace(/[^A-Z0-9]/g, "")
+        .slice(0, 6);
+      if (next !== joinCode.value) {
+        joinCode.value = next;
+        try {
+          joinCode.setSelectionRange(caret, caret);
+        } catch (e) {}
+      }
+    });
+  }
   if (btnSolo) {
     btnSolo.addEventListener("click", function () {
       joining = false;
