@@ -22,7 +22,7 @@
   var LAPS = 5;
   var MAX_SPEED = 48;
   var ACCEL = 26;
-  var BRAKE_DECEL = 26;
+  var BRAKE_DECEL = 26; // squeeze: weaker at wind-out, full bite when slow (hairpin)
   var COAST = 8;
   var REVERSE_ACCEL = 18;
   var REVERSE_MAX = 12;
@@ -673,7 +673,8 @@
     trailPos: null,
     t: 0,
     planeU: -1,
-    planeWait: 10,
+    planeWait: 6,
+    planeLap: 0,
     from: null,
     to: null,
   };
@@ -691,19 +692,24 @@
 
   function blimpLetterTex() {
     var c = document.createElement("canvas");
-    c.width = 512;
-    c.height = 128;
+    c.width = 1024;
+    c.height = 256;
     var ctx = c.getContext("2d");
     ctx.fillStyle = "#148f8c";
-    ctx.fillRect(0, 0, 512, 128);
+    ctx.fillRect(0, 0, 1024, 256);
     ctx.save();
-    ctx.translate(512, 0);
+    ctx.translate(1024, 0);
     ctx.scale(-1, 1);
-    ctx.fillStyle = "#f4efe6";
-    ctx.font = "bold 72px Trebuchet MS, Impact, sans-serif";
+    ctx.font = "bold 168px Trebuchet MS, Impact, Arial Black, sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText("LIAM IS COOL", 256, 68);
+    ctx.lineJoin = "round";
+    ctx.miterLimit = 2;
+    ctx.strokeStyle = "#0a2f2e";
+    ctx.lineWidth = 18;
+    ctx.strokeText("LIAM IS COOL", 512, 138);
+    ctx.fillStyle = "#f4efe6";
+    ctx.fillText("LIAM IS COOL", 512, 138);
     ctx.restore();
     var tex = new THREE.CanvasTexture(c);
     tex.minFilter = THREE.LinearFilter;
@@ -756,11 +762,11 @@
 
     var letterTex = blimpLetterTex();
     var letterMat = new THREE.MeshBasicMaterial({ map: letterTex, side: THREE.DoubleSide });
-    var letterA = new THREE.Mesh(new THREE.PlaneGeometry(12.4, 3.1), letterMat);
-    letterA.position.set(0.6, 0.2, 5.05);
+    var letterA = new THREE.Mesh(new THREE.PlaneGeometry(17.6, 4.6), letterMat);
+    letterA.position.set(0.4, 0.15, 5.15);
     g.add(letterA);
     var letterB = letterA.clone();
-    letterB.position.z = -5.05;
+    letterB.position.z = -5.15;
     letterB.rotation.y = Math.PI;
     g.add(letterB);
 
@@ -789,7 +795,7 @@
     gond.add(strutR);
     gond.position.set(1.8, -5.6, 0);
     g.add(gond);
-    g.scale.setScalar(1.85);
+    g.scale.setScalar(2.35);
     return g;
   }
 
@@ -850,7 +856,7 @@
     vFin.position.set(-3.85, 0.25, -0.09);
     g.add(vFin);
 
-    g.scale.setScalar(2.05);
+    g.scale.setScalar(2.85);
     return g;
   }
 
@@ -861,12 +867,12 @@
     sky.plane.visible = false;
     scene.add(sky.plane);
 
-    sky.trailPos = new Float32Array(8 * 3);
+    sky.trailPos = new Float32Array(14 * 3);
     var trailGeo = new THREE.BufferGeometry();
     trailGeo.setAttribute("position", new THREE.BufferAttribute(sky.trailPos, 3));
     sky.trail = new THREE.Line(
       trailGeo,
-      new THREE.LineBasicMaterial({ color: 0xfff2d4, transparent: true, opacity: 0.5 })
+      new THREE.LineBasicMaterial({ color: 0xfff6e0, transparent: true, opacity: 0.72 })
     );
     sky.trail.visible = false;
     sky.trail.frustumCulled = false;
@@ -874,40 +880,72 @@
   }
 
   function launchPlane() {
-    var flip = Math.random() > 0.5 ? 1 : -1;
-    sky.from = new THREE.Vector3(-460 * flip, 88 + Math.random() * 10, 30 + Math.random() * 90);
-    sky.to = new THREE.Vector3(440 * flip, 94 + Math.random() * 8, -40 + Math.random() * 80);
+    // Cross the circuit in front of the chase cam — not a horizon speck.
+    var north = Math.random() > 0.5;
+    var x = 70 + Math.random() * 90;
+    if (north) {
+      sky.from = new THREE.Vector3(x - 20, 34, -190);
+      sky.to = new THREE.Vector3(x + 40, 40, 170);
+    } else {
+      sky.from = new THREE.Vector3(x + 40, 36, 175);
+      sky.to = new THREE.Vector3(x - 20, 40, -185);
+    }
     sky.planeU = 0;
     sky.plane.visible = true;
     sky.trail.visible = true;
+    paintPlaneTrail(0);
+  }
+
+  function paintPlaneTrail(u) {
+    var dx = sky.to.x - sky.from.x;
+    var dy = sky.to.y - sky.from.y;
+    var dz = sky.to.z - sky.from.z;
+    var ph = Math.atan2(dz, dx);
+    var n = sky.trailPos.length / 3;
     var i;
-    for (i = 0; i < 8; i++) {
-      sky.trailPos[i * 3] = sky.from.x;
-      sky.trailPos[i * 3 + 1] = sky.from.y;
-      sky.trailPos[i * 3 + 2] = sky.from.z;
+    for (i = 0; i < n; i++) {
+      var tu = u - i * 0.02;
+      if (tu < 0) tu = 0;
+      sky.trailPos[i * 3] = sky.from.x + dx * tu - Math.cos(ph) * 7.2;
+      sky.trailPos[i * 3 + 1] = sky.from.y + dy * tu;
+      sky.trailPos[i * 3 + 2] = sky.from.z + dz * tu - Math.sin(ph) * 7.2;
     }
+    sky.trail.geometry.attributes.position.needsUpdate = true;
   }
 
   function updateSky(dt) {
     sky.t += dt;
     if (sky.blimp) {
-      var a = sky.t * 0.038;
-      var bx = -30 + Math.cos(a) * 188;
-      var bz = 46 + Math.sin(a) * 168;
-      var by = 108 + Math.sin(a * 2.1) * 3.5;
+      var a = sky.t * 0.052;
+      var bx = -40 + Math.cos(a) * 102;
+      var bz = 22 + Math.sin(a) * 86;
+      var by = 42 + Math.sin(a * 2.1) * 2.4;
       sky.blimp.position.set(bx, by, bz);
       sky.blimp.rotation.set(0, -a - Math.PI * 0.5, Math.sin(a) * 0.05);
     }
     if (!sky.plane) return;
     if (sky.planeU < 0) {
-      sky.planeWait -= dt;
-      if (sky.planeWait <= 0) {
-        launchPlane();
-        sky.planeWait = 22 + Math.random() * 16;
+      if (state === "racing" && !player.finished) {
+        if (
+          sky.planeLap !== player.lap &&
+          player.z < SF_Z + 16 &&
+          player.z > SF_Z - 16 &&
+          player.x > -40 &&
+          Math.cos(player.heading) > 0.4
+        ) {
+          launchPlane();
+          sky.planeLap = player.lap;
+        }
+      } else if (state === "title" || state === "lobby") {
+        sky.planeWait -= dt;
+        if (sky.planeWait <= 0) {
+          launchPlane();
+          sky.planeWait = 18 + Math.random() * 10;
+        }
       }
       return;
     }
-    sky.planeU += dt / 22;
+    sky.planeU += dt / 9.5;
     if (sky.planeU >= 1) {
       sky.planeU = -1;
       sky.plane.visible = false;
@@ -920,17 +958,7 @@
     var pz = sky.from.z + (sky.to.z - sky.from.z) * u;
     sky.plane.position.set(px, py, pz);
     sky.plane.rotation.set(0, -Math.atan2(sky.to.z - sky.from.z, sky.to.x - sky.from.x), 0);
-    var i;
-    for (i = 7; i > 0; i--) {
-      sky.trailPos[i * 3] = sky.trailPos[(i - 1) * 3];
-      sky.trailPos[i * 3 + 1] = sky.trailPos[(i - 1) * 3 + 1];
-      sky.trailPos[i * 3 + 2] = sky.trailPos[(i - 1) * 3 + 2];
-    }
-    var ph = Math.atan2(sky.to.z - sky.from.z, sky.to.x - sky.from.x);
-    sky.trailPos[0] = px - Math.cos(ph) * 6.2;
-    sky.trailPos[1] = py;
-    sky.trailPos[2] = pz - Math.sin(ph) * 6.2;
-    sky.trail.geometry.attributes.position.needsUpdate = true;
+    paintPlaneTrail(u);
   }
 
   function numberDecal(n) {
@@ -1025,9 +1053,9 @@
       [-1.15, 0.3, 0.8, false],
       [-1.15, 0.3, -0.8, false],
     ];
-    var rubber = carMat(0x4a4a4a, 0.12);
-    var sidewall = carMat(0xe6dcc8, 0.32);
-    var rim = carMat(0xf7f3ea, 0.4);
+    var rubber = carMat(0x4a4a4a, 0.14);
+    var sidewall = new THREE.MeshBasicMaterial({ color: 0xf0e6d2, side: THREE.DoubleSide });
+    var rim = new THREE.MeshBasicMaterial({ color: 0xfff8ee, side: THREE.DoubleSide });
     for (var i = 0; i < spots.length; i++) {
       var holder = new THREE.Group();
       holder.position.set(spots[i][0], spots[i][1], spots[i][2]);
@@ -1076,6 +1104,7 @@
       passedHalf: false,
       lastX: 0,
       s: 0,
+      brakeHold: 0,
       finished: false,
       finishTime: 0,
     };
@@ -1099,6 +1128,7 @@
     r.passedHalf = false;
     r.lastX = x;
     r.s = s;
+    r.brakeHold = 0;
     r.finished = false;
     r.finishTime = 0;
     r.mesh.position.set(x, 0, z);
@@ -1126,6 +1156,7 @@
     startT = 2;
     redsOn = 0;
     holdDelay = 0.2 + Math.random() * 2.8;
+    sky.planeLap = 0;
   }
 
   function inPitLane(r) {
@@ -1180,19 +1211,29 @@
     }
 
     if (brake) {
-      if (r.speed > 0) r.speed -= BRAKE_DECEL * dt;
-      else if (r.speed < 0) r.speed += BRAKE_DECEL * dt;
+      r.brakeHold = Math.min(1, (r.brakeHold || 0) + dt / 0.2);
+      var v01 = clamp(Math.abs(r.speed) / MAX_SPEED, 0, 1);
+      // Modulate: tap/wind-out is a squeeze. Hairpin speed still bites.
+      var decel = BRAKE_DECEL * (0.4 + 0.6 * r.brakeHold) * (1.16 - 0.5 * v01);
+      if (r.speed > 0) r.speed -= decel * dt;
+      else if (r.speed < 0) r.speed += decel * dt;
       if (Math.abs(r.speed) < 0.35) r.speed = 0;
     } else if (throttle) {
+      r.brakeHold = 0;
       r.speed += accel * dt;
     } else if (reverse) {
+      r.brakeHold = 0;
       r.speed -= REVERSE_ACCEL * dt;
     } else if (r.speed > 0) {
+      r.brakeHold = 0;
       r.speed -= COAST * dt;
       if (r.speed < 0) r.speed = 0;
     } else if (r.speed < 0) {
+      r.brakeHold = 0;
       r.speed += COAST * dt;
       if (r.speed > 0) r.speed = 0;
+    } else {
+      r.brakeHold = 0;
     }
 
     if (info.grass) {
@@ -1661,7 +1702,7 @@
     desired.y = up;
     var lx = Math.cos(player.heading);
     var lz = Math.sin(player.heading);
-    var look = new THREE.Vector3(player.x + lx * 17, 0.85, player.z + lz * 17);
+    var look = new THREE.Vector3(player.x + lx * 24, 1.05, player.z + lz * 24);
     camera.up.set(0, 1, 0);
     if (camera.position.y > 10 || camera.position.distanceToSquared(desired) > 220) {
       camera.position.copy(desired);
