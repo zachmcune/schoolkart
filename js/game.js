@@ -637,6 +637,131 @@
       leaf.position.set(tx, 4.8, tz);
       scene.add(leaf);
     }
+
+    addSkyBits();
+  }
+
+  var sky = {
+    blimp: null,
+    plane: null,
+    trail: null,
+    trailPos: null,
+    t: 0,
+    planeU: -1,
+    planeWait: 10,
+    from: null,
+    to: null,
+  };
+
+  function skyBox(x, y, z, w, h, d, color, parent) {
+    var mesh = new THREE.Mesh(
+      new THREE.BoxGeometry(w, h, d),
+      new THREE.MeshBasicMaterial({ color: color })
+    );
+    mesh.position.set(x, y, z);
+    (parent || scene).add(mesh);
+    return mesh;
+  }
+
+  function addSkyBits() {
+    var blimp = new THREE.Group();
+    var hull = new THREE.Mesh(
+      new THREE.SphereGeometry(6.4, 6, 5),
+      new THREE.MeshBasicMaterial({ color: 0x2ec8c3 })
+    );
+    hull.scale.set(2.5, 1, 1);
+    blimp.add(hull);
+    var band = new THREE.Mesh(
+      new THREE.SphereGeometry(6.5, 6, 5),
+      new THREE.MeshBasicMaterial({ color: 0xf4efe6 })
+    );
+    band.scale.set(2.45, 0.26, 0.9);
+    blimp.add(band);
+    skyBox(-14.2, 2.1, 0, 2.6, 4.4, 0.28, 0xff2d8a, blimp);
+    skyBox(-14.2, 0, 2.6, 2.6, 0.28, 3.6, 0xff2d8a, blimp);
+    skyBox(-14.2, 0, -2.6, 2.6, 0.28, 3.6, 0xff2d8a, blimp);
+    skyBox(1.2, -5.6, 0, 5.2, 1.8, 2.1, 0xf4efe6, blimp);
+    scene.add(blimp);
+    sky.blimp = blimp;
+
+    var plane = new THREE.Group();
+    skyBox(0, 0, 0, 4.2, 0.7, 0.7, 0xff2d8a, plane);
+    skyBox(0.6, 0.08, 0, 1.8, 0.12, 5.6, 0xf4efe6, plane);
+    skyBox(-1.7, 0.7, 0, 0.7, 1.5, 0.12, 0xff2d8a, plane);
+    skyBox(-1.7, 0.15, 0, 0.5, 0.12, 1.8, 0xf4efe6, plane);
+    plane.visible = false;
+    scene.add(plane);
+    sky.plane = plane;
+
+    sky.trailPos = new Float32Array(8 * 3);
+    var trailGeo = new THREE.BufferGeometry();
+    trailGeo.setAttribute("position", new THREE.BufferAttribute(sky.trailPos, 3));
+    sky.trail = new THREE.Line(
+      trailGeo,
+      new THREE.LineBasicMaterial({ color: 0xfff2d4, transparent: true, opacity: 0.5 })
+    );
+    sky.trail.visible = false;
+    sky.trail.frustumCulled = false;
+    scene.add(sky.trail);
+  }
+
+  function launchPlane() {
+    var flip = Math.random() > 0.5 ? 1 : -1;
+    sky.from = new THREE.Vector3(-420 * flip, 72 + Math.random() * 10, 40 + Math.random() * 80);
+    sky.to = new THREE.Vector3(400 * flip, 78 + Math.random() * 8, -30 + Math.random() * 70);
+    sky.planeU = 0;
+    sky.plane.visible = true;
+    sky.trail.visible = true;
+    var i;
+    for (i = 0; i < 8; i++) {
+      sky.trailPos[i * 3] = sky.from.x;
+      sky.trailPos[i * 3 + 1] = sky.from.y;
+      sky.trailPos[i * 3 + 2] = sky.from.z;
+    }
+  }
+
+  function updateSky(dt) {
+    sky.t += dt;
+    if (sky.blimp) {
+      var a = sky.t * 0.07;
+      var bx = -30 + Math.cos(a) * 168;
+      var bz = 46 + Math.sin(a) * 148;
+      var by = 90 + Math.sin(a * 2.1) * 3.5;
+      sky.blimp.position.set(bx, by, bz);
+      sky.blimp.rotation.set(0, -a - Math.PI * 0.5, Math.sin(a) * 0.05);
+    }
+    if (!sky.plane) return;
+    if (sky.planeU < 0) {
+      sky.planeWait -= dt;
+      if (sky.planeWait <= 0) {
+        launchPlane();
+        sky.planeWait = 16 + Math.random() * 14;
+      }
+      return;
+    }
+    sky.planeU += dt / 15;
+    if (sky.planeU >= 1) {
+      sky.planeU = -1;
+      sky.plane.visible = false;
+      sky.trail.visible = false;
+      return;
+    }
+    var u = sky.planeU;
+    var px = sky.from.x + (sky.to.x - sky.from.x) * u;
+    var py = sky.from.y + (sky.to.y - sky.from.y) * u;
+    var pz = sky.from.z + (sky.to.z - sky.from.z) * u;
+    sky.plane.position.set(px, py, pz);
+    sky.plane.rotation.set(0, -Math.atan2(sky.to.z - sky.from.z, sky.to.x - sky.from.x), 0);
+    var i;
+    for (i = 7; i > 0; i--) {
+      sky.trailPos[i * 3] = sky.trailPos[(i - 1) * 3];
+      sky.trailPos[i * 3 + 1] = sky.trailPos[(i - 1) * 3 + 1];
+      sky.trailPos[i * 3 + 2] = sky.trailPos[(i - 1) * 3 + 2];
+    }
+    sky.trailPos[0] = px - Math.cos(sky.plane.rotation.y) * 2.4;
+    sky.trailPos[1] = py;
+    sky.trailPos[2] = pz - Math.sin(-sky.plane.rotation.y) * 2.4;
+    sky.trail.geometry.attributes.position.needsUpdate = true;
   }
 
   function numberDecal(n) {
@@ -1696,6 +1821,7 @@
       setRevSound(false);
     }
 
+    updateSky(dt);
     updateHud();
     renderer.render(scene, camera);
     requestAnimationFrame(tick);
