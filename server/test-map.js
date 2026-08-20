@@ -697,6 +697,30 @@ var messyDrive = driveWorld(messyPieces, 2.2, "messy layout", false);
 
 sim.lockRacePath(sim.encodeMap(rectPieces()));
 assert(sim.menuTrackName() === "CUSTOM CIRCUIT", "menu label is CUSTOM when Solo loads a closed custom");
+var yell = "MR220R321R332R233";
+assert(sim.cleanTrack(yell) === yell, "yell share-string is a clean M-code");
+assert(sim.parseMap(yell).length === 4, "yell board is 4 pieces");
+assert(sim.lockRacePath(yell), "closed 4-piece rectangle MR220R321R332R233 must race");
+assert(sim.isDriveableLoop(), "yell 4-piece is a driveable custom, not junk");
+assert(sim.menuTrackName() === "CUSTOM CIRCUIT", "Solo label is CUSTOM for the yell 4-piece");
+assert(Math.abs(sim.TRACK_LEN - 1978.98) > 40, "yell 4-piece is not Campus Loop, len=" + sim.TRACK_LEN);
+assert(!sim.projectTrack(0, -80).onAsphalt, "Campus S/F is not asphalt on the yell 4-piece");
+assert(sim.customGridPose(), "yell 4-piece has a custom grid");
+var yellPose = sim.customGridPose();
+var yellCar = blankCar(yellPose.x, yellPose.z, yellPose.h, 14);
+var yellT;
+var yellOn = 0;
+for (yellT = 0; yellT < 0.45; yellT += 1 / 60) {
+  var yellLine = sim.projectTrack(yellCar.x, yellCar.z);
+  var yellErr = angDiff(yellLine.h, yellCar.heading);
+  var yellSteer = yellErr * 1.6;
+  if (yellSteer > 1) yellSteer = 1;
+  if (yellSteer < -1) yellSteer = -1;
+  sim.applyMotion(yellCar, yellSteer, true, false, false, 1 / 60, true);
+  if (sim.projectTrack(yellCar.x, yellCar.z).onAsphalt) yellOn += 1;
+}
+assert(yellOn > 20, "yell 4-piece Solo start is on the custom ribbon, on=" + yellOn);
+assert(Math.hypot(yellCar.x - 0, yellCar.z - -80) > 40, "yell Solo start is not Campus S/F");
 sim.lockRacePath(messyCode);
 assert(sim.menuTrackName() === "CAMPUS LOOP", "menu label is CAMPUS LOOP when Solo refuses an open board");
 sim.lockRacePath("");
@@ -1183,6 +1207,9 @@ assert(wallClear(-14, -80 - 2.7) > 5, "Campus grid is not inside a wall");
 assert(Math.abs(sim.TRACK_LEN - 1978.98) < 2, "Campus Loop length unchanged after custom grid prove");
 
 assert(src.indexOf("lockRacePath") !== -1 && src.indexOf("isDriveableLoop") !== -1, "open/junk boards refuse and bounce to Loop");
+assert(src.indexOf("if (code && !MAP_CLOSED) rebuildPath(\"\")") !== -1, "only OPEN/junk bounce to Loop; a closed header must race");
+assert(src.indexOf("function isTyping") !== -1 && src.indexOf("function syncShareField") !== -1, "share/code fields do not fire rotate or Solo");
+assert(src.indexOf("function trapTextKeys") !== -1 && src.indexOf("document.activeElement") !== -1, "Chromebook text fields stop game keys");
 assert(src.indexOf("exitPortAfter") !== -1 && src.indexOf("campusRoot") !== -1, "PATH exits the piece it actually traverses; campus volumes hide on custom");
 assert(src.indexOf("slotOnPath") !== -1 && src.indexOf("rideHeight") !== -1, "custom grid sits on the ribbon, wheels above it");
 sim.lockRacePath(sim.encodeMap(rectPieces()));

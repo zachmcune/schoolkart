@@ -1239,13 +1239,16 @@
   }
 
   function isDriveableLoop() {
-    return !!(MAP_CLOSED && TRACK_LEN > 80 && MAP_SURF.length && PATH.length);
+    // Closed is closed. A 4-piece rectangle is a race, not junk.
+    // Only open / unwalkable boards fail — TRACK_LEN > 80 used to
+    // bounce a header that already said CLOSED LOOP back to Campus.
+    return !!(MAP_CLOSED && PATH.length && MAP_SURF.length);
   }
 
   function lockRacePath(code) {
     code = cleanTrack(code || "");
     rebuildPath(code);
-    if (code && !isDriveableLoop()) rebuildPath("");
+    if (code && !MAP_CLOSED) rebuildPath("");
     return isDriveableLoop();
   }
 
@@ -2310,7 +2313,7 @@
       hud.trackView.textContent = "Campus Loop";
     } else if (trackCode.charAt(0) === "M") {
       var n = parseMap(trackCode).length;
-      hud.trackView.textContent = MAP_CLOSED
+      hud.trackView.textContent = isDriveableLoop()
         ? "Custom · CLOSED LOOP · " + n + " pcs"
         : "Custom · OPEN LAYOUT · " + n + " pcs";
     } else {
@@ -2369,7 +2372,7 @@
             p.t +
             '" data-rot="' +
             p.r +
-            '" role="button" tabindex="0" style="grid-column:' +
+            '" role="button" tabindex="-1" style="grid-column:' +
             (minx + 1) +
             " / span " +
             (maxx - minx + 1) +
@@ -2381,7 +2384,7 @@
             tileArt(p.t, p.r, 160) +
             ')">';
           if (sel) {
-            html += '<button type="button" class="tile-rot-handle" data-rot-handle="1" aria-label="Rotate 90 degrees">↻</button>';
+            html += '<button type="button" class="tile-rot-handle" tabindex="-1" data-rot-handle="1" aria-label="Rotate 90 degrees">↻</button>';
           }
           html += "</div>";
         } else if (!p) {
@@ -2390,7 +2393,7 @@
             x +
             '" data-y="' +
             y +
-            '" role="button" tabindex="0" style="grid-column:' +
+            '" role="button" tabindex="-1" style="grid-column:' +
             (x + 1) +
             ";grid-row:" +
             (y + 1) +
@@ -3214,7 +3217,7 @@
   }
 
   function customGridPose() {
-    if (!isDriveableLoop() || TRACK_LEN < 80) return null;
+    if (!isDriveableLoop() || TRACK_LEN < 8) return null;
     var p = slotOnPath(TRACK_LEN - 14, -1);
     var line = projectTrack(p.x, p.z);
     if (!line.onAsphalt) {
@@ -4357,11 +4360,8 @@
     applyGameSpeed(1);
     clearMe();
     if (net) net.leave();
-    lockRacePath(trackCode);
-    bakeMini();
-    addTrackMesh();
-    resetGrid();
-    circuitLabel();
+    syncShareField();
+    applyTrack(trackCode, true, true);
     touchCtl.gyroNeedCal = true;
     state = "start";
     setScreen("start");
@@ -5493,14 +5493,50 @@
   }
 
   function typingField(el) {
-    return el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA");
+    var a = el || document.activeElement;
+    if (!a || a === document.body || a === document.documentElement) a = document.activeElement;
+    if (!a) return false;
+    var tag = (a.tagName || "").toLowerCase();
+    if (tag === "input" || tag === "textarea" || tag === "select") return true;
+    if (a.isContentEditable) return true;
+    return false;
+  }
+
+  function isTyping() {
+    return typingField(document.activeElement);
+  }
+
+  function syncShareField() {
+    if (!hud.trackPaste) return;
+    var c = cleanTrack(hud.trackPaste.value || "");
+    if (c !== cleanTrack(trackCode || "")) commitTrack(c);
+  }
+
+  function trapTextKeys(el, onEnter) {
+    if (!el) return;
+    el.addEventListener("keydown", function (e) {
+      e.stopPropagation();
+      if (e.code === "Enter" && onEnter) {
+        e.preventDefault();
+        onEnter();
+      }
+    });
+    el.addEventListener("keyup", function (e) {
+      e.stopPropagation();
+    });
   }
 
   function onKey(e, down) {
-    if (typingField(e.target)) {
-      if (down && e.code === "Enter" && e.target.id === "join-code") {
-        openFriends("join", e.target.value);
-        e.preventDefault();
+    if (isTyping() || typingField(e.target)) {
+      if (down && e.code === "Enter") {
+        var who = typingField(e.target) ? e.target : document.activeElement;
+        if (who && who.id === "join-code") {
+          openFriends("join", who.value);
+          e.preventDefault();
+        } else if (who && who.id === "track-paste") {
+          commitTrack(who.value);
+          e.preventDefault();
+        }
       }
       return;
     }
@@ -5524,6 +5560,10 @@
     }
     if (down) ensureAudio();
     if (down && (e.code === "Space" || e.code === "Enter")) {
+      if (state === "track") {
+        e.preventDefault();
+        return;
+      }
       if (state === "title") {
         if (!joining) startSequence();
       }
@@ -6074,11 +6114,9 @@
   }
   if (btnTrackDone) {
     btnTrackDone.addEventListener("click", function () {
+      syncShareField();
+      applyTrack(trackCode, true, true);
       if (net && net.active && net.isHost() && net.setTrack) net.setTrack(isDriveableLoop() ? trackCode : "");
-      lockRacePath(trackCode);
-      bakeMini();
-      addTrackMesh();
-      resetGrid();
       killGhost();
       tilePick = "";
       editorDrag = null;
@@ -6091,6 +6129,13 @@
       commitTrack(hud.trackPaste.value);
     });
   }
+  trapTextKeys(hud.trackPaste, function () {
+    commitTrack(hud.trackPaste.value);
+  });
+  trapTextKeys(hud.nameInput, null);
+  trapTextKeys(joinCode, function () {
+    openFriends("join", joinCode && joinCode.value);
+  });
 
   addWorld();
   initFx();
