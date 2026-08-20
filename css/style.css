@@ -454,8 +454,14 @@ kbd {
   text-transform: uppercase;
 }
 
-.lobby-btn.solo {
+.lobby-btn.solo,
+.lobby-btn.campus {
   border-color: var(--gold);
+}
+
+.lobby-btn.campus {
+  min-height: 48px;
+  padding: 10px 16px;
 }
 
 .lobby-input {

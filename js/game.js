@@ -1216,18 +1216,24 @@
     }
   }
 
-  function applyTrack(code, persist) {
+  function persistTrackCode() {
+    try {
+      if (trackCode) localStorage.setItem("sk_track", trackCode);
+      else localStorage.removeItem("sk_track");
+    } catch (e) {}
+  }
+
+  function applyTrack(code, persist, force) {
     code = cleanTrack(code);
-    if (code === trackCode && trackRoot) {
+    if (!force && code === trackCode && trackRoot) {
+      if (persist !== false) persistTrackCode();
+      if (net) net.track = trackCode;
       circuitLabel();
+      paintTrackEditor();
       return;
     }
     trackCode = code;
-    if (persist !== false) {
-      try {
-        localStorage.setItem("sk_track", trackCode);
-      } catch (e) {}
-    }
+    if (persist !== false) persistTrackCode();
     if (net) net.track = trackCode;
     rebuildPath(trackCode);
     bakeMini();
@@ -1235,6 +1241,17 @@
     resetGrid();
     circuitLabel();
     paintTrackEditor();
+  }
+
+  function restoreCampusLoop() {
+    if (trackCode) pushTrackUndo();
+    tilePick = "";
+    if (hud.trackPaste) hud.trackPaste.value = "";
+    applyTrack("", true, true);
+    if (net) {
+      net.track = "";
+      if (net.active && net.isHost() && net.setTrack) net.setTrack("");
+    }
   }
 
   function maybeApplyNetTrack(code) {
@@ -4579,7 +4596,7 @@
   }
   if (btnTrackCampus) {
     btnTrackCampus.addEventListener("click", function () {
-      commitTrack("");
+      restoreCampusLoop();
     });
   }
   if (btnTrackCopy) {
@@ -4596,7 +4613,6 @@
   }
   if (btnTrackDone) {
     btnTrackDone.addEventListener("click", function () {
-      if (hud.trackPaste) applyTrack(hud.trackPaste.value, true);
       if (net && net.active && net.isHost() && net.setTrack) net.setTrack(trackCode);
       killGhost();
       tilePick = "";
