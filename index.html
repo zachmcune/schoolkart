@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#1a120e" />
+  <title>SchoolKart — Campus Loop</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect fill='%231a120e' width='64' height='64'/><rect fill='%232ec8c3' x='8' y='28' width='48' height='10'/><rect fill='%23f4efe6' x='22' y='16' width='20' height='8'/></svg>" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <div id="game">
+    <canvas id="view"></canvas>
+
+    <div id="hud" class="hidden">
+      <div class="hud-top">
+        <div class="brand">
+          <div class="logo">SCHOOLKART</div>
+          <div class="circuit">Campus Loop · #7</div>
+        </div>
+        <div class="race-meta">
+          <div class="lap-box">
+            <span class="label">LAP</span>
+            <span id="lap">1/5</span>
+          </div>
+          <div class="time-box">
+            <span class="label">TIME</span>
+            <span id="time">0:00.00</span>
+          </div>
+        </div>
+        <div class="speed-box">
+          <span id="speed">0</span>
+          <span class="unit">KPH</span>
+        </div>
+      </div>
+
+      <div class="hud-bottom">
+        <div class="bars">
+          <div class="bar-row">
+            <span class="bar-label">FUEL</span>
+            <div class="bar"><i id="fuel-fill"></i></div>
+            <span id="fuel-num">100</span>
+          </div>
+          <div class="bar-row">
+            <span class="bar-label">TIRES</span>
+            <div class="bar"><i id="tire-fill"></i></div>
+            <span id="tire-num">100</span>
+          </div>
+        </div>
+        <div class="hint">WASD / arrows · stab the 90 · slow the hairpin · teal box + hold Space 2.5s</div>
+      </div>
+    </div>
+
+    <div id="callouts">
+      <div id="pitting" class="banner hidden">PITTING</div>
+      <div id="warn" class="banner warn hidden"></div>
+    </div>
+
+    <div id="title-screen" class="screen">
+      <p class="eyebrow">Arcade F1 · School Chromebooks</p>
+      <h1>SCHOOLKART</h1>
+      <p class="sub">Campus Loop · 5 laps · Car #7</p>
+      <ul class="tips">
+        <li><strong>Brake or you run wide.</strong> Stab the 90, slow for the hairpin, carry the sweeper only if tires are fresh.</li>
+        <li><strong>Fuel is the clock.</strong> It ticks even if you coast. One box in 5 laps — skip it and limp home.</li>
+        <li><strong>Tires are handling.</strong> Push and they go loose, not shredded. Grass is slow and chews them extra.</li>
+        <li><strong>Open teal pit box</strong> inside the start/finish. Drive in and hold <kbd>Space</kbd> for 2.5s. Pick lap 2 or 3.</li>
+      </ul>
+      <p class="go">Press <kbd>Space</kbd> or <kbd>Enter</kbd> to race</p>
+      <p class="credit">Creative lead: Zachary McUne · Feel: Pit Crew Designer</p>
+    </div>
+
+    <div id="countdown" class="screen hidden">
+      <div id="count-num">3</div>
+    </div>
+
+    <div id="finish-screen" class="screen hidden">
+      <p class="eyebrow">Checkered flag</p>
+      <h1>FINISHED</h1>
+      <p class="result-time" id="finish-time">0:00.00</p>
+      <p class="result-line" id="finish-pit">Pit stop: no</p>
+      <p class="result-line" id="finish-place"></p>
+      <p class="go">Press <kbd>Space</kbd> to race again</p>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/three@0.160.1/build/three.min.js"></script>
+  <script>
+    if (!window.THREE) {
+      document.write('<script src="https://unpkg.com/three@0.160.1/build/three.min.js"><\/script>');
+    }
+  </script>
+  <script src="js/game.js"></script>
+</body>
+</html>
