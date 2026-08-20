@@ -1122,18 +1122,34 @@
     addBox(28, 4.8, -36, 14, 9.6, 16, 0xa34628);
     addBox(28, 10, -36, 16, 0.9, 18, 0x7a301c);
     addBox(-36, 3.8, -28, 18, 7.6, 10, 0xc4683a);
-    var grassMat = new THREE.MeshBasicMaterial({ color: 0x74e852, side: THREE.DoubleSide });
+    var grassMat = new THREE.MeshBasicMaterial({ color: 0x7aee58, side: THREE.DoubleSide });
+    var hallFoot = [
+      { x0: -17, x1: 1, z0: -39, z1: -25 },
+      { x0: 20, x1: 36, z0: -45, z1: -27 },
+      { x0: -45, x1: -27, z0: -33, z1: -23 },
+      { x0: 3.8, x1: 12.2, z0: -32.2, z1: -23.8 },
+      { x0: -10, x1: 26, z0: -101, z1: -93.5 },
+      { x0: -59, x1: -37, z0: 89, z1: 103 },
+    ];
     function campusQuad(x, z, w, d) {
+      var x0 = x - w * 0.5;
+      var x1 = x + w * 0.5;
+      var z0 = z - d * 0.5;
+      var z1 = z + d * 0.5;
+      var i;
+      for (i = 0; i < hallFoot.length; i++) {
+        var b = hallFoot[i];
+        if (x0 < b.x1 && x1 > b.x0 && z0 < b.z1 && z1 > b.z0) return;
+      }
+      if (onPitPavement(x, z) || onPitPavement(x0, z0) || onPitPavement(x1, z1)) return;
       var h = 0.48;
       var mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), grassMat);
       mesh.position.set(x, 0.2 + h * 0.5, z);
       scene.add(mesh);
     }
-    campusQuad(12, -34, 32, 24);
-    campusQuad(-22, -30, 28, 22);
-    campusQuad(8, -43, 44, 14);
-    campusQuad(40, -36, 22, 24);
-    campusQuad(8, -20, 30, 16);
+    campusQuad(10.5, -40.5, 18, 15);
+    campusQuad(-21.5, -30.5, 9, 13);
+    campusQuad(58, -47, 40, 14);
     addBox(-48, 4.4, 96, 22, 8.8, 14, 0xa34628);
     addBox(-48, 9.2, 96, 24, 0.8, 16, 0x7a301c);
 
