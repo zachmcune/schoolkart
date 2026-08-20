@@ -115,7 +115,7 @@ waitHealth()
         assert(html.indexOf('rel="manifest"') !== -1, "web app manifest link");
         assert(html.indexOf("apple-mobile-web-app-capable") !== -1, "iOS home screen capable");
         assert(html.indexOf('apple-mobile-web-app-title" content="SchoolKart"') !== -1, "iOS title");
-        assert(html.indexOf('SK_BUILD = "mp51"') !== -1, "cache bump mp51");
+        assert(html.indexOf('SK_BUILD = "mp52"') !== -1, "cache bump mp52");
         assert(html.indexOf('maxlength="240"') !== -1, "share-string fits a full board");
         assert(html.indexOf('id="title-track"') !== -1, "title label matches Solo load");
         assert(html.indexOf('autocapitalize="off"') !== -1, "share-string does not eat W/T via autocapitalize");
@@ -147,7 +147,7 @@ waitHealth()
           .then(function (sr) {
             return sr.text().then(function (sw) {
               assert(sr.status === 200, "sw 200");
-              assert(sw.indexOf('BUILD = "mp51"') !== -1, "SW build matches cache");
+              assert(sw.indexOf('BUILD = "mp52"') !== -1, "SW build matches cache");
               assert(/cache:\s*"no-store"/.test(sw), "network-first no-store");
               assert(sw.indexOf("websocket") !== -1, "SW leaves websocket alone");
             });
@@ -172,10 +172,11 @@ waitHealth()
                   assert(js.indexOf("exitPortAfter") !== -1 && js.indexOf("campusRoot") !== -1, "custom start does not stack piece walls or campus volumes");
                   assert(js.indexOf("MAP_SURF = PATH.slice()") !== -1, "custom physics uses the raced PATH, not leftover pieces");
                   assert(js.indexOf("hitKeepYaw") !== -1, "wall hits shove without yaw teleport");
-                  assert(js.indexOf("var turn = -steer * 0.42") !== -1, "open front wheels yaw with A/D");
+                  assert(js.indexOf("function steerWheelYaw") !== -1 && js.indexOf("return -steer * 0.42") !== -1, "A points fronts left, D points right");
                   assert(js.indexOf("function attachNameTag") !== -1 && js.indexOf("function layoutNameTags") !== -1, "halo nametags");
                   assert(!/function attachNameTag\([\s\S]{0,500}new THREE\.Sprite/.test(js), "nametags are mesh billboards, not X-flip-killed sprites");
                   assert(js.indexOf('r.kind !== "player"') !== -1, "own nametag can stay off; others still show");
+                  assert(js.indexOf("rideHeight() + 1.46") !== -1, "tags sit tiny over the halo, not at chase-cam height");
                   assert(/function playerInput\(\)[\s\S]{0,180}portraitRaceBlock/.test(js), "portrait zeros input before keyboard path");
                   assert(js.indexOf("#ff2038") !== -1 && js.indexOf("#3a3e46") !== -1, "asphalt + kerb piece art");
                 });

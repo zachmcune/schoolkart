@@ -2976,7 +2976,7 @@
       fog: false,
     });
     var tag = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), mat);
-    tag.scale.set(3.05, 0.68, 1);
+    tag.scale.set(2.2, 0.48, 1);
     tag.renderOrder = 12;
     tag.frustumCulled = false;
     tag.userData.nametag = true;
@@ -3036,12 +3036,14 @@
         return;
       }
       paintNameTag(r);
-      var y = rideHeight() + 2.08;
+      // Halo sits at 0.8. Tiny tag just above it — not a floating HUD plaque,
+      // and not up at chase-cam height (that put tags behind the lens).
+      var y = rideHeight() + 1.46;
       r.tag.position.set(r.x, y, r.z);
       r.tag.quaternion.copy(camera.quaternion);
       var dist = Math.hypot(r.x - cam.x, y - cam.y, r.z - cam.z);
-      var w = 3.05;
-      var h = 0.68;
+      var w = 2.2;
+      var h = 0.48;
       var op = 1;
       if (dist < 7) {
         var close = (7 - dist) / 4;
@@ -3106,7 +3108,9 @@
   }
 
   function rideHeight() {
-    return isDriveableLoop() ? 0.08 : 0;
+    // Custom ribbon sits at y=0.055. Wheel center is 0.28, radius 0.32, so
+    // contact is ride-0.04. 0.12 puts the open wheels ON the ribbon, not in it.
+    return isDriveableLoop() ? 0.12 : 0;
   }
 
   function slotOnPath(s, side) {
@@ -3379,14 +3383,19 @@
     var wheels = r.mesh.userData.wheels;
     if (wheels) {
       var spin = r.speed * dt * 2.4;
-      // A/left = +steer. Car local +Z is left. +holder.rotation.y yaws toward
-      // -Z (right), so the open fronts must use -steer to match the turn.
-      var turn = -steer * 0.42;
+      var turn = steerWheelYaw(steer);
       for (var i = 0; i < wheels.length; i++) {
         wheels[i].spinner.rotation.z -= spin;
         wheels[i].holder.rotation.y = wheels[i].front ? turn : 0;
       }
     }
+  }
+
+  function steerWheelYaw(steer) {
+    // Pit Crew: A (+steer) = fronts POINT LEFT. D (-steer) = POINT RIGHT.
+    // Car local +Z is left. Three.js +holder.rotation.y yaws toward -Z (right),
+    // so the open fronts use -steer. Rolling spin stays with travel.
+    return -steer * 0.42;
   }
 
   var AI_AGGRO = {

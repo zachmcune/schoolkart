@@ -101,6 +101,7 @@ var code = [
   sliceFn("projectOn"),
   sliceFn("projectTrack"),
   sliceFn("rideHeight"),
+  sliceFn("steerWheelYaw"),
   sliceFn("applyMotion"),
   sliceFn("updateLaps"),
   sliceFn("inPitLane"),
@@ -153,6 +154,8 @@ var code = [
   "  isCustomCircuit: isCustomCircuit,",
   "  isDriveableLoop: isDriveableLoop,",
   "  lockRacePath: lockRacePath,",
+  "  rideHeight: rideHeight,",
+  "  steerWheelYaw: steerWheelYaw,",
   "  MAP_DXY: MAP_DXY,",
   "  MAP_CELL: MAP_CELL,",
   "  get TRACK_LEN() { return TRACK_LEN; },",
@@ -264,20 +267,29 @@ function attachWheels(car) {
   return car;
 }
 
+function wheelPointDir(steer) {
+  var yaw = sim.steerWheelYaw(steer);
+  return { x: Math.cos(yaw), z: -Math.sin(yaw) };
+}
+
 function proveWheelSteer(label, x, z, h) {
+  var aDir = wheelPointDir(1);
+  var dDir = wheelPointDir(-1);
+  assert(aDir.z > 0.15, label + " A = POINT LEFT (+Z), z=" + aDir.z);
+  assert(dDir.z < -0.15, label + " D = POINT RIGHT (-Z), z=" + dDir.z);
   var left = attachWheels(blankCar(x, z, h, 22));
   var rearSpin = left.mesh.userData.wheels[2].spinner.rotation.z;
   sim.applyMotion(left, 1, true, false, false, 1 / 60, true);
   assert(left.heading > h, label + " A/left increases heading");
-  assert(left.mesh.userData.wheels[0].holder.rotation.y < 0, label + " A/left yaws open fronts left");
-  assert(left.mesh.userData.wheels[1].holder.rotation.y < 0, label + " both fronts match A/left");
+  assert(left.mesh.userData.wheels[0].holder.rotation.y < 0, label + " A points fronts left");
+  assert(left.mesh.userData.wheels[1].holder.rotation.y < 0, label + " both fronts match A");
   assert(left.mesh.userData.wheels[2].holder.rotation.y === 0, label + " rears do not steer");
   assert(left.mesh.userData.wheels[3].holder.rotation.y === 0, label + " offside rear does not steer");
   assert(left.mesh.userData.wheels[2].spinner.rotation.z < rearSpin, label + " rears spin with speed");
   var right = attachWheels(blankCar(x, z, h, 22));
   sim.applyMotion(right, -1, true, false, false, 1 / 60, true);
   assert(right.heading < h, label + " D/right decreases heading");
-  assert(right.mesh.userData.wheels[0].holder.rotation.y > 0, label + " D/right yaws open fronts right");
+  assert(right.mesh.userData.wheels[0].holder.rotation.y > 0, label + " D points fronts right");
   var roll = attachWheels(blankCar(x, z, h, 18));
   sim.applyMotion(roll, 0, true, false, false, 1 / 60, true);
   assert(roll.mesh.userData.wheels[0].spinner.rotation.z < 0, label + " forward roll matches travel");
@@ -700,6 +712,7 @@ assert(grazeImp > 0, "wall graze actually hits");
 assert(Math.abs(angDiff(graze.heading, grazeH)) < 0.22, "wall graze keeps heading, dh=" + angDiff(graze.heading, grazeH));
 assert(Math.abs(angDiff(graze.heading, Math.PI)) > 1.2, "wall graze does not snap 180");
 assert(graze.speed < 24, "wall graze loses some speed");
+assert(Math.abs(graze.slide) > 0.15, "wall graze slides along the rail, slide=" + graze.slide);
 
 var nose = blankCar(3.8, 0, 0, 26);
 sim.bashWall(nose, { ax: 5, az: -40, bx: 5, bz: 40, thick: 0.55 });
@@ -710,11 +723,12 @@ assert(nose.speed < 12, "head-on kills most forward speed");
 assert(src.indexOf("hitKeepYaw") !== -1, "hits shove without atan2 yaw snap");
 assert(!/function bashWall\([\s\S]{0,700}heading = Math.atan2/.test(src), "bashWall does not snap heading to velocity");
 assert(!/function bashCars\([\s\S]{0,900}heading = Math.atan2/.test(src), "bashCars does not snap heading to velocity");
-assert(/var turn = -steer \* 0\.42/.test(src), "open wheels yaw with the turn, not against it");
+assert(src.indexOf("function steerWheelYaw") !== -1 && src.indexOf("return -steer * 0.42") !== -1, "A = POINT LEFT, D = POINT RIGHT");
 assert(src.indexOf("function attachNameTag") !== -1 && src.indexOf("function layoutNameTags") !== -1, "halo nametags exist");
 assert(!/function attachNameTag\([\s\S]{0,500}new THREE\.Sprite/.test(src), "nametags are mesh billboards");
 assert(src.indexOf('r.kind !== "player"') !== -1, "own tag stays off; other cars still show");
 assert(src.indexOf('createRacer("cpu", 0xd4a017, "BowieKnife99"') !== -1, "one bot is exactly BowieKnife99");
+assert(src.indexOf("rideHeight() + 1.46") !== -1, "tags sit tiny over the halo");
 assert(src.indexOf("dropNameTag") !== -1, "nametags leave the scene with the car");
 
 sim.lockRacePath("");
@@ -937,6 +951,13 @@ assert(Math.abs(sim.TRACK_LEN - 1978.98) < 2, "Campus Loop length unchanged afte
 assert(src.indexOf("lockRacePath") !== -1 && src.indexOf("isDriveableLoop") !== -1, "open/junk boards refuse and bounce to Loop");
 assert(src.indexOf("exitPortAfter") !== -1 && src.indexOf("campusRoot") !== -1, "PATH exits the piece it actually traverses; campus volumes hide on custom");
 assert(src.indexOf("slotOnPath") !== -1 && src.indexOf("rideHeight") !== -1, "custom grid sits on the ribbon, wheels above it");
+sim.lockRacePath(sim.encodeMap(rectPieces()));
+var crewPose = sim.customGridPose();
+assert(crewPose && sim.projectTrack(crewPose.x, crewPose.z).onAsphalt, "Pit Crew: custom start sits ON the ribbon");
+assert(sim.rideHeight() >= 0.12, "Pit Crew: custom ride lifts the car off a buried deck");
+assert(sim.rideHeight() + 0.28 - 0.32 >= 0.05, "Pit Crew: open wheels sit on the ribbon, not in it");
+sim.lockRacePath("");
+assert(sim.rideHeight() === 0, "Campus Loop ride height stays locked");
 assert(src.indexOf('lock("landscape")') !== -1 && src.indexOf("portraitRaceBlock") !== -1, "race is landscape-only");
 assert(src.indexOf('lock("portrait")') === -1, "never lock portrait");
 assert(sliceFn("portraitRaceBlock").indexOf("isPhoneLike") === -1, "portrait gate ignores phone/keyboard/Chromebook");

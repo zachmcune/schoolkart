@@ -123,6 +123,7 @@ var code = [
   sliceFn("isDriveableLoop"),
   sliceFn("updateLaps"),
   sliceFn("rideHeight"),
+  sliceFn("steerWheelYaw"),
   sliceFn("applyMotion"),
   sliceAssign("AI_AGGRO"),
   sliceAssign("AI_TIDY"),
