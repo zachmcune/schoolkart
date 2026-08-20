@@ -1673,6 +1673,7 @@ function proveTurnIcons() {
   assert(src.indexOf("background-image:url(") !== -1 && src.indexOf("tileArt(p.t, p.r, 160)") !== -1, "placed pieces get the same preview");
   assert(src.indexOf("if (pieces[i].x === x && pieces[i].y === y)") !== -1, "rotate finds only the selected origin");
   assert(src.indexOf("if (!canSit(next, others)) return;") !== -1, "rotate does not nudge the piece onto neighbors");
+  assert(src.indexOf("var bN = parseMap(board).length") !== -1, "Solo keeps the board when the share field is stale 90s-only");
 }
 
 sim.lockRacePath("");

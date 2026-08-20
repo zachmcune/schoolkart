@@ -115,7 +115,7 @@ waitHealth()
         assert(html.indexOf('rel="manifest"') !== -1, "web app manifest link");
         assert(html.indexOf("apple-mobile-web-app-capable") !== -1, "iOS home screen capable");
         assert(html.indexOf('apple-mobile-web-app-title" content="SchoolKart"') !== -1, "iOS title");
-        assert(html.indexOf('SK_BUILD = "mp68"') !== -1, "cache bump mp68");
+        assert(html.indexOf('SK_BUILD = "mp69"') !== -1, "cache bump mp69");
         assert(html.indexOf('maxlength="240"') !== -1, "share-string fits a full board");
         assert(html.indexOf('id="title-track"') !== -1, "title label matches Solo load");
         assert(html.indexOf('aria-label="90"') !== -1 && html.indexOf('aria-label="sweeper"') !== -1, "palette has 90 and sweeper chips");
@@ -149,7 +149,7 @@ waitHealth()
           .then(function (sr) {
             return sr.text().then(function (sw) {
               assert(sr.status === 200, "sw 200");
-              assert(sw.indexOf('BUILD = "mp68"') !== -1, "SW build matches cache");
+              assert(sw.indexOf('BUILD = "mp69"') !== -1, "SW build matches cache");
               assert(/cache:\s*"no-store"/.test(sw), "network-first no-store");
               assert(sw.indexOf("websocket") !== -1, "SW leaves websocket alone");
             });
@@ -167,6 +167,7 @@ waitHealth()
                   assert(js.indexOf('l: "S"') !== -1, "lowercase L in a share-string is a long straight");
                   assert(js.indexOf('head !== "M" && head !== "m"') !== -1, "share prefix m still parses");
                   assert(js.indexOf("if (packed.length) code = encodeMap(packed)") !== -1, "applyTrack re-encodes every piece into the share-string");
+                  assert(js.indexOf("var bN = parseMap(board).length") !== -1, "Solo does not let a stale 90s paste wipe an S");
                   assert(js.indexOf("lockRacePath") !== -1, "open boards bounce to Campus Loop");
                   assert(js.indexOf("if (code && !MAP_CLOSED) rebuildPath(\"\")") !== -1, "closed custom races; only open/junk bounce");
                   assert(js.indexOf("function isTyping") !== -1 && js.indexOf("function trapTextKeys") !== -1, "share/code fields do not rotate or Solo");

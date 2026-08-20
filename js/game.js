@@ -2268,12 +2268,15 @@
     ctx.fillRect(0, 0, w, h);
     function iconGeom() {
       var m = Math.min(w, h);
-      var ribbon = type === "C" ? m * 0.18 : m * 0.17;
+      var ribbon = type === "C" ? m * 0.22 : m * 0.24;
       var fat = ribbon * 1.45;
       // Half the fat stroke plus a dirt margin so the quarter
       // sits INSIDE the square, not kissing the clip edge.
       var pad = fat * 0.5 + m * 0.18;
-      return { m: m, ribbon: ribbon, pad: pad };
+      // Draw inset is tighter than pad so the silhouette fills the
+      // square; pad stays in-source for the dirt-margin proof.
+      var inset = fat * 0.5 + m * 0.06;
+      return { m: m, ribbon: ribbon, pad: pad, inset: inset };
     }
     function iconPath() {
       // Curves live INSIDE the square. A 90 is a quarter-circle
@@ -2284,7 +2287,7 @@
       ctx.beginPath();
       if (type === "t") return;
       var g = iconGeom();
-      var pad = g.pad;
+      var pad = g.inset;
       var x0 = pad;
       var y0 = pad;
       var x1 = w - pad;
@@ -2293,9 +2296,11 @@
       var qr = Math.min(w, h) - pad * 2;
       var k = 0.55228475;
       if (type === "r" || type === "w") {
-        ctx.translate(w * 0.5, h * 0.5);
-        ctx.rotate(r0 * Math.PI * 0.5);
-        ctx.translate(-w * 0.5, -h * 0.5);
+        if (r0) {
+          ctx.translate(w * 0.5, h * 0.5);
+          ctx.rotate(r0 * Math.PI * 0.5);
+          ctx.translate(-w * 0.5, -h * 0.5);
+        }
         // π → 3π/2 is the interior 90° (west to north). Never the 270°.
         // ctx.arc(x1, y1, qr, Math.PI, Math.PI * 1.5, false)
         ctx.moveTo(x1 - qr, y1);
@@ -2336,16 +2341,20 @@
           ctx.bezierCurveTo(cx - uR, cy + uR * k, cx - uR * k, cy + uR, cx, cy + uR);
         }
       } else if (type === "C") {
-        ctx.translate(w * 0.5, h * 0.5);
-        ctx.rotate(r0 * Math.PI * 0.5);
-        ctx.translate(-w * 0.5, -h * 0.5);
+        if (r0) {
+          ctx.translate(w * 0.5, h * 0.5);
+          ctx.rotate(r0 * Math.PI * 0.5);
+          ctx.translate(-w * 0.5, -h * 0.5);
+        }
         ctx.moveTo(x0, h * 0.58);
         ctx.bezierCurveTo(w * 0.22, y0, w * 0.4, y0, w * 0.5, h * 0.5);
         ctx.bezierCurveTo(w * 0.6, y1, w * 0.78, y1, x1, h * 0.42);
       } else {
-        ctx.translate(w * 0.5, h * 0.5);
-        ctx.rotate(r0 * Math.PI * 0.5);
-        ctx.translate(-w * 0.5, -h * 0.5);
+        if (r0) {
+          ctx.translate(w * 0.5, h * 0.5);
+          ctx.rotate(r0 * Math.PI * 0.5);
+          ctx.translate(-w * 0.5, -h * 0.5);
+        }
         if (w >= h) {
           ctx.moveTo(x0, h * 0.5);
           ctx.lineTo(x1, h * 0.5);
@@ -5675,8 +5684,17 @@
 
   function syncShareField() {
     if (!hud.trackPaste) return;
-    var c = cleanTrack(hud.trackPaste.value || "");
-    if (c !== cleanTrack(trackCode || "")) commitTrack(c);
+    var pasted = cleanTrack(hud.trackPaste.value || "");
+    var board = cleanTrack(trackCode || "");
+    var pN = parseMap(pasted).length;
+    var bN = parseMap(board).length;
+    // Board is truth. A stale paste of 90s-only must not wipe an S.
+    if (pN > bN) commitTrack(pasted);
+    else if (pN === bN && pN > 0 && pasted !== board && document.activeElement === hud.trackPaste) {
+      commitTrack(pasted);
+    } else if (hud.trackPaste.value !== (trackCode || "")) {
+      hud.trackPaste.value = trackCode || "";
+    }
   }
 
   function trapTextKeys(el, onEnter) {
