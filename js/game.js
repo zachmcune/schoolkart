@@ -1611,22 +1611,41 @@
     return racer;
   }
 
+  function playerTagLabel() {
+    var raw = hud.nameInput ? String(hud.nameInput.value || "").replace(/[<>]/g, "").trim() : "";
+    if (!raw) return "YOU";
+    return cleanName(raw);
+  }
+
+  function tagLabel(r) {
+    if (!r) return "YOU";
+    if (r.kind === "player") return playerTagLabel();
+    var n = String(r.name || "").trim();
+    return n || (r.kind === "cpu" ? "CPU" : "YOU");
+  }
+
   function attachNameTag(r) {
     var c = document.createElement("canvas");
-    c.width = 256;
-    c.height = 64;
+    c.width = 384;
+    c.height = 80;
     var tex = new THREE.CanvasTexture(c);
     tex.minFilter = THREE.LinearFilter;
+    tex.magFilter = THREE.LinearFilter;
     var spr = new THREE.Sprite(
       new THREE.SpriteMaterial({
         map: tex,
         transparent: true,
+        depthTest: true,
         depthWrite: false,
+        sizeAttenuation: true,
       })
     );
-    spr.scale.set(2.6, 0.65, 1);
-    spr.position.set(0, 2.42, 0);
+    // Sit above the halo (~0.8) so the chase cam can read it.
+    spr.position.set(0, 2.62, 0);
+    spr.scale.set(3.3, 0.82, 1);
+    spr.renderOrder = 4;
     spr.userData.canvas = c;
+    spr.userData.label = "";
     r.mesh.add(spr);
     r.tag = spr;
     paintNameTag(r);
@@ -1634,22 +1653,63 @@
 
   function paintNameTag(r) {
     if (!r || !r.tag) return;
+    var t = tagLabel(r).slice(0, 14);
+    if (r.tag.userData.label === t) return;
+    r.tag.userData.label = t;
     var c = r.tag.userData.canvas;
     var ctx = c.getContext("2d");
-    ctx.clearRect(0, 0, 256, 64);
-    ctx.fillStyle = r.kind === "player" ? "rgba(20,143,140,0.88)" : "rgba(18,12,8,0.82)";
-    ctx.fillRect(12, 16, 232, 34);
-    ctx.font = "bold 26px Trebuchet MS, Arial, sans-serif";
+    ctx.clearRect(0, 0, 384, 80);
+    ctx.fillStyle = r.kind === "player" ? "rgba(20,143,140,0.9)" : "rgba(16,10,8,0.84)";
+    ctx.fillRect(16, 18, 352, 46);
+    ctx.font = "bold 36px Trebuchet MS, Arial, sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.lineJoin = "round";
-    ctx.strokeStyle = "rgba(8,6,4,0.92)";
-    ctx.lineWidth = 5;
+    ctx.strokeStyle = "rgba(8,6,4,0.95)";
+    ctx.lineWidth = 6;
     ctx.fillStyle = "#f4efe6";
-    var t = String(r.name || "House 7").slice(0, 14);
-    ctx.strokeText(t, 128, 34);
-    ctx.fillText(t, 128, 34);
+    ctx.strokeText(t, 192, 42);
+    ctx.fillText(t, 192, 42);
     r.tag.material.map.needsUpdate = true;
+  }
+
+  function layoutNameTags() {
+    var cam = camera.position;
+    function one(r) {
+      if (!r || !r.tag) return;
+      var on = !!(r.mesh && r.mesh.visible);
+      r.tag.visible = on;
+      if (!on) return;
+      var dist = Math.hypot(r.x - cam.x, 2.62 - cam.y, r.z - cam.z);
+      var w = 3.25;
+      var h = 0.82;
+      if (dist < 6.2) {
+        var close = (6.2 - dist) / 3.4;
+        if (close > 1) close = 1;
+        w *= 1 - 0.28 * close;
+        h *= 1 - 0.28 * close;
+      } else if (dist > 32) {
+        var far = (dist - 32) / 50;
+        if (far > 1) far = 1;
+        w *= 1 - 0.38 * far;
+        h *= 1 - 0.38 * far;
+        r.tag.material.opacity = 1 - 0.62 * far;
+      } else {
+        r.tag.material.opacity = 1;
+      }
+      r.tag.scale.set(w, h, 1);
+    }
+    one(player);
+    if (!mpMode) {
+      one(cpus[0]);
+      one(cpus[1]);
+    }
+    Object.keys(remotes).forEach(function (id) {
+      one(remotes[id].r);
+    });
+    Object.keys(hostBots).forEach(function (id) {
+      one(hostBots[id]);
+    });
   }
 
   var player = createRacer("player", playerBody, "House 7", 7, playerWing);
@@ -2703,8 +2763,12 @@
         resetRacer(r, g.x, g.z, 0, TRACK_LEN - 6 - p.slot * 8);
         hostBots[p.id] = r;
       }
-      hostBots[p.id].name = p.name || hostBots[p.id].name;
-      paintNameTag(hostBots[p.id]);
+      if (p.name && hostBots[p.id].name !== p.name) {
+        hostBots[p.id].name = p.name;
+        paintNameTag(hostBots[p.id]);
+      } else if (p.name) {
+        hostBots[p.id].name = p.name;
+      }
     });
     Object.keys(hostBots).forEach(function (id) {
       if (!keep[id]) {
@@ -2771,9 +2835,11 @@
 
   function ensureRemote(id, slot, name, body, wing) {
     if (remotes[id]) {
-      if (name) {
+      if (name && remotes[id].r.name !== name) {
         remotes[id].r.name = name;
         paintNameTag(remotes[id].r);
+      } else if (name) {
+        remotes[id].r.name = name;
       }
       if (body != null || wing != null) paintCar(remotes[id].r.mesh, body, wing);
       return remotes[id];
@@ -2797,6 +2863,7 @@
       rem.ghost = !!c.ghost;
       rem.r.mesh.visible = true;
       rem.r.mesh.traverse(function (ch) {
+        if (ch.isSprite) return;
         if (ch.material && ch.material.opacity !== undefined) {
           ch.material.transparent = !!c.ghost;
           if (ch.material.transparent) ch.material.opacity = 0.45;
@@ -3132,6 +3199,7 @@
 
     updateSky(dt);
     updateFx(dt);
+    layoutNameTags();
     updateHud();
     renderer.render(scene, camera);
     requestAnimationFrame(tick);
