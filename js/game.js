@@ -3,9 +3,12 @@
    Feel spec: Pit Crew Designer (fuel/tires/handling locked)
 
    Controls: W gas, Space brake, S reverse, A/D steer.
-   Pit: peel OFF the racing line, stop in the box, auto-service ~2.5s.
-   Start: 2026-style PRE-START blue flash (~2s arcade), five reds at 1s,
-   random 0.2–3s hold, lights out = GO. */
+   Pit: peel LEFT, asphalt in / stop / out. Auto-service in the box
+   below a walk for 2.5s. Pauses if you creep. Resets if you leave
+   or hit W. Space is brake — not pit hold. One service per visit.
+   Start: PRE-START blue flash, W revs with NO creep, five reds at 1s,
+   hold 0.2–3s with all five ON, lights out = GO. Fuel starts then.
+   Jump = rolled early: flash JUMP, dead ~1.5s, still race. */
 (function () {
   "use strict";
 
@@ -31,6 +34,8 @@
   var IDLE_FUEL = 0.98;
   var THROTTLE_FUEL = 0.24;
   var PIT_HOLD = 2.5;
+  var PIT_WALK = 1.8;
+  var JUMP_DEAD = 1.5;
   var ASPHALT = 8.6;
   var GRASS_MAX = 8.5;
   var GRASS_ROLL = 4;
@@ -41,6 +46,8 @@
   var HIT_RADIUS = 2.55;
 
   var SF_Z = -80;
+  var GRID_P2_X = -14;
+  var GRID_P2_Z = SF_Z - 2.7;
   var X0 = -42;
   var X1 = 115;
   var R90 = 22;
@@ -52,12 +59,12 @@
   var PIT_LANE = { x0: 20, x1: 78, z0: -63.2, z1: -53.6 };
   var PIT_BOX = { x0: 36, x1: 52, z0: -63.8, z1: -53.0 };
   var PIT_PAVE = [
-    { x0: 10, x1: 26, z0: -76.4, z1: -62.0 },
-    { x0: 16, x1: 30, z0: -66.0, z1: -53.4 },
+    { x0: 8, x1: 36, z0: -76.6, z1: -61.0 },
+    { x0: 14, x1: 40, z0: -70.0, z1: -53.2 },
     PIT_LANE,
     PIT_BOX,
-    { x0: 66, x1: 82, z0: -66.0, z1: -53.4 },
-    { x0: 72, x1: 94, z0: -76.4, z1: -62.0 },
+    { x0: 48, x1: 88, z0: -72.0, z1: -53.2 },
+    { x0: 62, x1: 98, z0: -76.8, z1: -61.0 },
   ];
 
   var keys = Object.create(null);
@@ -693,7 +700,7 @@
   }
 
   function resetGrid() {
-    resetRacer(player, -14, SF_Z - 2.7, 0, TRACK_LEN - 14);
+    resetRacer(player, GRID_P2_X, GRID_P2_Z, 0, TRACK_LEN - 14);
     resetRacer(cpus[0], -6, SF_Z + 2.7, 0, TRACK_LEN - 6);
     resetRacer(cpus[1], -22, SF_Z + 2.7, 0, TRACK_LEN - 22);
     raceTime = 0;
@@ -747,7 +754,6 @@
     var tireFeel = 0.38 + 0.62 * tire;
     var empty = isPlayer && r.fuel <= 0;
     var maxV = empty ? LIMP_SPEED : MAX_SPEED;
-    if (isPlayer && jumpT > 0) maxV = Math.min(maxV, 16);
     var accel = empty ? LIMP_ACCEL : ACCEL;
     if (isPlayer && launchT > 0) accel *= launchMul;
 
@@ -982,9 +988,11 @@
 
   function applyLaunch() {
     if (jumped) {
-      launchMul = 0.32;
-      launchT = 2.4;
-      jumpT = 2.4;
+      launchMul = 1;
+      launchT = 0;
+      jumpT = JUMP_DEAD;
+      player.speed = 0;
+      player.slide = 0;
       return;
     }
     if (revs < 0.48) {
@@ -1045,12 +1053,11 @@
     hud.pitting.classList.toggle("hidden", !boxed && pitFlash <= 0);
     if (pitFlash > 0) hud.pitting.textContent = "SERVICED";
     else if (boxed && pitUsedVisit) hud.pitting.textContent = "SERVICED — pull out";
-    else if (boxed && Math.abs(player.speed) < 2.4) hud.pitting.textContent = "PITTING  " + pct + "%";
-    else if (boxed) hud.pitting.textContent = "STOP IN THE BOX";
+    else if (boxed && Math.abs(player.speed) < PIT_WALK) hud.pitting.textContent = "PITTING  " + pct + "%";
+    else if (boxed) hud.pitting.textContent = "SLOW TO A WALK";
 
     var warn = "";
-    if (jumpT > 0) warn = "JUMP START — sit tight";
-    else if (state === "start" && jumped) warn = "JUMP START — wait for lights out";
+    if (jumpT > 0 || (state === "start" && jumped)) warn = "JUMP";
     else if (state === "racing" && player.fuel <= 0) warn = "EMPTY — LIMP HOME";
     else if (state === "racing" && player.tires < 40) warn = "TIRES LOOSE — don't carry the sweeper";
     else if (state === "racing" && player.fuel < 38) warn = "PIT WINDOW — peel LEFT off the straight";
@@ -1075,6 +1082,15 @@
     camera.lookAt(36, 8, -22);
   }
 
+  function pinGrid(r, x, z) {
+    r.speed = 0;
+    r.slide = 0;
+    r.x = x;
+    r.z = z;
+    r.heading = 0;
+    poseCar(r);
+  }
+
   function tickStart(dt) {
     var input = playerInput();
     if (input.throttle) revs = clamp(revs + dt * 0.7, 0, 1);
@@ -1082,15 +1098,12 @@
     setRevSound(true);
     hud.revFill.style.width = Math.round(revs * 100) + "%";
 
-    if (revs > 0.9) {
-      player.speed = 1.4;
-      applyMotion(player, 0, false, false, false, dt, true);
-    } else {
-      player.speed = 0;
-      applyMotion(player, 0, false, true, false, dt, true);
-    }
-    if (!jumped && (Math.abs(player.x + 14) > 3.2 || Math.abs(player.z - (SF_Z - 2.7)) > 2.4)) {
-      jumped = true;
+    // W revs only — no creep. Fuel clock does not run on the grid.
+    pinGrid(player, GRID_P2_X, GRID_P2_Z);
+    var wheels = player.mesh.userData.wheels;
+    if (wheels) {
+      var spin = revs * dt * 16;
+      for (var w = 0; w < wheels.length; w++) wheels[w].spinner.rotation.z -= spin;
     }
 
     startT -= dt;
@@ -1131,8 +1144,8 @@
         setRevSound(false);
       }
     }
-    applyMotion(cpus[0], 0, false, true, false, dt, false);
-    applyMotion(cpus[1], 0, false, true, false, dt, false);
+    pinGrid(cpus[0], -6, SF_Z + 2.7);
+    pinGrid(cpus[1], -22, SF_Z + 2.7);
     chaseCamera(dt);
   }
 
@@ -1153,11 +1166,18 @@
       raceTime += dt;
       revs = 0;
       var input = playerInput();
+      if (jumpT > 0) {
+        input = { steer: 0, throttle: false, reverse: false, brake: true };
+        player.speed = 0;
+        player.slide = 0;
+      }
       var boxed = inPitBox(player);
       if (!boxed) {
         pitTimer = 0;
         pitUsedVisit = false;
-      } else if (!pitUsedVisit && Math.abs(player.speed) < 2.4) {
+      } else if (!pitUsedVisit && input.throttle) {
+        pitTimer = 0;
+      } else if (!pitUsedVisit && Math.abs(player.speed) < PIT_WALK) {
         pitTimer += dt;
         if (pitTimer >= PIT_HOLD) {
           player.fuel = 100;
@@ -1216,7 +1236,7 @@
   });
   window.addEventListener("blur", function () {
     keys = Object.create(null);
-    // pitTimer stays. Only leaving the box zeros it.
+    // pitTimer stays on blur. Leave the box or hit W to reset.
   });
   window.addEventListener("resize", function () {
     renderer.setSize(window.innerWidth, window.innerHeight);

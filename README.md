@@ -28,11 +28,11 @@ Then visit `http://localhost:8080`.
 | Fuel | The **clock**. Ticks even while coasting. One forced box in 5 laps. Skip it and limp home. |
 | Tires | **Handling**, not a second clock. Push and they go loose — not shredded. |
 | Grass | A **crawl** plus extra wear. Never faster than asphalt, never parked at 0. Miss the peel and you can still roll back on. Holding W on the lawn loses. |
-| Pit | Real pull-off: peel **LEFT** into a separate pit lane (IN), stop in the teal **BOX**, then pull **OUT** onto the straight. Service is automatic when you are nearly stopped ~2.5s. One service per visit. Space is **brake**, not pit hold. Blur does not zero the timer; leaving the box does. |
+| Pit | Real pull-off: peel **LEFT** into a separate pit lane (IN), stop in the teal **BOX**, then pull **OUT**. Service is automatic when you are in the box **and** below a walk for 2.5s. Timer **pauses** if you creep, **resets** if you leave the box or hit **W**. Space is **brake**, not pit hold. One service per visit. **S** reverse unsticks an overshoot. Blur does not zero the timer. |
 
 **Controls:** W / ↑ throttle (also revs on the grid) · **Space = brake** · **S / ↓ reverse** · A D / ← → steer · Enter or Space on the title to grid up.
 
-**Start:** skip formation lap. Blue PRE-START flash (~2s arcade; 2026 F1 uses ~5s), then five reds one-by-one (~1s each), then a random hold (0.2–3s) with all five ON, then lights out = GO. Hold W — sweet-spot revs dump harder; too high wheelspins. Move before lights out and you jump (short stop-go).
+**Start:** skip formation lap. Blue PRE-START flash, **W revs with no creep**, five reds one-by-one (~1s), random hold (0.2–3s) with all five ON, lights out = GO. Fuel clock starts at lights-out. Hold W — sweet-spot revs dump harder. Roll early = flash **JUMP**, dead ~1.5s, still race (no DNF).
 
 **Hits:** cars bash — shove, spin, no ghosting through each other.
 
