@@ -110,6 +110,11 @@ var code = [
   sliceFn("pointOnSeg"),
   sliceFn("centerlinePoint"),
   sliceFn("projectTrack"),
+  "var WALLS = [];",
+  sliceFn("wallSeg"),
+  sliceFn("skipLeftBarrier"),
+  sliceFn("wallKindFor"),
+  sliceFn("placeWalls"),
   sliceFn("inPitLane"),
   sliceFn("inPitGrab"),
   sliceFn("updateLaps"),
@@ -143,6 +148,8 @@ var code = [
   "  gradeLaunch: gradeLaunch,",
   "  centerlinePoint: centerlinePoint,",
   "  projectTrack: projectTrack,",
+  "  WALLS: WALLS,",
+  "  placeWalls: placeWalls,",
   "  AI_AGGRO: AI_AGGRO,",
   "  AI_TIDY: AI_TIDY,",
   "  AI_MESSY: AI_MESSY",
@@ -249,6 +256,23 @@ for (var ks = 0; ks < sim.TRACK_LEN; ks += 6) {
   if (kerbPt.kerb) break;
 }
 assert(kerbPt && kerbPt.kerb && !kerbPt.grass, "named-corner kerb is mountable, not lawn");
+sim.placeWalls();
+assert(sim.WALLS.length > 200, "barriers run the circuit");
+var pitHit = 0;
+var rightSF = 0;
+var tallN = 0;
+var wi;
+for (wi = 0; wi < sim.WALLS.length; wi++) {
+  var ww = sim.WALLS[wi];
+  var mx = (ww.ax + ww.bx) * 0.5;
+  var mz = (ww.az + ww.bz) * 0.5;
+  if (mx > 8 && mx < 118 && mz > -68 && mz < -56) pitHit += 1;
+  if (mx > -20 && mx < 40 && mz < -88) rightSF += 1;
+  if (ww.kind === "tall") tallN += 1;
+}
+assert(pitHit === 0, "left pit peel has no clip-grab wall");
+assert(rightSF > 0, "right side of S/F is walled");
+assert(tallN > 8 && tallN < sim.WALLS.length * 0.35, "tall only outside 180 / chicane / sweeper");
 var hp = 0;
 var longs = 0;
 for (var d = 0; d < sim.TRACK_LEN; d += 4) {
