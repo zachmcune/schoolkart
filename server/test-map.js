@@ -105,7 +105,6 @@ var code = [
   sliceFn("rideHeight"),
   sliceFn("steerWheelYaw"),
   sliceFn("applyMotion"),
-  sliceFn("recoverIfVoid"),
   sliceFn("updateLaps"),
   sliceFn("inPitLane"),
   sliceFn("inPitGrab"),
@@ -148,7 +147,6 @@ var code = [
   "  chicanePts: chicanePts,",
   "  projectTrack: projectTrack,",
   "  applyMotion: applyMotion,",
-  "  recoverIfVoid: recoverIfVoid,",
   "  updateLaps: updateLaps,",
   "  inPitGrab: inPitGrab,",
   "  cleanTrack: cleanTrack,",
@@ -1286,31 +1284,36 @@ assert(Math.abs(hpCar.slide) > 1.1, "Campus Loop hairpin still punishes late/no 
 function driveHoldW(car, seconds) {
   var t;
   var dumped = false;
-  var recovered = false;
+  var sawGrass = false;
   var travelled = 0;
   var lastS = sim.projectTrack(car.x, car.z).s;
+  var maxStep = 0;
   for (t = 0; t < seconds; t += 1 / 60) {
     var line = sim.projectTrack(car.x, car.z);
     var look = sim.centerlinePoint(line.s + 14);
     var err = angDiff(look.h, car.heading);
     if (line.dist > 2.4) {
       var home = Math.atan2(line.z - car.z, line.x - car.x);
-      err = angDiff(home, car.heading) * 0.55 + err * 0.45;
+      err = angDiff(home, car.heading);
     }
     var steer = err * 1.65;
     if (steer > 1) steer = 1;
     if (steer < -1) steer = -1;
+    var x0 = car.x;
+    var z0 = car.z;
     sim.applyMotion(car, steer, true, false, false, 1 / 60, true);
     sim.bashAllWalls(car);
-    if (sim.recoverIfVoid(car, 1 / 60)) recovered = true;
+    var step = Math.hypot(car.x - x0, car.z - z0);
+    if (step > maxStep) maxStep = step;
     if (Math.abs(car.slide) > 2.4) dumped = true;
+    if (sim.projectTrack(car.x, car.z).grass) sawGrass = true;
     var nowS = sim.projectTrack(car.x, car.z).s;
     var ds = nowS - lastS;
     if (ds < -sim.TRACK_LEN * 0.5) ds += sim.TRACK_LEN;
     if (ds > 0 && ds < 22) travelled += ds;
     lastS = nowS;
   }
-  return { dumped: dumped, recovered: recovered, travelled: travelled };
+  return { dumped: dumped, sawGrass: sawGrass, travelled: travelled, maxStep: maxStep };
 }
 
 sim.lockRacePath("");
@@ -1318,19 +1321,52 @@ sim.placeWalls();
 var loopDump = blankCar(hpPt.x, hpPt.z, hpPt.h, 40);
 loopDump.fuel = 100;
 loopDump.tires = 100;
-var loopRun = driveHoldW(loopDump, 18);
-assert(loopRun.dumped, "Loop hold W through the 180 dumps");
+var dumpT;
+var dumpStep = 0;
+for (dumpT = 0; dumpT < 0.55; dumpT += 1 / 60) {
+  var x0 = loopDump.x;
+  var z0 = loopDump.z;
+  sim.applyMotion(loopDump, 0, true, false, false, 1 / 60, true);
+  sim.bashAllWalls(loopDump);
+  var st = Math.hypot(loopDump.x - x0, loopDump.z - z0);
+  if (st > dumpStep) dumpStep = st;
+}
+assert(Math.abs(loopDump.slide) > 2.4, "Loop hold W through the 180 dumps, slide=" + loopDump.slide.toFixed(2));
+var wideHit = sim.projectTrack(loopDump.x, loopDump.z);
+assert(wideHit.grass || !wideHit.onAsphalt, "DUMP hole stays: you run wide, dist=" + wideHit.dist.toFixed(1));
+assert(wideHit.grass, "after DUMP you still see grass, not a black void");
+assert(dumpStep < 6, "DUMP does not teleport, maxStep=" + dumpStep.toFixed(2));
+var wideX = loopDump.x;
+var wideZ = loopDump.z;
+var crawlT;
+var crawlStep = 0;
+for (crawlT = 0; crawlT < 14; crawlT += 1 / 60) {
+  var line = sim.projectTrack(loopDump.x, loopDump.z);
+  var home = Math.atan2(line.z - loopDump.z, line.x - loopDump.x);
+  var err = angDiff(home, loopDump.heading);
+  var steer = err * 2.4;
+  if (steer > 1) steer = 1;
+  if (steer < -1) steer = -1;
+  var turnIn = Math.abs(err) > 0.35;
+  var brake = loopDump.speed > 9 && turnIn;
+  var gas = !brake;
+  var x0 = loopDump.x;
+  var z0 = loopDump.z;
+  sim.applyMotion(loopDump, steer, gas, brake, false, 1 / 60, true);
+  sim.bashAllWalls(loopDump);
+  var st = Math.hypot(loopDump.x - x0, loopDump.z - z0);
+  if (st > crawlStep) crawlStep = st;
+  if (sim.projectTrack(loopDump.x, loopDump.z).onAsphalt) break;
+}
+var backHit = sim.projectTrack(loopDump.x, loopDump.z);
 assert(
-  sim.projectTrack(loopDump.x, loopDump.z).onAsphalt,
-  "DUMP recovers onto asphalt, dist=" + sim.projectTrack(loopDump.x, loopDump.z).dist.toFixed(1)
+  backHit.onAsphalt,
+  "player steers and crawls back onto the ribbon, dist=" + backHit.dist.toFixed(1) + " spd=" + loopDump.speed.toFixed(1)
 );
-assert(loopDump.speed > 24, "DUMP recover is at pace, not a 13 kph void, speed=" + loopDump.speed.toFixed(1));
+assert(crawlStep < 6, "steer-back is a crawl, not a snap, maxStep=" + crawlStep.toFixed(2));
+assert(Math.hypot(loopDump.x - wideX, loopDump.z - wideZ) > 2, "crawl-back left the wide spot");
 assert(firstNamedS("hairpin") > 0, "the 180 still exists after the dump");
 assert(sim.centerlinePoint(firstNamedS("hairpin") + 6).name === "hairpin", "hairpin arc is still the 180");
-assert(
-  loopRun.travelled > 220,
-  "after DUMP the lap continues, went=" + loopRun.travelled.toFixed(0)
-);
 
 function proveGoHoldW(code, label) {
   assert(sim.lockRacePath(code), label + " must Solo as a closed custom");
@@ -1352,7 +1388,6 @@ function proveGoHoldW(code, label) {
     if (steer < -1) steer = -1;
     sim.applyMotion(car, steer, true, false, false, 1 / 60, true);
     sim.bashAllWalls(car);
-    sim.recoverIfVoid(car, 1 / 60);
   }
   assert(car.speed > 12, label + " after GO hold W must move, speed=" + car.speed.toFixed(1));
   assert(Math.hypot(car.x - pose.x, car.z - pose.z) > 10, label + " left the locked grid");
@@ -1420,15 +1455,13 @@ assert(sliceFn("trapTextKeys").indexOf("e.stopPropagation()") !== -1, "while edi
 assert(sliceFn("onKey").indexOf('state !== "start" && state !== "racing"') !== -1, "onKey only traps text before the race");
 assert(src.indexOf('who.id === "track-paste"') !== -1 && src.indexOf("commitTrack(who.value)") !== -1, "Enter in the share box commits, does not Solo");
 
-sim.lockRacePath("");
-var voidCar = blankCar(720, 640, 0, 4);
-voidCar.voidT = 1;
-var voidHit = sim.projectTrack(voidCar.x, voidCar.z);
-assert(voidHit.dist > 36 && !voidHit.onAsphalt, "void setup is off the ribbon, dist=" + voidHit.dist.toFixed(0));
-assert(sim.recoverIfVoid(voidCar, 0.02), "void recover fires");
-assert(sim.projectTrack(voidCar.x, voidCar.z).onAsphalt, "void recover lands on asphalt");
-assert(voidCar.speed >= 28, "void recover is at pace, not 13 kph, speed=" + voidCar.speed.toFixed(1));
-assert(firstNamedS("hairpin") > 0, "180 still exists after a void recover");
+assert(src.indexOf("function recoverIfVoid") === -1, "DUMP does not teleport back onto the ribbon");
+assert(src.indexOf("voidT") === -1, "no void timer snap-back");
+assert(src.indexOf('name = "groundSkirt"') !== -1, "green skirt sits past the dirt plane");
+assert(src.indexOf("PlaneGeometry(4200, 3600)") !== -1, "skirt is larger than the dirt pad");
+assert(src.indexOf("0x3f5c32") !== -1, "skirt is visible grass, not a black void");
+assert(src.indexOf("0x6a655c") !== -1, "course dirt pad stays dirt, not a lawn");
+assert(src.indexOf("var GRASS_ROLL = 4") !== -1, "13 kph grass-roll is the crawl back");
 
 var pitRect = rectPieces();
 pitRect[2] = { t: "P", x: 3, y: 1, r: 0 };
@@ -1456,8 +1489,7 @@ assert(src.indexOf("function isTyping") !== -1 && src.indexOf("function syncShar
 assert(src.indexOf("function trapTextKeys") !== -1 && src.indexOf("document.activeElement") !== -1, "Chromebook text fields stop game keys");
 assert(src.indexOf("function releaseTypeFocus") !== -1, "Solo blurs share/name so W can throttle after GO");
 assert(sliceFn("isTyping").indexOf('state === "start" || state === "racing"') !== -1, "hidden share field does not eat W on the grid");
-assert(src.indexOf("function recoverIfVoid") !== -1, "a 180 DUMP recovers onto the ribbon, not a black void");
-assert(src.indexOf("launchCallT = 0") !== -1 && src.indexOf("r.voidT") !== -1, "DUMP banner clears when the car is put back");
+assert(src.indexOf("function recoverIfVoid") === -1, "no teleport recover after DUMP");
 assert(src.indexOf("exitPortAfter") !== -1 && src.indexOf("campusRoot") !== -1, "PATH exits the piece it actually traverses; campus volumes hide on custom");
 assert(src.indexOf("slotOnPath") !== -1 && src.indexOf("rideHeight") !== -1, "custom grid sits on the ribbon, wheels above it");
 sim.lockRacePath(sim.encodeMap(rectPieces()));

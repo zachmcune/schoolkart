@@ -177,13 +177,13 @@
   }
 
   var scene = new THREE.Scene();
-  scene.fog = new THREE.Fog(0xf08a48, 260, 640);
+  scene.fog = new THREE.Fog(0xf08a48, 420, 1800);
 
   var camera = new THREE.PerspectiveCamera(
     62,
     window.innerWidth / window.innerHeight,
     0.3,
-    680
+    2000
   );
   layoutCamera();
 
@@ -2005,6 +2005,15 @@
     shade.position.set(-55, 16, 48);
     scene.add(shade);
 
+    var skirt = new THREE.Mesh(
+      new THREE.PlaneGeometry(4200, 3600),
+      new THREE.MeshBasicMaterial({ color: 0x3f5c32, side: THREE.DoubleSide })
+    );
+    skirt.name = "groundSkirt";
+    skirt.rotation.x = -Math.PI * 0.5;
+    skirt.position.set(-40, -0.12, 80);
+    scene.add(skirt);
+
     var dirt = new THREE.Mesh(
       new THREE.PlaneGeometry(1400, 1200),
       new THREE.MeshLambertMaterial({ color: 0x6a655c, side: THREE.DoubleSide })
@@ -3559,36 +3568,6 @@
     }
   }
 
-  function recoverIfVoid(r, dt) {
-    if (!r || r.finished || r.pitServicing) return false;
-    if (inPitLane(r)) {
-      r.voidT = 0;
-      return false;
-    }
-    var hit = projectTrack(r.x, r.z);
-    var near = ASPHALT + RUNOFF + 6;
-    if (hit.onAsphalt || hit.onRunoff || hit.inPit || hit.dist < near) {
-      r.voidT = 0;
-      return false;
-    }
-    r.voidT = (r.voidT || 0) + (dt > 0 ? dt : 0.016);
-    if (hit.dist < 36 && r.voidT < 0.42) return false;
-    var s = hit.s + 22;
-    if (TRACK_LEN > 1 && s >= TRACK_LEN) s -= TRACK_LEN;
-    var p = centerlinePoint(s);
-    r.x = p.x;
-    r.z = p.z;
-    r.heading = p.h;
-    r.slide = 0;
-    r.speed = r.speed < 28 ? 34 : r.speed;
-    if (r.speed > MAX_SPEED) r.speed = MAX_SPEED;
-    r.voidT = 0;
-    launchCall = "";
-    launchCallT = 0;
-    poseCar(r);
-    return true;
-  }
-
   function steerWheelYaw(steer) {
     // Pit Crew: A (+steer) = fronts POINT LEFT. D (-steer) = POINT RIGHT.
     // Car local +Z is left. Three.js +holder.rotation.y yaws toward -Z (right),
@@ -4888,7 +4867,6 @@
         updateLaps(hostBots[ids[i]]);
         bashCars(player, hostBots[ids[i]]);
         bashAllWalls(hostBots[ids[i]]);
-        recoverIfVoid(hostBots[ids[i]], dt);
         emitRacerFx(hostBots[ids[i]], null, dt, false);
       }
       bashAllWalls(player);
@@ -5253,7 +5231,6 @@
       }
       applyMotion(player, input.steer, input.throttle, input.brake, input.reverse, simDt, true);
       bashAllWalls(player);
-      recoverIfVoid(player, simDt);
       emitRacerFx(player, input, simDt, true);
       if (!pitServicing && !pitUsedVisit && inPitGrab(player)) {
         pitServicing = true;
@@ -5284,9 +5261,6 @@
         bashAllWalls(player);
         bashAllWalls(cpus[0]);
         bashAllWalls(cpus[1]);
-        recoverIfVoid(player, simDt);
-        recoverIfVoid(cpus[0], simDt);
-        recoverIfVoid(cpus[1], simDt);
         emitRacerFx(cpus[0], null, simDt, false);
         emitRacerFx(cpus[1], null, simDt, false);
       }
