@@ -130,6 +130,7 @@
   var raceTime = 0;
   var didPit = false;
   var pitTimer = 0;
+  var pitHudPct = 0;
   var pitFlash = 0;
   var pitUsedVisit = false;
   var pitServicing = false;
@@ -2261,104 +2262,79 @@
     bevel.addColorStop(1, "rgba(0,0,0,0.2)");
     ctx.fillStyle = bevel;
     ctx.fillRect(0, 0, w, h);
-    function iconGeom() {
-      var m = Math.min(w, h);
-      var ribbon = type === "C" ? m * 0.15 : m * 0.11;
-      var fat = ribbon * 1.45;
-      // Half the fat stroke plus a dirt margin so the quarter
-      // sits INSIDE the square, not kissing the clip edge.
-      var pad = fat * 0.5 + m * 0.18;
-      return { m: m, ribbon: ribbon, pad: pad };
-    }
-    function iconPath() {
-      // Curves live INSIDE the square. A 90 is a quarter-circle
-      // in the tile — not a world-scale ribbon and not an L that clips.
+    function trackPath() {
       ctx.beginPath();
       if (type === "t") return;
-      var g = iconGeom();
-      var pad = g.pad;
-      var x0 = pad;
-      var y0 = pad;
-      var x1 = w - pad;
-      var y1 = h - pad;
-      var r0 = rot || 0;
-      var qr = Math.min(w, h) - pad * 2;
-      if (type === "r" || type === "w") {
-        ctx.translate(w * 0.5, h * 0.5);
-        ctx.rotate(r0 * Math.PI * 0.5);
-        ctx.translate(-w * 0.5, -h * 0.5);
-        // π → 3π/2 is the interior 90° (west to north). Never the 270°.
-        ctx.arc(x1, y1, qr, Math.PI, Math.PI * 1.5, false);
-      } else if (type === "H") {
-        var uR = Math.min(Math.max(w, h) * 0.5 - pad, Math.min(w, h) - pad * 2);
-        if (r0 === 0) {
-          ctx.arc(w * 0.5, y1, uR, Math.PI, 0, false);
-        } else if (r0 === 1) {
-          ctx.arc(x0, h * 0.5, uR, -Math.PI * 0.5, Math.PI * 0.5, false);
-        } else if (r0 === 2) {
-          ctx.arc(w * 0.5, y0, uR, Math.PI, 0, true);
+      var artPiece = { t: type, x: 0, y: 0, r: rot || 0 };
+      var segs = pieceSegs(artPiece);
+      if (!segs.length) return;
+      var box = footprintBox(artPiece);
+      var scale = unit / MAP_CELL;
+      var si;
+      var started = false;
+      for (si = 0; si < segs.length; si++) {
+        var seg = segs[si];
+        if (seg.type === "line") {
+          var ax = (seg.ax - box.x0) * scale;
+          var az = (seg.az - box.z0) * scale;
+          var bx = (seg.bx - box.x0) * scale;
+          var bz = (seg.bz - box.z0) * scale;
+          if (!started) {
+            ctx.moveTo(ax, az);
+            started = true;
+          } else {
+            ctx.lineTo(ax, az);
+          }
+          ctx.lineTo(bx, bz);
         } else {
-          ctx.arc(x1, h * 0.5, uR, Math.PI * 0.5, -Math.PI * 0.5, false);
-        }
-      } else if (type === "C") {
-        ctx.translate(w * 0.5, h * 0.5);
-        ctx.rotate(r0 * Math.PI * 0.5);
-        ctx.translate(-w * 0.5, -h * 0.5);
-        ctx.moveTo(x0, h * 0.5);
-        ctx.bezierCurveTo(x0, y0, w * 0.62, y0, w * 0.5, h * 0.5);
-        ctx.bezierCurveTo(w * 0.38, y1, x1, y1, x1, h * 0.5);
-      } else {
-        ctx.translate(w * 0.5, h * 0.5);
-        ctx.rotate(r0 * Math.PI * 0.5);
-        ctx.translate(-w * 0.5, -h * 0.5);
-        if (w >= h) {
-          ctx.moveTo(x0, h * 0.5);
-          ctx.lineTo(x1, h * 0.5);
-        } else {
-          ctx.moveTo(w * 0.5, y0);
-          ctx.lineTo(w * 0.5, y1);
+          var ccx = (seg.cx - box.x0) * scale;
+          var ccz = (seg.cz - box.z0) * scale;
+          var rr = seg.r * scale;
+          var sx = ccx + Math.cos(seg.a0) * rr;
+          var sy = ccz + Math.sin(seg.a0) * rr;
+          if (!started) {
+            ctx.moveTo(sx, sy);
+            started = true;
+          } else {
+            ctx.lineTo(sx, sy);
+          }
+          ctx.arc(ccx, ccz, rr, seg.a0, seg.a1, seg.a1 >= seg.a0);
         }
       }
     }
     function strokeTrack() {
-      ctx.lineCap = "round";
+      ctx.lineCap = "butt";
       ctx.lineJoin = "round";
       ctx.setLineDash([]);
-      var g = iconGeom();
-      var ribbon = g.ribbon;
-      var m = g.m;
-      ctx.save();
+      var ribbon = unit * ((ASPHALT * 2) / MAP_CELL);
       ctx.strokeStyle = "#8d97a6";
-      ctx.lineWidth = ribbon * 1.55;
-      iconPath();
+      ctx.lineWidth = ribbon * 1.75;
+      trackPath();
       ctx.stroke();
-      ctx.restore();
-      ctx.save();
       ctx.strokeStyle = "#ff2038";
-      ctx.lineWidth = ribbon * 1.18;
-      iconPath();
+      ctx.lineWidth = ribbon * 1.42;
+      trackPath();
       ctx.stroke();
-      ctx.restore();
-      ctx.save();
       ctx.strokeStyle = "#fff6ee";
-      ctx.lineWidth = ribbon * 1.18;
-      ctx.setLineDash([m * 0.07, m * 0.07]);
-      iconPath();
+      ctx.lineWidth = ribbon * 1.42;
+      ctx.setLineDash([unit * 0.07, unit * 0.07]);
+      trackPath();
       ctx.stroke();
-      ctx.restore();
-      ctx.save();
+      ctx.setLineDash([]);
       ctx.strokeStyle = "#3a3e46";
       ctx.lineWidth = ribbon;
-      iconPath();
+      trackPath();
       ctx.stroke();
-      ctx.restore();
-      ctx.save();
+      ctx.strokeStyle = "#15171b";
+      ctx.lineWidth = Math.max(2, unit * 0.025);
+      trackPath();
+      ctx.stroke();
       ctx.strokeStyle = "#d8d0b8";
-      ctx.lineWidth = Math.max(2, m * 0.03);
-      ctx.setLineDash([m * 0.05, m * 0.04]);
-      iconPath();
+      ctx.lineWidth = Math.max(1, unit * 0.01);
+      ctx.setLineDash([unit * 0.05, unit * 0.04]);
+      trackPath();
       ctx.stroke();
-      ctx.restore();
+      ctx.setLineDash([]);
     }
     if (type === "t") {
       ctx.fillStyle = "#5a4030";
@@ -2380,13 +2356,13 @@
       strokeTrack();
       if (type !== "t") {
         ctx.save();
-        ctx.translate(w * 0.5, h * 0.5);
+        ctx.translate(unit * 0.5, unit * 0.5);
         ctx.rotate((rot || 0) * Math.PI * 0.5);
         ctx.fillStyle = "#ffe566";
         ctx.beginPath();
-        ctx.moveTo(Math.min(w, h) * 0.18, -Math.min(w, h) * 0.035);
-        ctx.lineTo(Math.min(w, h) * 0.28, 0);
-        ctx.lineTo(Math.min(w, h) * 0.18, Math.min(w, h) * 0.035);
+        ctx.moveTo(unit * 0.34, -unit * 0.04);
+        ctx.lineTo(unit * 0.46, 0);
+        ctx.lineTo(unit * 0.34, unit * 0.04);
         ctx.closePath();
         ctx.fill();
         ctx.restore();
@@ -3380,6 +3356,7 @@
     raceTime = 0;
     didPit = false;
     pitTimer = 0;
+    pitHudPct = 0;
     pitFlash = 0;
     pitUsedVisit = false;
     pitServicing = false;
@@ -3551,8 +3528,11 @@
     }
 
     var speed01 = Math.abs(r.speed) / MAX_SPEED;
-    var steerScale = 1 - 0.58 * speed01;
-    var maxYaw = STEER_RATE * steerScale * tireFeel * surface;
+    // Rolling to turn. Parked A/D is dead. More speed = more yaw,
+    // not a tank spin. Reverse uses |speed| so S still unsticks.
+    var roll = Math.abs(r.speed);
+    var yawFromSpeed = roll < 0.35 ? 0 : clamp(roll / 14, 0.42, 1);
+    var maxYaw = STEER_RATE * yawFromSpeed * tireFeel * surface;
     var latDemand = Math.abs(steer) * Math.abs(r.speed) * 0.155;
     var maxLat = MAX_LAT * tireFeel * surface;
     if (!info.grass && (info.name === "hairpin" || info.name === "chicane")) {
@@ -3824,7 +3804,7 @@
       poseCar(r);
       return;
     }
-    if (!inPitLane(r) && !r.pitServicing) {
+    if (!inPitLane(r) && !inPitGrab(r) && !r.pitServicing) {
       r.pitTimer = 0;
       r.pitUsedVisit = false;
     }
@@ -3960,6 +3940,44 @@
     updateLaps(r);
   }
 
+  function hitCarFeel(r, vx, vz, nx, nz, impact) {
+    // n points from the other car toward us.
+    var c = Math.cos(r.heading);
+    var s = Math.sin(r.heading);
+    var fwd = c * nx + s * nz;
+    var side = c * nz - s * nx;
+    var dir = side >= 0 ? 1 : -1;
+    var nose = clamp(-fwd, 0, 1);
+    var tail = clamp(fwd, 0, 1);
+    var hip = 1 - Math.abs(fwd);
+    r.speed = vx * c + vz * s;
+    r.slide = -vx * s + vz * c;
+    if (impact < 8 && tail > 0.4) {
+      r.slide += dir * clamp(impact * 0.18, 0.4, 2.4);
+      r.heading += dir * clamp(impact * 0.003, 0, 0.035);
+      r.hitYawT = 0.08;
+      return;
+    }
+    if (impact > 15 && (hip > 0.35 || nose > 0.55)) {
+      r.speed *= 0.62;
+      r.heading += dir * clamp(impact * 0.022, 0.18, 0.7);
+      r.slide += dir * clamp(impact * 0.28, 4, 12);
+      r.hitYawT = 0.32;
+      return;
+    }
+    if (nose > 0.5) {
+      r.speed *= 0.78;
+      r.slide += dir * clamp(impact * 0.08, 0, 2.2);
+      r.heading += dir * clamp(impact * 0.002, 0, 0.03);
+      r.hitYawT = 0.1;
+      return;
+    }
+    r.speed *= 0.85;
+    r.slide += dir * clamp(impact * 0.1, 0, 2.8);
+    r.heading += dir * clamp(impact * 0.005, 0, 0.05);
+    r.hitYawT = 0.1;
+  }
+
   function hitKeepYaw(r, vx, vz, nx, nz, impact) {
     var c = Math.cos(r.heading);
     var s = Math.sin(r.heading);
@@ -4024,8 +4042,8 @@
     bvx -= j * nx;
     bvz -= j * nz;
     var impact = Math.abs(rel);
-    hitKeepYaw(a, avx, avz, -nx, -nz, impact);
-    hitKeepYaw(b, bvx, bvz, nx, nz, impact);
+    hitCarFeel(a, avx, avz, -nx, -nz, impact);
+    hitCarFeel(b, bvx, bvz, nx, nz, impact);
     poseCar(a);
     poseCar(b);
     if (impact > 4 && !(a.hitFxT > 0) && !(b.hitFxT > 0)) {
@@ -4568,14 +4586,19 @@
     if (hud.tireNum) hud.tireNum.textContent = String(Math.round(tires));
     paintRevs();
 
-    var pitting = state === "racing" && (pitServicing || inPitLane(player));
-    var pct = Math.min(100, Math.round((pitTimer / PIT_HOLD) * 100));
+    var pitting = state === "racing" && (pitServicing || inPitLane(player) || inPitGrab(player));
+    var pct = pitHudPct;
+    if (pitServicing) {
+      var livePct = Math.min(100, Math.round((pitTimer / PIT_HOLD) * 100));
+      if (livePct > pitHudPct) pitHudPct = livePct;
+      pct = pitHudPct;
+    }
     if (hud.pitting) {
       hud.pitting.classList.toggle("hidden", !pitting && pitFlash <= 0);
       if (pitFlash > 0) hud.pitting.textContent = "SERVICED";
       else if (pitServicing) hud.pitting.textContent = "PITTING  " + pct + "%";
-      else if (inPitLane(player) && pitUsedVisit) hud.pitting.textContent = "SERVICED — drive out";
-      else if (inPitLane(player)) hud.pitting.textContent = "PIT LANE";
+      else if ((inPitLane(player) || inPitGrab(player)) && pitUsedVisit) hud.pitting.textContent = "SERVICED — drive out";
+      else if (inPitLane(player) || inPitGrab(player)) hud.pitting.textContent = "PIT LANE";
     }
 
     var warn = "";
@@ -5251,8 +5274,9 @@
       raceTime += simDt;
       revs = 0;
       var input = playerInput();
-      if (!inPitLane(player) && !pitServicing) {
+      if (!inPitLane(player) && !inPitGrab(player) && !pitServicing) {
         pitTimer = 0;
+        pitHudPct = 0;
         pitUsedVisit = false;
       }
       if (pitServicing) {
@@ -5260,13 +5284,16 @@
         player.speed = 0;
         player.slide = 0;
         pitTimer += simDt;
+        if (pitTimer > PIT_HOLD) pitTimer = PIT_HOLD;
+        var nextPct = Math.min(100, Math.round((pitTimer / PIT_HOLD) * 100));
+        if (nextPct > pitHudPct) pitHudPct = nextPct;
         if (pitTimer >= PIT_HOLD) {
           player.fuel = 100;
           player.tires = 100;
           didPit = true;
           pitUsedVisit = true;
           pitServicing = false;
-          pitTimer = 0;
+          pitHudPct = 100;
           pitFlash = 1.2;
         }
       }
@@ -5276,6 +5303,7 @@
       if (!pitServicing && !pitUsedVisit && inPitGrab(player)) {
         pitServicing = true;
         pitTimer = 0;
+        pitHudPct = 0;
         player.speed = 0;
         player.slide = 0;
         poseCar(player);

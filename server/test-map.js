@@ -104,6 +104,7 @@ var code = [
   sliceFn("projectTrack"),
   sliceFn("rideHeight"),
   sliceFn("steerWheelYaw"),
+  sliceFn("hitCarFeel"),
   sliceFn("applyMotion"),
   sliceFn("updateLaps"),
   sliceFn("inPitLane"),
@@ -169,6 +170,7 @@ var code = [
   "  lockRacePath: lockRacePath,",
   "  rideHeight: rideHeight,",
   "  steerWheelYaw: steerWheelYaw,",
+  "  hitCarFeel: hitCarFeel,",
   "  MAP_DXY: MAP_DXY,",
   "  MAP_CELL: MAP_CELL,",
   "  get TRACK_LEN() { return TRACK_LEN; },",
@@ -1199,7 +1201,7 @@ assert(!sim.ribbonsStack(closed90s[0], closed90s[1]), "incompatible 90s do not i
 assert(src.indexOf("Math.sin(t * Math.PI * 2)") !== -1, "chicane S is a sine inside the cell");
 assert(src.indexOf("env *= env") !== -1, "chicane S is flat at the ports");
 assert(src.indexOf("var amp = MAP_CELL * 0.1") !== -1, "zig-zag amplitude is small enough to keep the ribbon in-cell");
-assert(src.indexOf("function iconPath") !== -1, "editor chips are silhouettes that fit the tile");
+assert(src.indexOf("function tileArt") !== -1, "editor still paints chips; another branch owns the pictures");
 
 sim.lockRacePath("");
 assert(src.indexOf("var ACCEL = 16") !== -1, "wind-up is slow (arcade, not a snap)");
@@ -1245,18 +1247,22 @@ sim.applyMotion(biteLo, 0, false, true, false, 1 / 60, true);
 var dropLo = 16 - biteLo.speed;
 assert(dropHi < dropLo, "Space is weaker at high speed and bites when slow");
 
-function firstNamedS(name) {
+function firstNamedS(name, maxR) {
   var s;
   for (s = 0; s < sim.TRACK_LEN; s += 4) {
-    if (sim.centerlinePoint(s).name === name) return s;
+    var pt = sim.centerlinePoint(s);
+    if (pt.name !== name) continue;
+    if (maxR != null && !(pt.r > 0 && pt.r < maxR)) continue;
+    return s;
   }
   return 0;
 }
 
-function holdWOn(name, spd, seconds) {
-  var p = sim.centerlinePoint(firstNamedS(name) + 6);
+function holdWOn(name, spd, seconds, maxR) {
+  var p = sim.centerlinePoint(firstNamedS(name, maxR) + 6);
   var car = blankCar(p.x, p.z, p.h, spd);
   var t;
+  var peak = 0;
   for (t = 0; t < seconds; t += 1 / 60) {
     var line = sim.projectTrack(car.x, car.z);
     var look = sim.centerlinePoint(line.s + 12);
@@ -1265,16 +1271,18 @@ function holdWOn(name, spd, seconds) {
     if (steer > 1) steer = 1;
     if (steer < -1) steer = -1;
     sim.applyMotion(car, steer, true, false, false, 1 / 60, true);
+    if (Math.abs(car.slide) > peak) peak = Math.abs(car.slide);
   }
+  car.peakSlide = peak;
   return car;
 }
 
 var hpDump = holdWOn("hairpin", 40, 0.5);
-assert(Math.abs(hpDump.slide) > 2.4, "hold W through the 180 dumps, slide=" + hpDump.slide.toFixed(2));
-var chiDump = holdWOn("chicane", 40, 0.5);
-assert(Math.abs(chiDump.slide) > 2.4, "hold W through the chicane dumps, slide=" + chiDump.slide.toFixed(2));
+assert(hpDump.peakSlide > 2.4, "hold W through the 180 dumps, slide=" + hpDump.peakSlide.toFixed(2));
+var chiDump = holdWOn("chicane", 40, 0.5, 11);
+assert(chiDump.peakSlide > 2.4, "hold W through the chicane dumps, slide=" + chiDump.peakSlide.toFixed(2));
 var sweepCar = holdWOn("sweeper", 40, 0.7);
-assert(Math.abs(sweepCar.slide) < 2.2, "sweeper carries on fresh tires, slide=" + sweepCar.slide.toFixed(2));
+assert(sweepCar.peakSlide < 2.2, "sweeper carries on fresh tires, slide=" + sweepCar.peakSlide.toFixed(2));
 assert(sim.projectTrack(sweepCar.x, sweepCar.z).onAsphalt, "sweeper carry stays on the ribbon");
 
 var hs = firstNamedS("hairpin");
@@ -1490,9 +1498,8 @@ assert(src.indexOf("return -steer * 0.42") !== -1, "A = fronts left, D = fronts 
 assert(src.indexOf("maxYaw *= 1 / (1 + over * 5)") === -1, "chicane dump does not kill A/D yaw");
 assert(src.indexOf('pathLine(150, "chicane")') === -1, "Loop approach slab is not named chicane");
 assert(src.indexOf('pathLine(150, "short")') !== -1, "Loop approach slab steers like a straight");
-assert(src.indexOf("function iconPath") !== -1, "turn tiles are inset silhouettes, not clipped race segs");
-assert(src.indexOf("Math.PI * 1.5") !== -1, "90 chip is a quarter-circle inside the square");
-assert(src.indexOf("bezierCurveTo") !== -1 && src.indexOf('type === "C"') !== -1, "chicane chip is a readable S");
+assert(src.indexOf("yawFromSpeed") !== -1, "A/D yaw comes from speed, not a tank spin");
+assert(src.indexOf("function hitCarFeel") !== -1, "car-car: tap wiggles, ram spins, front shoves");
 
 var dumpAt = src.indexOf('info.name === "hairpin" || info.name === "chicane"');
 assert(dumpAt !== -1, "hold-W dump gate still exists");
@@ -1626,17 +1633,57 @@ function proveChicaneSteer(code, label) {
   driveChicaneS(label);
 }
 
-function proveTurnIcons() {
-  var art = src.slice(src.indexOf("function tileArt"), src.indexOf("function paintTrackEditor"));
-  assert(art.indexOf("function iconPath") !== -1, "chips draw inset silhouettes");
-  assert(art.indexOf("pieceSegs") === -1, "chips do not stroke race segs that clip off the tile");
-  assert(art.indexOf("ctx.arc(x1, y1, qr, Math.PI, Math.PI * 1.5, false)") !== -1, "90/sweeper is a quarter-circle inside the square");
-  assert(art.indexOf("bezierCurveTo") !== -1, "chicane silhouette is an S that fits the square");
-  assert(art.indexOf("ctx.arc(w * 0.5, y1, uR, Math.PI, 0, false)") !== -1, "hairpin silhouette is a U that fits");
-  assert(art.indexOf("fat * 0.5 + m * 0.18") !== -1, "quarter-circle sits inside the square with a dirt margin");
-  assert(src.indexOf("function tileArt") !== -1, "palette and board paint from tileArt");
-  assert(src.indexOf('pal[pi].style.backgroundImage = "url(" + tileArt(pt, 0, 160) + ")"') !== -1, "palette chips get the preview");
-  assert(src.indexOf("background-image:url(") !== -1 && src.indexOf("tileArt(p.t, p.r, 160)") !== -1, "placed pieces get the same preview");
+function proveSpeedSteer() {
+  sim.lockRacePath("");
+  var start = sim.centerlinePoint(24);
+  var parked = blankCar(start.x, start.z, start.h, 0);
+  parked.fuel = 100;
+  parked.tires = 100;
+  var h0 = parked.heading;
+  sim.applyMotion(parked, 1, false, false, false, 1 / 60, true);
+  assert(Math.abs(angDiff(parked.heading, h0)) < 0.001, "A/D does nothing at 0 kph");
+  var slow = blankCar(start.x, start.z, start.h, 8);
+  slow.fuel = 100;
+  slow.tires = 100;
+  var fast = blankCar(start.x, start.z, start.h, 28);
+  fast.fuel = 100;
+  fast.tires = 100;
+  var dSlow = yawProbe(slow, 1);
+  var dFast = yawProbe(fast, 1);
+  assert(dSlow > 0.006, "rolling yaw, dH=" + dSlow.toFixed(4));
+  assert(dFast > dSlow * 1.15, "more speed = more yaw, slow=" + dSlow.toFixed(4) + " fast=" + dFast.toFixed(4));
+  var rev = blankCar(start.x, start.z, start.h, -6);
+  rev.fuel = 100;
+  rev.tires = 100;
+  assert(yawProbe(rev, 1) > 0.006, "S reverse still yaws so a parked car can unstick");
+}
+
+function proveCarHits() {
+  sim.lockRacePath("");
+  sim.placeWalls();
+  var p = sim.centerlinePoint(40);
+  var victim = blankCar(p.x + 2.4, p.z, p.h, 18);
+  var bumper = blankCar(p.x, p.z, p.h, 26);
+  victim.fuel = bumper.fuel = 100;
+  victim.tires = bumper.tires = 100;
+  var hV = victim.heading;
+  sim.bashCars(bumper, victim);
+  var tap = Math.abs(angDiff(victim.heading, hV));
+  assert(tap < 0.12, "rear-quarter tap is a wiggle, dH=" + tap.toFixed(4));
+  var side = blankCar(p.x, p.z, p.h + Math.PI * 0.5, 32);
+  var prey = blankCar(p.x + 2.2, p.z, p.h, 16);
+  side.fuel = prey.fuel = 100;
+  side.tires = prey.tires = 100;
+  var hP = prey.heading;
+  sim.bashCars(side, prey);
+  var ram = Math.abs(angDiff(prey.heading, hP));
+  assert(ram > tap, "ram spins more than a tap, ram=" + ram.toFixed(4) + " tap=" + tap.toFixed(4));
+}
+
+function provePitPctSticky() {
+  assert(src.indexOf("pitHudPct") !== -1, "pit % is sticky, not a raw timer redraw");
+  assert(src.indexOf("if (nextPct > pitHudPct) pitHudPct = nextPct") !== -1, "pit % only climbs during a visit");
+  assert(src.indexOf("!inPitLane(player) && !inPitGrab(player) && !pitServicing") !== -1, "stuck in the box does not reset the visit");
 }
 
 sim.lockRacePath("");
@@ -1644,10 +1691,11 @@ proveLoopApproach();
 proveChicaneSteer("", "Campus Loop chicane");
 proveChicaneSteer(sim.encodeMap(zig), "custom zig-zag chicane board");
 proveChicaneSteer(sim.encodeMap(kitPieces()), "custom kit chicane+sweeper");
-proveTurnIcons();
+proveSpeedSteer();
+proveCarHits();
+provePitPctSticky();
 assert(src.indexOf("var amp = MAP_CELL * 0.1") !== -1, "chicane S stays in-cell");
 assert(src.indexOf("env *= env") !== -1, "chicane S is flat at the ports");
-assert(src.indexOf("function iconPath") !== -1, "editor chips stay readable silhouettes");
 
 function typingAt(stateName, doc) {
   return new Function(

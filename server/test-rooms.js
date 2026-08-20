@@ -115,7 +115,7 @@ waitHealth()
         assert(html.indexOf('rel="manifest"') !== -1, "web app manifest link");
         assert(html.indexOf("apple-mobile-web-app-capable") !== -1, "iOS home screen capable");
         assert(html.indexOf('apple-mobile-web-app-title" content="SchoolKart"') !== -1, "iOS title");
-        assert(html.indexOf('SK_BUILD = "mp66"') !== -1, "cache bump mp66");
+        assert(html.indexOf('SK_BUILD = "mp67"') !== -1, "cache bump mp67");
         assert(html.indexOf('maxlength="240"') !== -1, "share-string fits a full board");
         assert(html.indexOf('id="title-track"') !== -1, "title label matches Solo load");
         assert(html.indexOf('aria-label="90"') !== -1 && html.indexOf('aria-label="sweeper"') !== -1, "palette has 90 and sweeper chips");
@@ -149,7 +149,7 @@ waitHealth()
           .then(function (sr) {
             return sr.text().then(function (sw) {
               assert(sr.status === 200, "sw 200");
-              assert(sw.indexOf('BUILD = "mp66"') !== -1, "SW build matches cache");
+              assert(sw.indexOf('BUILD = "mp67"') !== -1, "SW build matches cache");
               assert(/cache:\s*"no-store"/.test(sw), "network-first no-store");
               assert(sw.indexOf("websocket") !== -1, "SW leaves websocket alone");
             });
@@ -176,9 +176,9 @@ waitHealth()
                   assert(js.indexOf("maxYaw *= 1 / (1 + over * 5)") === -1, "chicane dump does not freeze A/D");
                   assert(js.indexOf('pathLine(150, "chicane")') === -1, "Loop approach slab is not named chicane");
                   assert(js.indexOf('pathLine(150, "short")') !== -1, "Loop approach slab steers like a straight");
-                  assert(js.indexOf("function iconPath") !== -1 && js.indexOf("function tileArt") !== -1, "turn tiles are inset silhouettes");
-                  assert(js.indexOf("Math.PI * 1.5") !== -1, "90 is a quarter-circle inside the square");
-                  assert(js.indexOf("bezierCurveTo") !== -1, "chicane chip is an S that fits the square");
+                  assert(js.indexOf("yawFromSpeed") !== -1, "steer comes from speed, not a tank");
+                  assert(js.indexOf("function hitCarFeel") !== -1, "car hits: tap / ram / shove");
+                  assert(js.indexOf("pitHudPct") !== -1, "pit % does not bounce while stuck");
                   assert(js.indexOf('lock("landscape")') !== -1, "race locks landscape when the browser allows");
                   assert(js.indexOf('lock("portrait")') === -1, "never lock or default to portrait");
                   assert(js.indexOf("portraitRaceBlock") !== -1, "portrait race is gated, not a vertical drive");
@@ -197,7 +197,7 @@ waitHealth()
                   assert(js.indexOf('info.name === "hairpin" || info.name === "chicane"') !== -1, "hold W through 180 or chicane dumps");
                   assert(js.indexOf("env *= env") !== -1, "chicane S is flat at the ports so ribbons meet on the edge");
                   assert(js.indexOf("var amp = MAP_CELL * 0.1") !== -1, "chicane S is shrunk so the ribbon stays in-cell");
-                  assert(js.indexOf("function iconPath") !== -1, "editor chips are silhouettes that fit");
+                  assert(js.indexOf("function tileArt") !== -1, "editor still paints chips");
                   assert(js.indexOf("function steerWheelYaw") !== -1 && js.indexOf("return -steer * 0.42") !== -1, "A points fronts left, D points right");
                   assert(js.indexOf("function attachNameTag") !== -1 && js.indexOf("function layoutNameTags") !== -1, "halo nametags");
                   assert(!/function attachNameTag\([\s\S]{0,500}new THREE\.Sprite/.test(js), "nametags are mesh billboards, not X-flip-killed sprites");
