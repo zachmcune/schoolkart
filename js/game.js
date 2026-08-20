@@ -792,7 +792,6 @@
   function chicanePts(x, y, r) {
     var w = edgeMid(x, y, (2 + r) & 3);
     var e = edgeMid(x, y, (0 + r) & 3);
-    var c = cellCenter(x, y);
     var fx = e.x - w.x;
     var fz = e.z - w.z;
     var fl = Math.hypot(fx, fz) || 1;
@@ -800,12 +799,25 @@
     fz /= fl;
     var lx = -fz;
     var lz = fx;
-    return [
-      w,
-      { x: c.x + lx * MAP_CELL * 0.22 - fx * MAP_CELL * 0.12, z: c.z + lz * MAP_CELL * 0.22 - fz * MAP_CELL * 0.12 },
-      { x: c.x - lx * MAP_CELL * 0.22 + fx * MAP_CELL * 0.12, z: c.z - lz * MAP_CELL * 0.22 + fz * MAP_CELL * 0.12 },
-      e,
-    ];
+    // Smooth S inside the cell. Flat at both ports so the ribbon meets
+    // the neighbor on the shared edge — a raw sine left at 45° and the
+    // fat asphalt stacked on the next piece. Sharp 3-line zig-zag also
+    // folded the tube over itself.
+    var amp = MAP_CELL * 0.24;
+    var pts = [w];
+    var n = 16;
+    var i;
+    for (i = 1; i < n; i++) {
+      var t = i / n;
+      var px = w.x + (e.x - w.x) * t;
+      var pz = w.z + (e.z - w.z) * t;
+      var env = Math.sin(t * Math.PI);
+      env *= env;
+      var s = Math.sin(t * Math.PI * 2) * env * amp;
+      pts.push({ x: px + lx * s, z: pz + lz * s });
+    }
+    pts.push(e);
+    return pts;
   }
 
   function pieceSegs(p) {
@@ -858,11 +870,12 @@
     }
     if (k === "chicane") {
       var pts = chicanePts(x, y, r);
-      return [
-        lineSeg(pts[3].x, pts[3].z, pts[2].x, pts[2].z, name),
-        lineSeg(pts[2].x, pts[2].z, pts[1].x, pts[1].z, name),
-        lineSeg(pts[1].x, pts[1].z, pts[0].x, pts[0].z, name),
-      ];
+      var segs = [];
+      var ci;
+      for (ci = 0; ci < pts.length - 1; ci++) {
+        segs.push(lineSeg(pts[ci].x, pts[ci].z, pts[ci + 1].x, pts[ci + 1].z, name));
+      }
+      return segs;
     }
     if (k === "hairpin") {
       var hp = portList(p);
@@ -904,6 +917,98 @@
       return [arcSeg(scx, scz, C * 1.5, sa0, sa1, name)];
     }
     return [];
+  }
+
+  function footprintBox(p) {
+    var fp = footprint(p);
+    var x0 = Infinity;
+    var z0 = Infinity;
+    var x1 = -Infinity;
+    var z1 = -Infinity;
+    var i;
+    for (i = 0; i < fp.length; i++) {
+      var o = cellNW(fp[i].x, fp[i].y);
+      if (o.x < x0) x0 = o.x;
+      if (o.z < z0) z0 = o.z;
+      if (o.x + MAP_CELL > x1) x1 = o.x + MAP_CELL;
+      if (o.z + MAP_CELL > z1) z1 = o.z + MAP_CELL;
+    }
+    return { x0: x0, z0: z0, x1: x1, z1: z1 };
+  }
+
+  function pointInBox(x, z, box, pad) {
+    return x >= box.x0 - pad && x <= box.x1 + pad && z >= box.z0 - pad && z <= box.z1 + pad;
+  }
+
+  function ribbonFitsFootprint(p) {
+    if (!p || !MAP_TYPES[p.t] || MAP_TYPES[p.t].kind === "prop") return true;
+    var segs = pieceSegs(p);
+    if (!segs.length) return true;
+    var box = footprintBox(p);
+    var ports = portList(p);
+    var i;
+    var u;
+    var pi;
+    for (i = 0; i < segs.length; i++) {
+      for (u = 0; u <= 1.001; u += 0.2) {
+        var pt = pointOnSeg(segs[i], u > 1 ? 1 : u);
+        var near = false;
+        for (pi = 0; pi < ports.length; pi++) {
+          var pm = edgeMid(ports[pi].x, ports[pi].y, ports[pi].dir);
+          if (Math.hypot(pt.x - pm.x, pt.z - pm.z) < 14) {
+            near = true;
+            break;
+          }
+        }
+        var pad = near ? ASPHALT + 0.8 : 0.9;
+        var nx = -Math.sin(pt.h);
+        var nz = Math.cos(pt.h);
+        if (!pointInBox(pt.x, pt.z, box, pad)) return false;
+        if (!pointInBox(pt.x + nx * ASPHALT, pt.z + nz * ASPHALT, box, pad)) return false;
+        if (!pointInBox(pt.x - nx * ASPHALT, pt.z - nz * ASPHALT, box, pad)) return false;
+      }
+    }
+    return true;
+  }
+
+  function sharedPortPt(a, b) {
+    var pa = portList(a);
+    var pb = portList(b);
+    var i;
+    var j;
+    for (i = 0; i < pa.length; i++) {
+      var ma = edgeMid(pa[i].x, pa[i].y, pa[i].dir);
+      for (j = 0; j < pb.length; j++) {
+        var mb = edgeMid(pb[j].x, pb[j].y, pb[j].dir);
+        if (Math.hypot(ma.x - mb.x, ma.z - mb.z) < 1.2) return ma;
+      }
+    }
+    return null;
+  }
+
+  function ribbonsStack(a, b) {
+    var sa = pieceSegs(a);
+    var sb = pieceSegs(b);
+    if (!sa.length || !sb.length) return false;
+    var port = sharedPortPt(a, b);
+    var i;
+    var u;
+    var j;
+    var v;
+    for (i = 0; i < sa.length; i++) {
+      for (u = 0; u <= 1.001; u += 0.25) {
+        var pa = pointOnSeg(sa[i], u > 1 ? 1 : u);
+        if (port && Math.hypot(pa.x - port.x, pa.z - port.z) < 16) continue;
+        for (j = 0; j < sb.length; j++) {
+          for (v = 0; v <= 1.001; v += 0.25) {
+            var pb = pointOnSeg(sb[j], v > 1 ? 1 : v);
+            if (port && Math.hypot(pb.x - port.x, pb.z - port.z) < 16) continue;
+            if (Math.hypot(pa.x - pb.x, pa.z - pb.z) < ASPHALT * 1.7) return true;
+          }
+        }
+      }
+    }
+    return false;
   }
 
   function emitSeg(seg) {
@@ -2057,6 +2162,10 @@
     var ctx = c.getContext("2d");
     ctx.fillStyle = "#6a655c";
     ctx.fillRect(0, 0, w, h);
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, 0, w, h);
+    ctx.clip();
     var bevel = ctx.createLinearGradient(0, 0, w, h);
     bevel.addColorStop(0, "rgba(255,255,255,0.12)");
     bevel.addColorStop(0.45, "rgba(255,255,255,0)");
@@ -2075,9 +2184,13 @@
         ctx.translate(-u * 0.5, -u * 0.5);
         if (k === "chicane") {
           ctx.moveTo(0, u * 0.5);
-          ctx.lineTo(u * 0.38, u * 0.28);
-          ctx.lineTo(u * 0.62, u * 0.72);
-          ctx.lineTo(u, u * 0.5);
+          var ci;
+          for (ci = 1; ci <= 16; ci++) {
+            var ct = ci / 16;
+            var cenv = Math.sin(ct * Math.PI);
+            cenv *= cenv;
+            ctx.lineTo(ct * u, u * 0.5 - Math.sin(ct * Math.PI * 2) * cenv * u * 0.24);
+          }
         } else {
           ctx.moveTo(0, u * 0.5);
           ctx.lineTo(u, u * 0.5);
@@ -2219,6 +2332,7 @@
         ctx.restore();
       }
     }
+    ctx.restore();
     _tileArt[key] = c.toDataURL();
     return _tileArt[key];
   }

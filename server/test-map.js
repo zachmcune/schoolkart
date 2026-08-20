@@ -137,6 +137,10 @@ var code = [
   "  edgeMid: edgeMid,",
   "  pieceSegs: pieceSegs,",
   "  footprint: footprint,",
+  "  footprintsOverlap: footprintsOverlap,",
+  "  ribbonFitsFootprint: ribbonFitsFootprint,",
+  "  ribbonsStack: ribbonsStack,",
+  "  chicanePts: chicanePts,",
   "  projectTrack: projectTrack,",
   "  applyMotion: applyMotion,",
   "  updateLaps: updateLaps,",
@@ -982,6 +986,67 @@ function proveClean90s(pieces, label, lapFrac) {
 }
 
 proveClean90s(rectPieces(), "rectangle 90s");
+
+function proveModulesFit(pieces, label) {
+  var seen = {};
+  var i;
+  var j;
+  for (i = 0; i < pieces.length; i++) {
+    var fp = sim.footprint(pieces[i]);
+    for (j = 0; j < fp.length; j++) {
+      var key = fp[j].x + "," + fp[j].y;
+      assert(!seen[key], label + " two pieces occupy cell " + key);
+      seen[key] = 1;
+    }
+    if (pieces[i].t === "t") continue;
+    assert(sim.ribbonFitsFootprint(pieces[i]), label + " " + pieces[i].t + " ribbon stays in its cell(s)");
+  }
+  for (i = 0; i < pieces.length; i++) {
+    if (pieces[i].t === "t") continue;
+    for (j = i + 1; j < pieces.length; j++) {
+      if (pieces[j].t === "t") continue;
+      assert(!sim.footprintsOverlap(pieces[i], pieces[j]), label + " editor footprints do not overlap");
+      assert(!sim.ribbonsStack(pieces[i], pieces[j]), label + " 3D ribbons do not stack " + pieces[i].t + "+" + pieces[j].t);
+    }
+  }
+}
+
+var zig = [
+  { t: "r", x: 1, y: 1, r: 0 },
+  { t: "F", x: 2, y: 1, r: 0 },
+  { t: "C", x: 3, y: 1, r: 0 },
+  { t: "r", x: 4, y: 1, r: 1 },
+  { t: "s", x: 4, y: 2, r: 1 },
+  { t: "C", x: 4, y: 3, r: 1 },
+  { t: "r", x: 4, y: 4, r: 2 },
+  { t: "s", x: 3, y: 4, r: 0 },
+  { t: "C", x: 2, y: 4, r: 0 },
+  { t: "r", x: 1, y: 4, r: 3 },
+  { t: "s", x: 1, y: 3, r: 1 },
+  { t: "s", x: 1, y: 2, r: 1 },
+];
+proveModulesFit(rectPieces(), "rectangle 90s");
+proveModulesFit(kitPieces(), "kit 90s+sweeper+chicane");
+proveModulesFit(zig, "chicane S next to 90s and straights");
+var chi = { t: "C", x: 2, y: 2, r: 0 };
+assert(sim.ribbonFitsFootprint(chi), "lone chicane S lives inside its cell");
+var chiPts = sim.chicanePts(2, 2, 0);
+assert(chiPts.length >= 16, "chicane is a smooth S, not a 3-line stack");
+var d0x = chiPts[1].x - chiPts[0].x;
+var d0z = chiPts[1].z - chiPts[0].z;
+assert(Math.abs(d0z) < Math.abs(d0x) * 0.22, "chicane meets the port square, not as a stacked diagonal");
+var neighbor = { t: "s", x: 3, y: 2, r: 0 };
+assert(!sim.ribbonsStack(chi, neighbor), "chicane does not spill onto the next straight");
+var chi2 = { t: "C", x: 3, y: 2, r: 0 };
+assert(!sim.ribbonsStack(chi, chi2), "two chicanes in a row do not stack");
+assert(sim.ribbonFitsFootprint(chi2), "second chicane also stays in its cell");
+var closed90s = [
+  { t: "r", x: 2, y: 2, r: 0 },
+  { t: "r", x: 3, y: 2, r: 0 },
+];
+assert(!sim.ribbonsStack(closed90s[0], closed90s[1]), "incompatible 90s do not interpenetrate");
+assert(src.indexOf("Math.sin(t * Math.PI * 2)") !== -1, "chicane S is a sine inside the cell");
+assert(src.indexOf("env *= env") !== -1, "chicane S is flat at the ports");
 
 sim.lockRacePath("");
 var hs = 0;
