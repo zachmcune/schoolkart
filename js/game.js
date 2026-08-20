@@ -2263,7 +2263,7 @@
     ctx.fillRect(0, 0, w, h);
     function iconGeom() {
       var m = Math.min(w, h);
-      var ribbon = type === "C" ? m * 0.15 : m * 0.11;
+      var ribbon = type === "C" ? m * 0.18 : m * 0.17;
       var fat = ribbon * 1.45;
       // Half the fat stroke plus a dirt margin so the quarter
       // sits INSIDE the square, not kissing the clip edge.
@@ -2273,6 +2273,9 @@
     function iconPath() {
       // Curves live INSIDE the square. A 90 is a quarter-circle
       // in the tile — not a world-scale ribbon and not an L that clips.
+      // Stroke with moveTo+bezier, not arc direction: ctx.arc(…, false)
+      // can take the 270° the long way and clip to a blank grey square
+      // (tiny yellow arrow only). Chicane already drew because it is a bezier.
       ctx.beginPath();
       if (type === "t") return;
       var g = iconGeom();
@@ -2283,30 +2286,57 @@
       var y1 = h - pad;
       var r0 = rot || 0;
       var qr = Math.min(w, h) - pad * 2;
+      var k = 0.55228475;
       if (type === "r" || type === "w") {
         ctx.translate(w * 0.5, h * 0.5);
         ctx.rotate(r0 * Math.PI * 0.5);
         ctx.translate(-w * 0.5, -h * 0.5);
         // π → 3π/2 is the interior 90° (west to north). Never the 270°.
-        ctx.arc(x1, y1, qr, Math.PI, Math.PI * 1.5, false);
+        // ctx.arc(x1, y1, qr, Math.PI, Math.PI * 1.5, false)
+        ctx.moveTo(x1 - qr, y1);
+        if (type === "w") {
+          // Wide arc: quarter-ellipse through the far corner of the square.
+          ctx.quadraticCurveTo(x0, y0, x1, y0);
+        } else {
+          ctx.bezierCurveTo(x1 - qr, y1 - qr * k, x1 - qr * k, y1 - qr, x1, y1 - qr);
+        }
       } else if (type === "H") {
         var uR = Math.min(Math.max(w, h) * 0.5 - pad, Math.min(w, h) - pad * 2);
+        var cx;
+        var cy;
+        // U that fits the footprint. ctx.arc(w * 0.5, y1, uR, Math.PI, 0, false)
         if (r0 === 0) {
-          ctx.arc(w * 0.5, y1, uR, Math.PI, 0, false);
+          cx = w * 0.5;
+          cy = y1;
+          ctx.moveTo(cx - uR, cy);
+          ctx.bezierCurveTo(cx - uR, cy - uR * k, cx - uR * k, cy - uR, cx, cy - uR);
+          ctx.bezierCurveTo(cx + uR * k, cy - uR, cx + uR, cy - uR * k, cx + uR, cy);
         } else if (r0 === 1) {
-          ctx.arc(x0, h * 0.5, uR, -Math.PI * 0.5, Math.PI * 0.5, false);
+          cx = x0;
+          cy = h * 0.5;
+          ctx.moveTo(cx, cy - uR);
+          ctx.bezierCurveTo(cx + uR * k, cy - uR, cx + uR, cy - uR * k, cx + uR, cy);
+          ctx.bezierCurveTo(cx + uR, cy + uR * k, cx + uR * k, cy + uR, cx, cy + uR);
         } else if (r0 === 2) {
-          ctx.arc(w * 0.5, y0, uR, Math.PI, 0, true);
+          cx = w * 0.5;
+          cy = y0;
+          ctx.moveTo(cx - uR, cy);
+          ctx.bezierCurveTo(cx - uR, cy + uR * k, cx - uR * k, cy + uR, cx, cy + uR);
+          ctx.bezierCurveTo(cx + uR * k, cy + uR, cx + uR, cy + uR * k, cx + uR, cy);
         } else {
-          ctx.arc(x1, h * 0.5, uR, Math.PI * 0.5, -Math.PI * 0.5, false);
+          cx = x1;
+          cy = h * 0.5;
+          ctx.moveTo(cx, cy - uR);
+          ctx.bezierCurveTo(cx - uR * k, cy - uR, cx - uR, cy - uR * k, cx - uR, cy);
+          ctx.bezierCurveTo(cx - uR, cy + uR * k, cx - uR * k, cy + uR, cx, cy + uR);
         }
       } else if (type === "C") {
         ctx.translate(w * 0.5, h * 0.5);
         ctx.rotate(r0 * Math.PI * 0.5);
         ctx.translate(-w * 0.5, -h * 0.5);
-        ctx.moveTo(x0, h * 0.5);
-        ctx.bezierCurveTo(x0, y0, w * 0.62, y0, w * 0.5, h * 0.5);
-        ctx.bezierCurveTo(w * 0.38, y1, x1, y1, x1, h * 0.5);
+        ctx.moveTo(x0, h * 0.58);
+        ctx.bezierCurveTo(w * 0.22, y0, w * 0.4, y0, w * 0.5, h * 0.5);
+        ctx.bezierCurveTo(w * 0.6, y1, w * 0.78, y1, x1, h * 0.42);
       } else {
         ctx.translate(w * 0.5, h * 0.5);
         ctx.rotate(r0 * Math.PI * 0.5);

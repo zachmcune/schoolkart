@@ -1633,6 +1633,10 @@ function proveTurnIcons() {
   assert(art.indexOf("ctx.arc(x1, y1, qr, Math.PI, Math.PI * 1.5, false)") !== -1, "90/sweeper is a quarter-circle inside the square");
   assert(art.indexOf("bezierCurveTo") !== -1, "chicane silhouette is an S that fits the square");
   assert(art.indexOf("ctx.arc(w * 0.5, y1, uR, Math.PI, 0, false)") !== -1, "hairpin silhouette is a U that fits");
+  assert(art.indexOf("ctx.moveTo(x1 - qr, y1)") !== -1, "90 starts on the inner west port, not an arc that can clip");
+  assert(art.indexOf("quadraticCurveTo(x0, y0, x1, y0)") !== -1, "sweeper is a wide arc that stays in the square");
+  assert(art.indexOf("ctx.moveTo(cx - uR, cy)") !== -1, "hairpin U is a bezier, not a 270 that clips off");
+  assert(art.indexOf("h * 0.58") !== -1 && art.indexOf("h * 0.42") !== -1, "chicane S is offset, not a flat midline");
   assert(art.indexOf("fat * 0.5 + m * 0.18") !== -1, "quarter-circle sits inside the square with a dirt margin");
   assert(src.indexOf("function tileArt") !== -1, "palette and board paint from tileArt");
   assert(src.indexOf('pal[pi].style.backgroundImage = "url(" + tileArt(pt, 0, 160) + ")"') !== -1, "palette chips get the preview");

@@ -115,7 +115,7 @@ waitHealth()
         assert(html.indexOf('rel="manifest"') !== -1, "web app manifest link");
         assert(html.indexOf("apple-mobile-web-app-capable") !== -1, "iOS home screen capable");
         assert(html.indexOf('apple-mobile-web-app-title" content="SchoolKart"') !== -1, "iOS title");
-        assert(html.indexOf('SK_BUILD = "mp66"') !== -1, "cache bump mp66");
+        assert(html.indexOf('SK_BUILD = "mp67"') !== -1, "cache bump mp67");
         assert(html.indexOf('maxlength="240"') !== -1, "share-string fits a full board");
         assert(html.indexOf('id="title-track"') !== -1, "title label matches Solo load");
         assert(html.indexOf('aria-label="90"') !== -1 && html.indexOf('aria-label="sweeper"') !== -1, "palette has 90 and sweeper chips");
@@ -149,7 +149,7 @@ waitHealth()
           .then(function (sr) {
             return sr.text().then(function (sw) {
               assert(sr.status === 200, "sw 200");
-              assert(sw.indexOf('BUILD = "mp66"') !== -1, "SW build matches cache");
+              assert(sw.indexOf('BUILD = "mp67"') !== -1, "SW build matches cache");
               assert(/cache:\s*"no-store"/.test(sw), "network-first no-store");
               assert(sw.indexOf("websocket") !== -1, "SW leaves websocket alone");
             });
@@ -179,6 +179,8 @@ waitHealth()
                   assert(js.indexOf("function iconPath") !== -1 && js.indexOf("function tileArt") !== -1, "turn tiles are inset silhouettes");
                   assert(js.indexOf("Math.PI * 1.5") !== -1, "90 is a quarter-circle inside the square");
                   assert(js.indexOf("bezierCurveTo") !== -1, "chicane chip is an S that fits the square");
+                  assert(js.indexOf("ctx.moveTo(x1 - qr, y1)") !== -1, "90 chip is a bezier in the square, not a clipped arc");
+                  assert(js.indexOf("quadraticCurveTo(x0, y0, x1, y0)") !== -1, "sweeper chip is a wide arc in the square");
                   assert(js.indexOf('lock("landscape")') !== -1, "race locks landscape when the browser allows");
                   assert(js.indexOf('lock("portrait")') === -1, "never lock or default to portrait");
                   assert(js.indexOf("portraitRaceBlock") !== -1, "portrait race is gated, not a vertical drive");
