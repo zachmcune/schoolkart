@@ -26,8 +26,8 @@ Then visit `http://localhost:8080`.
 | --- | --- |
 | Handling | Brake or you run wide. Stab **the 90**, slow for the **hairpin**, carry the **sweeper** only if tires are fresh. Holding W the whole way loses. |
 | Fuel | The **clock**. Ticks even while coasting. One forced box in 5 laps. Skip it and limp home. |
-| Tires | **Handling**, not a second clock. Push and they go loose — not shredded. |
-| Grass | A **crawl** plus extra wear. Never faster than asphalt, never parked at 0. Miss the peel and you can still roll back on. Holding W on the lawn loses. |
+| Tires | **Handling** (sloppy, run wide) — never a speed cap. Worn tires can still crawl to the box. Only **empty fuel** limps. |
+| Grass | A **crawl** plus extra wear. Never faster than asphalt, never parked at 0. Miss the peel and you can still roll back on. Holding W on the lawn loses. Readable green / sandy runoff — not a black void. |
 | Pit | Real pull-off: peel **LEFT** into a separate pit lane (IN), stop in the teal **BOX**, then pull **OUT**. Service is automatic when you are in the box **and** below a walk for 2.5s. Timer **pauses** if you creep, **resets** if you leave the box or hit **W**. Space is **brake**, not pit hold. One service per visit. **S** reverse unsticks an overshoot. Blur does not zero the timer. |
 
 **Controls:** W / ↑ throttle (also revs on the grid) · **Space = brake** · **S / ↓ reverse** · A D / ← → steer · Enter or Space on the title to grid up.

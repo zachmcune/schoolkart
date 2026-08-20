@@ -392,14 +392,16 @@
   }
 
   function addWorld() {
-    scene.add(new THREE.HemisphereLight(0xffd4a8, 0x5a3824, 0.9));
+    scene.add(new THREE.HemisphereLight(0xffd4a8, 0x3d6a28, 1.05));
     var sun = new THREE.DirectionalLight(0xffc078, 0.85);
     sun.position.set(90, 26, -50);
     scene.add(sun);
 
-    addBox(0, -0.2, 0, 560, 0.4, 560, 0x2f5a20);
-    addBox(40, 0.02, -18, 90, 0.06, 70, 0x3a6a26);
-    var runoff = makeRibbon(ASPHALT + 4.4, 0.04, 0xc9a24e, null);
+    addBox(0, -0.2, 0, 560, 0.4, 560, 0x4e8c32);
+    addBox(40, 0.02, -18, 90, 0.06, 70, 0x5a9a3a);
+    var apron = makeRibbon(ASPHALT + 11, 0.03, 0x6aaa40, null);
+    if (apron) scene.add(apron);
+    var runoff = makeRibbon(ASPHALT + 5.4, 0.045, 0xe0b85a, null);
     if (runoff) scene.add(runoff);
 
     scene.add(makeRibbon(ASPHALT, 0.07, 0x10100e, null));
@@ -749,9 +751,11 @@
 
   function applyMotion(r, steer, throttle, brake, reverse, dt, isPlayer) {
     var info = projectTrack(r.x, r.z);
-    var surface = info.grass ? 0.34 : 1;
+    var surface = info.grass ? 0.5 : 1;
     var tire = clamp(r.tires / 100, 0, 1);
-    var tireFeel = 0.38 + 0.62 * tire;
+    // Tires = sloppy handling on asphalt, never a speed cap. Grass keeps
+    // enough steer to crawl back to the pit even when the rears are gone.
+    var tireFeel = info.grass ? 0.85 : 0.38 + 0.62 * tire;
     var empty = isPlayer && r.fuel <= 0;
     var maxV = empty ? LIMP_SPEED : MAX_SPEED;
     var accel = empty ? LIMP_ACCEL : ACCEL;
