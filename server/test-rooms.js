@@ -115,7 +115,7 @@ waitHealth()
         assert(html.indexOf('rel="manifest"') !== -1, "web app manifest link");
         assert(html.indexOf("apple-mobile-web-app-capable") !== -1, "iOS home screen capable");
         assert(html.indexOf('apple-mobile-web-app-title" content="SchoolKart"') !== -1, "iOS title");
-        assert(html.indexOf('SK_BUILD = "mp71"') !== -1, "cache bump mp71");
+        assert(html.indexOf('SK_BUILD = "mp72"') !== -1, "cache bump mp72");
         assert(html.indexOf('maxlength="240"') !== -1, "share-string fits a full board");
         assert(html.indexOf('id="title-track"') !== -1, "title label matches Solo load");
         assert(html.indexOf('aria-label="90"') !== -1 && html.indexOf('aria-label="sweeper"') !== -1, "palette has 90 and sweeper chips");
@@ -149,7 +149,7 @@ waitHealth()
           .then(function (sr) {
             return sr.text().then(function (sw) {
               assert(sr.status === 200, "sw 200");
-              assert(sw.indexOf('BUILD = "mp71"') !== -1, "SW build matches cache");
+              assert(sw.indexOf('BUILD = "mp72"') !== -1, "SW build matches cache");
               assert(/cache:\s*"no-store"/.test(sw), "network-first no-store");
               assert(sw.indexOf("websocket") !== -1, "SW leaves websocket alone");
             });
@@ -177,7 +177,8 @@ waitHealth()
                   assert(js.indexOf('pathLine(150, "chicane")') === -1, "Loop approach slab is not named chicane");
                   assert(js.indexOf('pathLine(150, "short")') !== -1, "Loop approach slab steers like a straight");
                   assert(js.indexOf("yawFromSpeed") !== -1, "steer comes from speed, not a tank");
-                  assert(js.indexOf("r.unweld") !== -1 && js.indexOf("spaceBrakeArmed") !== -1, "stop then W/S still launch; Space cannot weld");
+                  assert(js.indexOf("r.unweld") !== -1 && js.indexOf("function noteDriveKey") !== -1, "stop then W/S still launch; drive keys are captured");
+                  assert(js.indexOf("function motionKph") !== -1, "speedo follows translation");
                   assert(js.indexOf("function hitCarFeel") !== -1, "car hits: tap / ram / shove");
                   assert(js.indexOf("tap = wiggle, ram = spin") !== -1, "rear-quarter tap wiggles; ram spins");
                   assert(js.indexOf("pitHudPct") !== -1 && js.indexOf("pitAwayT") !== -1, "pit % does not bounce while stuck");

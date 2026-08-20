@@ -1694,6 +1694,17 @@ function proveUnweld() {
   assert(src.indexOf("r.unweld") !== -1, "standstill W/S ignore a stuck brake");
   assert(src.indexOf("spaceBrakeArmed") !== -1, "Space must be released after a stop");
   assert(src.indexOf("fromMove * 0.92") === -1, "speedo matches motion, not a discounted guess");
+  assert(src.indexOf("function noteDriveKey") !== -1 && src.indexOf("function motionKph") !== -1, "W/S are captured; speedo follows translation");
+}
+
+function proveLoopRibbonNotPit() {
+  sim.lockRacePath("");
+  var s;
+  for (s = 0; s <= 100; s += 10) {
+    var p = sim.centerlinePoint(s);
+    var car = blankCar(p.x, p.z, p.h, 0);
+    assert(!sim.inPitGrab(car), "Campus racing line s=" + s + " is not a pit grab");
+  }
 }
 
 function proveCarHits() {
@@ -1797,6 +1808,7 @@ proveChicaneSteer(sim.encodeMap(zig), "custom zig-zag chicane board");
 proveChicaneSteer(sim.encodeMap(kitPieces()), "custom kit chicane+sweeper");
 proveSpeedSteer();
 proveUnweld();
+proveLoopRibbonNotPit();
 proveCarHits();
 proveTileIcons();
 provePitPctSticky();

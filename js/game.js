@@ -94,6 +94,7 @@
   ];
 
   var keys = Object.create(null);
+  var drive = { up: false, down: false, left: false, right: false, space: false };
   var touchCtl = {
     gas: false,
     brake: false,
@@ -4408,21 +4409,35 @@
     r.mesh.rotation.z = 0;
   }
 
+  function noteDriveKey(e, down) {
+    // Capture-phase. Chromebooks sometimes omit e.code or deliver W only
+    // to a focused share box. Steer is dead at 0; W/S must still land.
+    var c = e.code || "";
+    var k = e.key || "";
+    var letter = k.length === 1 ? k.toLowerCase() : "";
+    if (c) keys[c] = down;
+    if (c === "KeyW" || letter === "w" || c === "ArrowUp") drive.up = down;
+    if (c === "KeyS" || letter === "s" || c === "ArrowDown") drive.down = down;
+    if (c === "KeyA" || letter === "a" || c === "ArrowLeft") drive.left = down;
+    if (c === "KeyD" || letter === "d" || c === "ArrowRight") drive.right = down;
+    if (c === "Space" || k === " " || k === "Spacebar") {
+      drive.space = down;
+      if (!down) spaceBrakeArmed = true;
+    }
+  }
+
   function playerInput() {
     if (portraitRaceBlock()) {
       return { steer: 0, throttle: false, reverse: false, brake: false };
     }
-    var up = keys.ArrowUp || keys.KeyW;
-    var down = keys.ArrowDown || keys.KeyS;
-    var left = keys.ArrowLeft || keys.KeyA;
-    var right = keys.ArrowRight || keys.KeyD;
+    var up = !!(drive.up || keys.ArrowUp || keys.KeyW);
+    var down = !!(drive.down || keys.ArrowDown || keys.KeyS);
+    var left = !!(drive.left || keys.ArrowLeft || keys.KeyA);
+    var right = !!(drive.right || keys.ArrowRight || keys.KeyD);
     var steer = 0;
     if (left) steer += 1;
     if (right) steer -= 1;
-    // Keyboard / Chromebook = no gas/brake overlay. Still not a portrait race.
-    var wantBrake = !!(keys.Space || touchCtl.brake);
-    // After a stop, Space must be released before it bites again.
-    // Chromebooks drop keyup and a held Space welded W/S.
+    var wantBrake = !!(drive.space || keys.Space || touchCtl.brake);
     if (Math.abs(player.speed) <= 0.35) spaceBrakeArmed = false;
     var brake = !!(wantBrake && spaceBrakeArmed && Math.abs(player.speed) > 0.35);
     if (!isPhoneLike()) {
@@ -4688,7 +4703,16 @@
     if (!r) return 0;
     var fromSpeed = Math.abs(r.speed) * 3.15;
     var fromSlide = Math.abs(r.slide || 0) * 3.15;
-    return Math.round(Math.max(fromSpeed, fromSlide * 0.35));
+    return Math.round(Math.max(fromSpeed, fromSlide));
+  }
+
+  function motionKph(r, moved, dt) {
+    var live = speedKph(r);
+    var step = dt > 0.0001 ? dt : 1 / 60;
+    var fromMove = (moved / step) * 3.15;
+    var shown = Math.max(live, fromMove);
+    if (shown < 0.5) return 0;
+    return Math.round(shown);
   }
 
   var _hudX = 0;
@@ -4703,9 +4727,7 @@
     var moved = Math.hypot(player.x - _hudX, player.z - _hudZ);
     _hudX = player.x;
     _hudZ = player.z;
-    var live = speedKph(player);
-    var fromMove = lastDt > 0.0001 ? (moved / lastDt) * 3.15 : 0;
-    if (hud.speed) hud.speed.textContent = String(Math.round(Math.max(live, fromMove)));
+    if (hud.speed) hud.speed.textContent = String(motionKph(player, moved, lastDt));
     if (hud.lap) hud.lap.textContent = player.lap + "/" + LAPS;
     if (hud.time) hud.time.textContent = formatTime(raceTime);
     var fuel = clamp(player.fuel, 0, 100);
@@ -5412,6 +5434,7 @@
         sendNetState();
       }
     } else if (state === "racing") {
+      releaseTypeFocus();
       raceTime += simDt;
       revs = 0;
       var input = playerInput();
@@ -5447,11 +5470,13 @@
       applyMotion(player, input.steer, input.throttle, input.brake, input.reverse, simDt, true);
       bashAllWalls(player);
       emitRacerFx(player, input, simDt, true);
-      if (!pitServicing && (input.throttle || input.reverse) && Math.abs(player.speed) <= 0.35) {
-        if (input.throttle) player.speed += ACCEL * simDt;
+      if (!pitServicing && (input.throttle || input.reverse || drive.up || drive.down) && Math.abs(player.speed) <= 0.35) {
+        if (input.throttle || drive.up) player.speed += ACCEL * simDt;
         else player.speed -= REVERSE_ACCEL * simDt;
       }
-      if (!pitServicing && !pitUsedVisit && inPitGrab(player)) {
+      var ribbon = projectTrack(player.x, player.z);
+      var onRace = ribbon && ribbon.onAsphalt && ribbon.dist < 5.2;
+      if (!pitServicing && !pitUsedVisit && inPitGrab(player) && !onRace) {
         pitServicing = true;
         pitVisit = true;
         player.speed = 0;
@@ -5482,8 +5507,8 @@
         bashAllWalls(cpus[1]);
         emitRacerFx(cpus[0], null, simDt, false);
         emitRacerFx(cpus[1], null, simDt, false);
-        if (!pitServicing && (input.throttle || input.reverse) && Math.abs(player.speed) <= 0.35) {
-          if (input.throttle) player.speed += ACCEL * simDt;
+        if (!pitServicing && (input.throttle || input.reverse || drive.up || drive.down) && Math.abs(player.speed) <= 0.35) {
+          if (input.throttle || drive.up) player.speed += ACCEL * simDt;
           else player.speed -= REVERSE_ACCEL * simDt;
         }
       }
@@ -5849,6 +5874,7 @@
     if (!el) return;
     el.addEventListener("keydown", function (e) {
       if (state === "start" || state === "racing") {
+        noteDriveKey(e, true);
         if (
           e.code === "KeyW" ||
           e.code === "KeyA" ||
@@ -5890,8 +5916,8 @@
       }
       return;
     }
-    keys[e.code] = down;
-    if (e.code === "Space") {
+    noteDriveKey(e, down);
+    if (e.code === "Space" || e.key === " " || e.key === "Spacebar") {
       if (!down || !e.repeat) spaceBrakeArmed = true;
     }
     if (down) {
@@ -5940,6 +5966,20 @@
     }
   }
 
+  window.addEventListener(
+    "keydown",
+    function (e) {
+      noteDriveKey(e, true);
+    },
+    true
+  );
+  window.addEventListener(
+    "keyup",
+    function (e) {
+      noteDriveKey(e, false);
+    },
+    true
+  );
   window.addEventListener("keydown", function (e) {
     onKey(e, true);
   });
@@ -5948,6 +5988,7 @@
   });
   window.addEventListener("blur", function () {
     keys = Object.create(null);
+    drive.up = drive.down = drive.left = drive.right = drive.space = false;
     spaceBrakeArmed = true;
     touchCtl.pads = {};
     touchCtl.gas = false;
