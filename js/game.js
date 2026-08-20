@@ -653,45 +653,144 @@
     to: null,
   };
 
-  function skyBox(x, y, z, w, h, d, color, parent) {
-    var mesh = new THREE.Mesh(
-      new THREE.BoxGeometry(w, h, d),
-      new THREE.MeshBasicMaterial({ color: color })
-    );
-    mesh.position.set(x, y, z);
-    (parent || scene).add(mesh);
-    return mesh;
+  function skyMat(color) {
+    return new THREE.MeshBasicMaterial({ color: color, side: THREE.DoubleSide });
+  }
+
+  function makeBlimpMesh() {
+    var g = new THREE.Group();
+    var hullPts = [
+      new THREE.Vector2(0.02, 10.4),
+      new THREE.Vector2(1.5, 8.8),
+      new THREE.Vector2(2.9, 6.4),
+      new THREE.Vector2(3.9, 3.4),
+      new THREE.Vector2(4.2, 0.5),
+      new THREE.Vector2(3.8, -2.6),
+      new THREE.Vector2(2.7, -5.6),
+      new THREE.Vector2(1.45, -8.2),
+      new THREE.Vector2(0.55, -10.4),
+      new THREE.Vector2(0.02, -11.4),
+    ];
+    var hull = new THREE.Mesh(new THREE.LatheGeometry(hullPts, 8), skyMat(0x2ec8c3));
+    hull.rotation.z = -Math.PI * 0.5;
+    g.add(hull);
+    var bandPts = [
+      new THREE.Vector2(4.05, 1.35),
+      new THREE.Vector2(4.32, 0.45),
+      new THREE.Vector2(4.32, -0.55),
+      new THREE.Vector2(4.05, -1.4),
+    ];
+    var band = new THREE.Mesh(new THREE.LatheGeometry(bandPts, 8), skyMat(0xf4efe6));
+    band.rotation.z = -Math.PI * 0.5;
+    g.add(band);
+
+    var finShape = new THREE.Shape();
+    finShape.moveTo(0, 0);
+    finShape.lineTo(-4.2, 0.35);
+    finShape.lineTo(-1.6, 4.6);
+    finShape.lineTo(0.2, 0.15);
+    var finGeo = new THREE.ShapeGeometry(finShape);
+    var finMat = skyMat(0xff2d8a);
+    function addFin(roll) {
+      var fin = new THREE.Mesh(finGeo, finMat);
+      fin.position.set(-9.6, 0, 0);
+      fin.rotation.x = roll;
+      g.add(fin);
+    }
+    addFin(0);
+    addFin(Math.PI);
+    addFin(Math.PI * 0.5);
+    addFin(-Math.PI * 0.5);
+
+    var gond = new THREE.Group();
+    var cabin = new THREE.Mesh(new THREE.CylinderGeometry(0.72, 0.78, 3.4, 6), skyMat(0xf4efe6));
+    cabin.rotation.z = Math.PI * 0.5;
+    gond.add(cabin);
+    var cabinNose = new THREE.Mesh(new THREE.SphereGeometry(0.72, 6, 4), skyMat(0xf4efe6));
+    cabinNose.position.x = 1.7;
+    gond.add(cabinNose);
+    var cabinTail = new THREE.Mesh(new THREE.SphereGeometry(0.78, 6, 4), skyMat(0xf4efe6));
+    cabinTail.position.x = -1.7;
+    gond.add(cabinTail);
+    var windowMat = skyMat(0x1a3040);
+    var w;
+    for (w = -1; w <= 1; w++) {
+      var pane = new THREE.Mesh(new THREE.PlaneGeometry(0.55, 0.38), windowMat);
+      pane.position.set(w * 0.85, 0.08, 0.74);
+      gond.add(pane);
+    }
+    gond.position.set(1.6, -4.7, 0);
+    g.add(gond);
+    g.scale.setScalar(1.15);
+    return g;
+  }
+
+  function makePlaneMesh() {
+    var g = new THREE.Group();
+    var body = skyMat(0xff2d8a);
+    var paint = skyMat(0xf4efe6);
+    var fuse = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.46, 6.4, 7), body);
+    fuse.rotation.z = Math.PI * 0.5;
+    g.add(fuse);
+    var nose = new THREE.Mesh(new THREE.ConeGeometry(0.46, 2.1, 7), body);
+    nose.rotation.z = -Math.PI * 0.5;
+    nose.position.x = 4.2;
+    g.add(nose);
+    var tailCone = new THREE.Mesh(new THREE.ConeGeometry(0.4, 1.8, 7), body);
+    tailCone.rotation.z = Math.PI * 0.5;
+    tailCone.position.x = -4.05;
+    g.add(tailCone);
+    var canopy = new THREE.Mesh(new THREE.SphereGeometry(0.42, 6, 4), skyMat(0x7ee0ff));
+    canopy.scale.set(1.55, 0.72, 0.78);
+    canopy.position.set(1.15, 0.42, 0);
+    g.add(canopy);
+
+    var wingSh = new THREE.Shape();
+    wingSh.moveTo(0.55, 0);
+    wingSh.lineTo(-0.65, 6.4);
+    wingSh.lineTo(1.45, 6.4);
+    wingSh.lineTo(2.15, 0);
+    var wingGeo = new THREE.ShapeGeometry(wingSh);
+    var wingR = new THREE.Mesh(wingGeo, paint);
+    wingR.rotation.x = -Math.PI * 0.5;
+    wingR.position.set(0.15, 0, 0);
+    g.add(wingR);
+    var wingL = wingR.clone();
+    wingL.scale.z = -1;
+    g.add(wingL);
+
+    var stabSh = new THREE.Shape();
+    stabSh.moveTo(0.15, 0);
+    stabSh.lineTo(-0.35, 2.15);
+    stabSh.lineTo(0.85, 2.15);
+    stabSh.lineTo(1.15, 0);
+    var stabGeo = new THREE.ShapeGeometry(stabSh);
+    var stabR = new THREE.Mesh(stabGeo, paint);
+    stabR.rotation.x = -Math.PI * 0.5;
+    stabR.position.set(-3.35, 0.12, 0);
+    g.add(stabR);
+    var stabL = stabR.clone();
+    stabL.scale.z = -1;
+    g.add(stabL);
+
+    var vSh = new THREE.Shape();
+    vSh.moveTo(0, 0);
+    vSh.lineTo(-1.55, 0.15);
+    vSh.lineTo(-0.35, 2.35);
+    var vFin = new THREE.Mesh(new THREE.ShapeGeometry(vSh), body);
+    vFin.position.set(-3.45, 0.2, 0);
+    g.add(vFin);
+
+    g.scale.setScalar(1.25);
+    return g;
   }
 
   function addSkyBits() {
-    var blimp = new THREE.Group();
-    var hull = new THREE.Mesh(
-      new THREE.SphereGeometry(6.4, 6, 5),
-      new THREE.MeshBasicMaterial({ color: 0x2ec8c3 })
-    );
-    hull.scale.set(2.5, 1, 1);
-    blimp.add(hull);
-    var band = new THREE.Mesh(
-      new THREE.SphereGeometry(6.5, 6, 5),
-      new THREE.MeshBasicMaterial({ color: 0xf4efe6 })
-    );
-    band.scale.set(2.45, 0.26, 0.9);
-    blimp.add(band);
-    skyBox(-14.2, 2.1, 0, 2.6, 4.4, 0.28, 0xff2d8a, blimp);
-    skyBox(-14.2, 0, 2.6, 2.6, 0.28, 3.6, 0xff2d8a, blimp);
-    skyBox(-14.2, 0, -2.6, 2.6, 0.28, 3.6, 0xff2d8a, blimp);
-    skyBox(1.2, -5.6, 0, 5.2, 1.8, 2.1, 0xf4efe6, blimp);
-    scene.add(blimp);
-    sky.blimp = blimp;
-
-    var plane = new THREE.Group();
-    skyBox(0, 0, 0, 4.2, 0.7, 0.7, 0xff2d8a, plane);
-    skyBox(0.6, 0.08, 0, 1.8, 0.12, 5.6, 0xf4efe6, plane);
-    skyBox(-1.7, 0.7, 0, 0.7, 1.5, 0.12, 0xff2d8a, plane);
-    skyBox(-1.7, 0.15, 0, 0.5, 0.12, 1.8, 0xf4efe6, plane);
-    plane.visible = false;
-    scene.add(plane);
-    sky.plane = plane;
+    sky.blimp = makeBlimpMesh();
+    scene.add(sky.blimp);
+    sky.plane = makePlaneMesh();
+    sky.plane.visible = false;
+    scene.add(sky.plane);
 
     sky.trailPos = new Float32Array(8 * 3);
     var trailGeo = new THREE.BufferGeometry();
@@ -758,9 +857,10 @@
       sky.trailPos[i * 3 + 1] = sky.trailPos[(i - 1) * 3 + 1];
       sky.trailPos[i * 3 + 2] = sky.trailPos[(i - 1) * 3 + 2];
     }
-    sky.trailPos[0] = px - Math.cos(sky.plane.rotation.y) * 2.4;
+    var ph = Math.atan2(sky.to.z - sky.from.z, sky.to.x - sky.from.x);
+    sky.trailPos[0] = px - Math.cos(ph) * 6.2;
     sky.trailPos[1] = py;
-    sky.trailPos[2] = pz - Math.sin(-sky.plane.rotation.y) * 2.4;
+    sky.trailPos[2] = pz - Math.sin(ph) * 6.2;
     sky.trail.geometry.attributes.position.needsUpdate = true;
   }
 
