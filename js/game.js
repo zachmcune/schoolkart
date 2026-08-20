@@ -22,7 +22,7 @@
   var LAPS = 5;
   var MAX_SPEED = 48;
   var ACCEL = 26;
-  var BRAKE_DECEL = 54;
+  var BRAKE_DECEL = 26;
   var COAST = 8;
   var REVERSE_ACCEL = 18;
   var REVERSE_MAX = 12;
@@ -129,9 +129,9 @@
   scene.fog = new THREE.Fog(0xffb072, 140, 560);
 
   var camera = new THREE.PerspectiveCamera(
-    60,
+    62,
     window.innerWidth / window.innerHeight,
-    0.35,
+    0.3,
     680
   );
   layoutCamera();
@@ -162,6 +162,7 @@
     lobbyStatus: document.getElementById("lobby-status"),
     lobbyErr: document.getElementById("lobby-err"),
     bootStatus: document.getElementById("boot-status"),
+    mini: document.getElementById("minimap"),
     lights: [
       document.getElementById("rl0"),
       document.getElementById("rl1"),
@@ -343,6 +344,29 @@
     }
     return pointOnSeg(PATH[0], 0);
   }
+
+  var miniPts = [];
+  var miniBox = { x0: 0, z0: 0, x1: 0, z1: 0 };
+  (function bakeMini() {
+    var n = 140;
+    var i;
+    var x0 = Infinity;
+    var z0 = Infinity;
+    var x1 = -Infinity;
+    var z1 = -Infinity;
+    for (i = 0; i <= n; i++) {
+      var p = centerlinePoint((i / n) * TRACK_LEN);
+      miniPts.push(p.x, p.z);
+      if (p.x < x0) x0 = p.x;
+      if (p.z < z0) z0 = p.z;
+      if (p.x > x1) x1 = p.x;
+      if (p.z > z1) z1 = p.z;
+    }
+    miniBox.x0 = x0;
+    miniBox.z0 = z0;
+    miniBox.x1 = x1;
+    miniBox.z1 = z1;
+  })();
 
   function projectTrack(px, pz) {
     var best = null;
@@ -928,12 +952,20 @@
     return new THREE.CanvasTexture(c);
   }
 
+  function carMat(color, glow) {
+    return new THREE.MeshLambertMaterial({
+      color: color,
+      emissive: color,
+      emissiveIntensity: glow == null ? 0.26 : glow,
+      side: THREE.DoubleSide,
+    });
+  }
+
   function makeCar(bodyColor, wingColor, num) {
     var g = new THREE.Group();
-    var body = new THREE.MeshLambertMaterial({ color: bodyColor, side: THREE.DoubleSide });
-    var wing = new THREE.MeshLambertMaterial({ color: wingColor || TEAL_DEEP, side: THREE.DoubleSide });
-    var black = new THREE.MeshLambertMaterial({ color: 0x1a1a1a, side: THREE.DoubleSide });
-    var halo = new THREE.MeshLambertMaterial({ color: 0xe8e4dc, side: THREE.DoubleSide });
+    var body = carMat(bodyColor, 0.28);
+    var wing = carMat(wingColor || TEAL_DEEP, 0.22);
+    var halo = carMat(0xf4efe6, 0.18);
 
     var nose = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.28, 0.42), body);
     nose.position.set(1.55, 0.38, 0);
@@ -993,18 +1025,23 @@
       [-1.15, 0.3, 0.8, false],
       [-1.15, 0.3, -0.8, false],
     ];
+    var rubber = carMat(0x4a4a4a, 0.12);
+    var sidewall = carMat(0xe6dcc8, 0.32);
+    var rim = carMat(0xf7f3ea, 0.4);
     for (var i = 0; i < spots.length; i++) {
       var holder = new THREE.Group();
       holder.position.set(spots[i][0], spots[i][1], spots[i][2]);
       var spinner = new THREE.Group();
       holder.add(spinner);
-      var mesh = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 0.3, 10), black);
+      var mesh = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 0.26, 10), rubber);
       mesh.rotation.x = Math.PI * 0.5;
       spinner.add(mesh);
-      var spoke = new THREE.Mesh(
-        new THREE.BoxGeometry(0.07, 0.5, 0.07),
-        new THREE.MeshLambertMaterial({ color: 0xe8e4dc, side: THREE.DoubleSide })
-      );
+      var wall = new THREE.Mesh(new THREE.TorusGeometry(0.24, 0.045, 6, 10), sidewall);
+      spinner.add(wall);
+      var disc = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.17, 0.3, 8), rim);
+      disc.rotation.x = Math.PI * 0.5;
+      spinner.add(disc);
+      var spoke = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.3, 0.08), rim);
       spinner.add(spoke);
       g.add(holder);
       wheels.push({ holder: holder, spinner: spinner, front: spots[i][3] });
@@ -1534,6 +1571,80 @@
     hud.warn.textContent = warn;
     hud.warn.classList.toggle("hidden", !warn);
     hud.warn.classList.toggle("late", lateJoinT > 0);
+    paintMini();
+  }
+
+  function miniXY(x, z, w, h, pad) {
+    var bw = miniBox.x1 - miniBox.x0 || 1;
+    var bh = miniBox.z1 - miniBox.z0 || 1;
+    var s = Math.min((w - pad * 2) / bw, (h - pad * 2) / bh);
+    var cx = (miniBox.x0 + miniBox.x1) * 0.5;
+    var cz = (miniBox.z0 + miniBox.z1) * 0.5;
+    return {
+      x: w * 0.5 + (x - cx) * s,
+      y: h * 0.5 - (z - cz) * s,
+    };
+  }
+
+  function paintMiniDot(ctx, x, z, color, r) {
+    var p = miniXY(x, z, ctx.canvas.width, ctx.canvas.height, 10);
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  function paintMini() {
+    if (!hud.mini) return;
+    var ctx = hud.mini.getContext("2d");
+    if (!ctx) return;
+    var w = hud.mini.width;
+    var h = hud.mini.height;
+    ctx.clearRect(0, 0, w, h);
+    ctx.fillStyle = "rgba(18, 12, 8, 0.55)";
+    ctx.beginPath();
+    ctx.arc(w * 0.5, h * 0.5, w * 0.5 - 1, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "#2ec8c3";
+    ctx.lineWidth = 2.2;
+    ctx.beginPath();
+    var i;
+    for (i = 0; i < miniPts.length; i += 2) {
+      var p = miniXY(miniPts[i], miniPts[i + 1], w, h, 10);
+      if (i === 0) ctx.moveTo(p.x, p.y);
+      else ctx.lineTo(p.x, p.y);
+    }
+    ctx.closePath();
+    ctx.stroke();
+    if (!mpMode) {
+      paintMiniDot(ctx, cpus[0].x, cpus[0].z, "#d4a017", 3);
+      paintMiniDot(ctx, cpus[1].x, cpus[1].z, "#b4532e", 3);
+    } else {
+      Object.keys(remotes).forEach(function (id) {
+        var r = remotes[id].r;
+        var slot = 1;
+        if (net && net.players) {
+          for (var n = 0; n < net.players.length; n++) {
+            if (net.players[n].id === id) slot = net.players[n].slot;
+          }
+        }
+        var hex = (SKINS[slot % SKINS.length].color | 0).toString(16);
+        while (hex.length < 6) hex = "0" + hex;
+        paintMiniDot(ctx, r.x, r.z, "#" + hex, 3);
+      });
+    }
+    var you = miniXY(player.x, player.z, w, h, 10);
+    ctx.save();
+    ctx.translate(you.x, you.y);
+    ctx.rotate(-player.heading);
+    ctx.fillStyle = "#2ec8c3";
+    ctx.beginPath();
+    ctx.moveTo(5.2, 0);
+    ctx.lineTo(-3.4, 3.2);
+    ctx.lineTo(-3.4, -3.2);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
   }
 
   function chaseCamera(dt) {
@@ -1542,15 +1653,15 @@
       Math.cos(player.heading - camFollowH)
     );
     camFollowH += turn * (1 - Math.pow(0.018, dt));
-    var back = 7.2;
-    var up = 2.55;
+    var back = 5.15;
+    var up = 2.12;
     var fx = Math.cos(camFollowH);
     var fz = Math.sin(camFollowH);
     var desired = new THREE.Vector3(player.x - fx * back, up, player.z - fz * back);
     desired.y = up;
     var lx = Math.cos(player.heading);
     var lz = Math.sin(player.heading);
-    var look = new THREE.Vector3(player.x + lx * 16, 0.9, player.z + lz * 16);
+    var look = new THREE.Vector3(player.x + lx * 17, 0.85, player.z + lz * 17);
     camera.up.set(0, 1, 0);
     if (camera.position.y > 10 || camera.position.distanceToSquared(desired) > 220) {
       camera.position.copy(desired);
