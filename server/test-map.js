@@ -74,6 +74,11 @@ var code = [
   "var launchMul = 1;",
   "var LAPS = 5;",
   "var TRACK_CODE_MAX = 240;",
+  "var HIT_RADIUS = 3.45;",
+  "var WALLS = [];",
+  "var TYPE_ENC = { s: 'A', S: 'L', r: 'R', w: 'W', H: 'H', C: 'C', F: 'F', P: 'P', t: 'T' };",
+  "var TYPE_DEC = { A:'s', a:'s', s:'s', L:'S', S:'S', R:'r', r:'r', W:'w', w:'w', H:'H', h:'H', C:'C', c:'C', F:'F', f:'F', P:'P', p:'P', T:'t', t:'t' };",
+  sliceFn("canonType"),
   sliceFn("clamp"),
   sliceFn("inRect"),
   sliceFn("onPitPavement"),
@@ -101,11 +106,26 @@ var code = [
   sliceFn("inPitGrab"),
   sliceFn("cleanTrack"),
   sliceFn("cellsInBoard"),
+  sliceFn("isCustomCircuit"),
+  sliceFn("menuTrackName"),
+  sliceFn("speedKph"),
+  sliceFn("customGridPose"),
+  sliceFn("pointOnSeg"),
+  sliceFn("centerlinePoint"),
+  sliceFn("wallSeg"),
+  sliceFn("skipLeftBarrier"),
+  sliceFn("wallKindFor"),
+  sliceFn("placeWalls"),
+  "function puffHit() {}",
   "function poseCar(r) { if (r.mesh && r.mesh.position) r.mesh.position.set(r.x, 0, r.z); }",
+  sliceFn("bashCars"),
+  sliceFn("bashWall"),
+  sliceFn("bashAllWalls"),
   "return {",
   "  rebuildPath: rebuildPath,",
   "  encodeMap: encodeMap,",
   "  parseMap: parseMap,",
+  "  canonType: canonType,",
   "  portList: portList,",
   "  edgeMid: edgeMid,",
   "  pieceSegs: pieceSegs,",
@@ -116,12 +136,20 @@ var code = [
   "  inPitGrab: inPitGrab,",
   "  cleanTrack: cleanTrack,",
   "  cellsInBoard: cellsInBoard,",
+  "  customGridPose: customGridPose,",
+  "  placeWalls: placeWalls,",
+  "  bashAllWalls: bashAllWalls,",
+  "  bashCars: bashCars,",
+  "  speedKph: speedKph,",
+  "  menuTrackName: menuTrackName,",
+  "  isCustomCircuit: isCustomCircuit,",
   "  MAP_DXY: MAP_DXY,",
   "  MAP_CELL: MAP_CELL,",
   "  get TRACK_LEN() { return TRACK_LEN; },",
   "  get MAP_SURF() { return MAP_SURF; },",
   "  get MAP_CLOSED() { return MAP_CLOSED; },",
   "  get PATH() { return PATH; },",
+  "  get WALLS() { return WALLS; },",
   "  get PIT_META() { return PIT_META; },",
   "  get RIBBON_SEGS() { return RIBBON_SEGS; },",
   "  get trackCode() { return trackCode; },",
@@ -269,6 +297,7 @@ sim.setTrack(codeMap);
 sim.rebuildPath(codeMap);
 assert(sim.MAP_SURF.length >= 10, "surface rebuilt from pieces, got " + sim.MAP_SURF.length);
 assert(sim.TRACK_LEN > 400 && sim.TRACK_LEN < 1200, "rectangle length is the placed loop, not Campus ~1979: " + sim.TRACK_LEN);
+var rectLen = sim.TRACK_LEN;
 
 var onN = 0;
 var offN = 0;
@@ -456,7 +485,148 @@ assert(sim.parseMap(packed).length === 48, "reload/parse keeps every tree");
 var undone = sim.parseMap(sim.encodeMap(rectPieces()));
 assert(undone.length === 10 && undone[1].t === "F", "encode/decode persist type+cell+rot");
 
-var customLen = sim.TRACK_LEN;
+function fourStraightFourCorner() {
+  return [
+    { t: "r", x: 2, y: 1, r: 0 },
+    { t: "s", x: 3, y: 1, r: 0 },
+    { t: "r", x: 4, y: 1, r: 1 },
+    { t: "s", x: 4, y: 2, r: 1 },
+    { t: "r", x: 4, y: 3, r: 2 },
+    { t: "s", x: 3, y: 3, r: 0 },
+    { t: "r", x: 2, y: 3, r: 3 },
+    { t: "s", x: 2, y: 2, r: 1 },
+  ];
+}
+
+var box = fourStraightFourCorner();
+assert(countFlush(box) === 8, "4-straight + 4-corner rectangle is flush");
+var headings = {};
+var hr;
+for (hr = 0; hr < 4; hr++) {
+  var corner = { t: "r", x: 2, y: 2, r: hr };
+  var ports = sim.portList(corner);
+  headings[ports[0].dir + ":" + ports[1].dir] = 1;
+  var straight = { t: "s", x: 2, y: 2, r: hr };
+  var sPorts = sim.portList(straight);
+  if (hr & 1) {
+    assert(sPorts[0].dir === 1 || sPorts[1].dir === 1, "odd rot is vertical N/S");
+  } else {
+    assert(sPorts[0].dir === 0 || sPorts[1].dir === 0, "even rot is horizontal E/W");
+  }
+}
+assert(Object.keys(headings).length === 4, "90s hit all 4 headings N/E/S/W, got " + Object.keys(headings).join(" "));
+sim.setTrack(sim.encodeMap(box));
+sim.rebuildPath(sim.encodeMap(box));
+assert(sim.MAP_CLOSED, "4+4 rectangle closes and laps");
+
+function driveWorld(pieces, seconds, label, closed) {
+  var code = sim.encodeMap(pieces);
+  sim.setTrack(code);
+  sim.rebuildPath(code);
+  sim.placeWalls();
+  var pose = sim.customGridPose();
+  assert(pose, label + " has a spawn on the placed asphalt");
+  var racer = blankCar(pose.x, pose.z, pose.h, 12);
+  racer.fuel = 100;
+  racer.tires = 100;
+  var x0 = racer.x;
+  var z0 = racer.z;
+  var tDrive;
+  var onFrames = 0;
+  var frames = 0;
+  var maxKph = 0;
+  for (tDrive = 0; tDrive < seconds; tDrive += 1 / 60) {
+    var line = sim.projectTrack(racer.x, racer.z);
+    var err = angDiff(line.h, racer.heading);
+    if (line.dist > 1.2) {
+      var home = Math.atan2(line.z - racer.z, line.x - racer.x);
+      err = angDiff(home, racer.heading) * 0.65 + err * 0.35;
+    }
+    var steer = err * 1.8;
+    if (steer > 1) steer = 1;
+    if (steer < -1) steer = -1;
+    var brake = line.grass || line.dist > 8.2;
+    sim.applyMotion(racer, steer, !brake, brake, false, 1 / 60, true);
+    sim.bashAllWalls(racer);
+    frames += 1;
+    var now = sim.projectTrack(racer.x, racer.z);
+    if (now.onAsphalt) onFrames += 1;
+    var kNow = sim.speedKph(racer);
+    if (kNow > maxKph) maxKph = kNow;
+  }
+  var moved = Math.hypot(racer.x - x0, racer.z - z0);
+  var kph = sim.speedKph(racer);
+  var endHit = sim.projectTrack(racer.x, racer.z);
+  assert(racer.speed > 8 && maxKph > 40, label + " must actually drive, speed=" + racer.speed + " maxKph=" + maxKph);
+  assert(moved > 28, label + " car must move in the 3D world, moved=" + moved);
+  assert(kph > 20 || maxKph > 40, label + " speedo must match velocity, kph=" + kph + " max=" + maxKph);
+  if (closed) {
+    assert(onFrames / frames > 0.8, label + " must stay on placed asphalt, on=" + onFrames + "/" + frames + " endDist=" + endHit.dist);
+    assert(!endHit.grass, label + " must not be invisible off-track/grass at end");
+  } else {
+    assert(onFrames > 40 && maxKph > 40, label + " open/messy still drives on placed asphalt, on=" + onFrames + " maxKph=" + maxKph);
+    if (endHit.dist > 12.4) {
+      assert(endHit.grass, label + " leaving the ribbon is visible grass, not invisible off-track");
+    }
+  }
+  return { racer: racer, moved: moved, kph: kph, walls: sim.WALLS.length };
+}
+
+var rectDrive = driveWorld(rectPieces(), 2.4, "closed rectangle", true);
+var messyPieces = [
+  { t: "F", x: 1, y: 1, r: 0 },
+  { t: "S", x: 2, y: 1, r: 0 },
+  { t: "r", x: 4, y: 1, r: 1 },
+  { t: "s", x: 4, y: 2, r: 1 },
+  { t: "w", x: 5, y: 1, r: 0 },
+  { t: "t", x: 0, y: 0, r: 0 },
+  { t: "t", x: 7, y: 5, r: 0 },
+  { t: "C", x: 0, y: 4, r: 2 },
+  { t: "H", x: 6, y: 4, r: 0 },
+];
+assert(messyPieces.length === 9, "messy board is 9 pieces");
+var messyCode = sim.encodeMap(messyPieces);
+assert(messyCode.indexOf("W") !== -1 && messyCode.indexOf("T") !== -1 && messyCode.indexOf("L") !== -1, "share-string encodes long/W and tree/T");
+var upper = messyCode.toUpperCase();
+assert(sim.cleanTrack(upper) === upper, "cleanTrack keeps W and T when Chromebook uppercases");
+var back = sim.parseMap(sim.cleanTrack(upper));
+assert(back.length === 9, "round-trip keeps every piece including long/W and tree/T, got " + back.length);
+assert(
+  back.filter(function (p) {
+    return p.t === "t";
+  }).length === 2,
+  "trees survive uppercase share-string"
+);
+assert(
+  back.filter(function (p) {
+    return p.t === "S" || p.t === "w";
+  }).length === 2,
+  "long and sweeper survive uppercase share-string"
+);
+var messyDrive = driveWorld(messyPieces, 2.2, "messy layout", false);
+
+sim.setTrack(messyCode);
+assert(sim.menuTrackName() === "CUSTOM CIRCUIT", "menu label is CUSTOM when Solo loads custom");
+sim.setTrack("");
+sim.rebuildPath("");
+assert(sim.menuTrackName() === "CAMPUS LOOP", "menu label is CAMPUS LOOP when Solo loads Loop");
+
+var aCar = blankCar(0, 0, 0, 20);
+var bCar = blankCar(0.4, 0.2, 0, 20);
+sim.bashCars(aCar, bCar);
+sim.bashCars(aCar, bCar);
+sim.bashCars(aCar, bCar);
+assert(Math.hypot(aCar.x - bCar.x, aCar.z - bCar.z) >= 3.2, "bots/player cannot occupy the same space");
+
+var loopCarSpd = blankCar(0, -80, 0, 30);
+assert(sim.speedKph(loopCarSpd) === Math.round(30 * 3.15), "speedo matches velocity, not a stuck 0");
+
+assert(src.indexOf("_rotLock") !== -1, "rotate is debounced so one tap is 90 not 180");
+assert(src.indexOf("rotateSelected();") !== -1 && !/tileRot\.addEventListener\("click"[\s\S]{0,80}rotateSelected/.test(src), "Rotate button does not double-fire");
+assert(src.indexOf("title-track") !== -1, "title menu label is live");
+assert(/#title-screen[\s\S]{0,180}overflow-y:\s*auto/.test(fs.readFileSync(path.join(__dirname, "..", "css", "style.css"), "utf8")), "title menu scrolls");
+
+var customLen = rectLen;
 sim.setTrack("");
 sim.rebuildPath("");
 assert(sim.MAP_SURF.length === 0, "Campus Loop clears custom surface");

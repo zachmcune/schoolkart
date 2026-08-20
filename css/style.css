@@ -241,6 +241,17 @@ textarea {
   background: linear-gradient(180deg, rgba(26, 18, 14, 0.22), rgba(26, 18, 14, 0.62));
 }
 
+#title-screen,
+#lobby-screen,
+#finish-screen {
+  justify-content: flex-start;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  padding: 20px 16px 48px;
+}
+
 .screen h1 {
   margin: 0;
   font-size: clamp(52px, 10vw, 92px);

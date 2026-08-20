@@ -6,7 +6,7 @@
   <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <!-- sk-build mp42: physical modular-piece tile map -->
+  <!-- sk-build mp43: custom drive + share W/T + 90 rotate -->
   <meta name="theme-color" content="#1a120e" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -16,7 +16,7 @@
   <link rel="manifest" href="manifest.json" />
   <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png" />
   <link rel="apple-touch-icon" href="apple-touch-icon.png" />
-  <link rel="stylesheet" href="css/style.css?v=mp42" />
+  <link rel="stylesheet" href="css/style.css?v=mp43" />
 </head>
 <body>
   <div id="game">
@@ -88,7 +88,7 @@
     <div id="title-screen" class="screen">
       <p class="eyebrow">Arcade F1 · School Chromebooks</p>
       <h1>SCHOOLKART</h1>
-      <p class="sub">Campus Loop · 5 laps · Car #7</p>
+      <p class="sub" id="title-track">Campus Loop · 5 laps · Car #7</p>
       <ul class="tips">
         <li><strong>W</strong> gas · <strong>Space</strong> brake · <strong>S</strong> reverse · A/D steer. Wind the straights. Late into the hairpin = dump. Lift in the chicane. Fresh tires to carry the sweeper.</li>
         <li><strong>Fuel is the clock.</strong> Ticks even if you coast. One box in 5 laps — skip it and limp home.</li>
@@ -200,7 +200,7 @@
       <div class="editor-dock">
         <button type="button" class="tile-rot" id="btn-tile-rot" aria-label="Rotate selected piece 90 degrees">↻ Rotate</button>
         <button type="button" class="tile-trash" id="tile-trash">Trash</button>
-        <input id="track-paste" class="lobby-input name-input track-share" maxlength="240" placeholder="SHARE STRING" autocomplete="off" spellcheck="false" autocapitalize="characters" />
+        <input id="track-paste" class="lobby-input name-input track-share" maxlength="240" placeholder="SHARE STRING" autocomplete="off" spellcheck="false" autocapitalize="off" autocorrect="off" />
       </div>
       <div class="lobby-row">
         <button type="button" class="lobby-btn" id="btn-track-undo">Undo</button>
@@ -221,7 +221,7 @@
   </div>
 
   <script>
-    window.SK_BUILD = "mp42";
+    window.SK_BUILD = "mp43";
     try {
       if (window.caches) {
         caches.keys().then(function (keys) {
@@ -232,7 +232,7 @@
       }
     } catch (e) {}
     if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.register("sw.js?v=mp42").catch(function () {});
+      navigator.serviceWorker.register("sw.js?v=mp43").catch(function () {});
     }
   </script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.160.1/build/three.min.js"></script>
@@ -241,8 +241,8 @@
       document.write('<script src="https://unpkg.com/three@0.160.1/build/three.min.js"><\/script>');
     }
   </script>
-  <script src="js/config.js?v=mp42"></script>
-  <script src="js/net.js?v=mp42"></script>
-  <script src="js/game.js?v=mp42"></script>
+  <script src="js/config.js?v=mp43"></script>
+  <script src="js/net.js?v=mp43"></script>
+  <script src="js/game.js?v=mp43"></script>
 </body>
 </html>

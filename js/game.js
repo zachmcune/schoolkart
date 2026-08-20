@@ -57,7 +57,7 @@
   var TIRE_FLOOR = 22;
   var TEAL = 0x2ec8c3;
   var TEAL_DEEP = 0x148f8c;
-  var HIT_RADIUS = 2.55;
+  var HIT_RADIUS = 3.45;
   var WALLS = [];
   var FX_MAX = 18;
 
@@ -133,6 +133,7 @@
   var pitUsedVisit = false;
   var pitServicing = false;
   var lastTs = 0;
+  var lastDt = 0.016;
   var camYaw = 0.6;
   var camFollowH = 0;
   var revs = 0;
@@ -221,6 +222,7 @@
     speedBtn: document.getElementById("btn-speed"),
     bowieBtn: document.getElementById("btn-add-bowie"),
     circuit: document.getElementById("circuit-name"),
+    titleTrack: document.getElementById("title-track"),
     touchLayer: document.getElementById("touch-layer"),
     revBtn: document.getElementById("rev-btn"),
     mobileHint: document.getElementById("mobile-hint"),
@@ -342,8 +344,38 @@
 
   var TRACK_CODE_MAX = 240;
 
+  // Share tokens must survive Chromebook autocapitalize. Unique letters:
+  // A straight, L long, R 90, W sweeper, H hairpin, C chicane, F start, P pit, T tree.
+  // Legacy s/S/r/w/t still parse. Never strip W or T — that ate 9-piece boards down to 4.
+  var TYPE_ENC = { s: "A", S: "L", r: "R", w: "W", H: "H", C: "C", F: "F", P: "P", t: "T" };
+  var TYPE_DEC = {
+    A: "s",
+    a: "s",
+    s: "s",
+    L: "S",
+    S: "S",
+    R: "r",
+    r: "r",
+    W: "w",
+    w: "w",
+    H: "H",
+    h: "H",
+    C: "C",
+    c: "C",
+    F: "F",
+    f: "F",
+    P: "P",
+    p: "P",
+    T: "t",
+    t: "t",
+  };
+
+  function canonType(t) {
+    return TYPE_DEC[t] || "";
+  }
+
   function cleanTrack(raw) {
-    return String(raw || "").replace(/[^sSLRHCKPtrMFw0-9]/g, "").slice(0, TRACK_CODE_MAX);
+    return String(raw || "").replace(/[^A-Za-z0-9]/g, "").slice(0, TRACK_CODE_MAX);
   }
 
   function addLine(ax, az, bx, bz, name) {
@@ -695,11 +727,11 @@
     if (!code || code.charAt(0) !== "M") return pieces;
     var i;
     for (i = 1; i + 3 < code.length; i += 4) {
-      var t = code.charAt(i);
+      var t = canonType(code.charAt(i));
       var x = +code.charAt(i + 1);
       var y = +code.charAt(i + 2);
       var r = +code.charAt(i + 3);
-      if (!MAP_TYPES[t]) continue;
+      if (!t || !MAP_TYPES[t]) continue;
       if (isNaN(x) || isNaN(y) || isNaN(r) || r < 0 || r > 3) continue;
       var p = { t: t, x: x, y: y, r: r };
       if (!cellsInBoard(footprint(p))) continue;
@@ -713,7 +745,8 @@
     var s = "M";
     var i;
     for (i = 0; i < pieces.length && s.length + 4 <= TRACK_CODE_MAX; i++) {
-      s += pieces[i].t + pieces[i].x + pieces[i].y + pieces[i].r;
+      var t = TYPE_ENC[pieces[i].t] || pieces[i].t;
+      s += t + pieces[i].x + pieces[i].y + (pieces[i].r & 3);
     }
     return s;
   }
@@ -1260,6 +1293,68 @@
     return new THREE.Mesh(geo, ribbonMat(color));
   }
 
+  function segLen(seg) {
+    if (!seg) return 0;
+    if (seg.type === "line") return Math.hypot(seg.bx - seg.ax, seg.bz - seg.az);
+    return Math.abs(seg.a1 - seg.a0) * (seg.r || 0);
+  }
+
+  function makeSurfRibbon(segs, half, y, color, onlyNames, uvStep, offset) {
+    if (!segs || !segs.length) return null;
+    var pos = [];
+    var idx = [];
+    var uvs = uvStep ? [] : null;
+    var used = 0;
+    var off = offset || 0;
+    var sided = offset != null && offset !== 0;
+    var i;
+    for (i = 0; i < segs.length; i++) {
+      var seg = segs[i];
+      if (onlyNames && onlyNames.indexOf(seg.name) === -1) continue;
+      var len = segLen(seg);
+      var n = Math.max(2, Math.round(len / 6));
+      var u;
+      var strip0 = used;
+      for (u = 0; u <= n; u++) {
+        var p = pointOnSeg(seg, u / n);
+        var nx = -Math.sin(p.h);
+        var nz = Math.cos(p.h);
+        if (sided) {
+          pos.push(p.x + nx * (off + half), y, p.z + nz * (off + half));
+          pos.push(p.x + nx * (off - half), y, p.z + nz * (off - half));
+        } else {
+          pos.push(p.x + nx * half, y, p.z + nz * half);
+          pos.push(p.x - nx * half, y, p.z - nz * half);
+        }
+        if (uvs) {
+          uvs.push(used * uvStep, 1);
+          uvs.push(used * uvStep, 0);
+        }
+        if (u > 0) {
+          var a = (used - 1) * 2;
+          idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
+        }
+        used += 1;
+      }
+      if (used === strip0) used = strip0;
+    }
+    if (used < 2) return null;
+    var geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+    geo.setIndex(idx);
+    if (uvs) geo.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
+    var nrm = [];
+    var ni;
+    for (ni = 0; ni < pos.length; ni += 3) nrm.push(0, 1, 0);
+    geo.setAttribute("normal", new THREE.Float32BufferAttribute(nrm, 3));
+    return new THREE.Mesh(geo, ribbonMat(color));
+  }
+
+  function courseBand(half, y, color, onlyNames, uvStep, offset) {
+    if (MAP_SURF.length) return makeSurfRibbon(MAP_SURF, half, y, color, onlyNames, uvStep, offset);
+    return makeRibbon(half, y, color, onlyNames, uvStep, offset);
+  }
+
   var _kerbTex = null;
   function kerbTex() {
     if (_kerbTex) return _kerbTex;
@@ -1342,8 +1437,8 @@
     scene.add(trackRoot);
 
     // Sand ONLY at the 180 and the chicane — discrete, not a beach around the lap.
-    var sandH = makeRibbon(ASPHALT + RUNOFF + 1.45, 0.018, 0xe0c888, ["hairpin"]);
-    var sandC = makeRibbon(ASPHALT + RUNOFF + 1.45, 0.018, 0xe0c888, ["chicane"]);
+    var sandH = courseBand(ASPHALT + RUNOFF + 1.45, 0.018, 0xe0c888, ["hairpin"]);
+    var sandC = courseBand(ASPHALT + RUNOFF + 1.45, 0.018, 0xe0c888, ["chicane"]);
     if (sandH) trackRoot.add(sandH);
     if (sandC) trackRoot.add(sandC);
     // Painted runoff = lighter/cooler grey. Asphalt = darker. Must read apart.
@@ -1352,7 +1447,7 @@
       emissive: 0x2a3038,
       side: THREE.DoubleSide,
     });
-    var runoff = makeRibbon(ASPHALT + RUNOFF, 0.03, runoffMat, null);
+    var runoff = courseBand(ASPHALT + RUNOFF, 0.03, runoffMat, null);
     if (runoff) trackRoot.add(runoff);
 
     var asphaltMat = new THREE.MeshLambertMaterial({
@@ -1360,8 +1455,10 @@
       emissive: 0x101214,
       side: THREE.DoubleSide,
     });
-    trackRoot.add(makeRibbon(ASPHALT, 0.055, asphaltMat, null));
-    trackRoot.add(makeRibbon(0.42, 0.08, 0xd8d2c6, null));
+    var asphalt = courseBand(ASPHALT, 0.055, asphaltMat, null);
+    var line = courseBand(0.42, 0.08, 0xd8d2c6, null);
+    if (asphalt) trackRoot.add(asphalt);
+    if (line) trackRoot.add(line);
     trackRoot.add(makeEdges(ASPHALT - 0.38, 0.22, 0.072, 0xf4efe6));
     trackRoot.add(makeEdges(-(ASPHALT - 0.38), 0.22, 0.072, 0xf4efe6));
     var kerbMat = new THREE.MeshBasicMaterial({
@@ -1372,8 +1469,8 @@
     var kn;
     for (kn = 0; kn < KERB_NAMES.length; kn++) {
       var names = [KERB_NAMES[kn]];
-      var kL = makeRibbon(0.9, 0.09, kerbMat, names, 0.42, +(ASPHALT + 0.55));
-      var kR = makeRibbon(0.9, 0.09, kerbMat, names, 0.42, -(ASPHALT + 0.55));
+      var kL = courseBand(0.9, 0.09, kerbMat, names, 0.42, +(ASPHALT + 0.55));
+      var kR = courseBand(0.9, 0.09, kerbMat, names, 0.42, -(ASPHALT + 0.55));
       if (kL) trackRoot.add(kL);
       if (kR) trackRoot.add(kR);
     }
@@ -1729,10 +1826,36 @@
     addSkyBits();
   }
 
-  function circuitLabel() {
-    if (hud.circuit) {
-      hud.circuit.textContent = trackCode ? "Custom · #7" : "Campus Loop · #7";
+  function isCustomCircuit() {
+    if (!trackCode) return false;
+    if (trackCode.charAt(0) === "M") {
+      var pcs = parseMap(trackCode);
+      var i;
+      for (i = 0; i < pcs.length; i++) {
+        if (pcs[i].t !== "t") return true;
+      }
+      return false;
     }
+    return true;
+  }
+
+  function menuTrackName() {
+    return isCustomCircuit() ? "CUSTOM CIRCUIT" : "CAMPUS LOOP";
+  }
+
+  function refreshMenuTrackLabel() {
+    var name = menuTrackName();
+    if (hud.titleTrack) {
+      hud.titleTrack.textContent = (isCustomCircuit() ? "Custom circuit" : "Campus Loop") + " · 5 laps · Car #7";
+    }
+    if (hud.circuit) {
+      hud.circuit.textContent = (isCustomCircuit() ? "Custom" : "Campus Loop") + " · #7";
+    }
+    return name;
+  }
+
+  function circuitLabel() {
+    refreshMenuTrackLabel();
   }
 
   function persistTrackCode() {
@@ -1967,6 +2090,19 @@
       ctx.fill();
     } else {
       strokeTrack();
+      if (type !== "t") {
+        ctx.save();
+        ctx.translate(unit * 0.5, unit * 0.5);
+        ctx.rotate((rot || 0) * Math.PI * 0.5);
+        ctx.fillStyle = "#ffe566";
+        ctx.beginPath();
+        ctx.moveTo(unit * 0.34, -unit * 0.04);
+        ctx.lineTo(unit * 0.46, 0);
+        ctx.lineTo(unit * 0.34, unit * 0.04);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+      }
       if (type === "P" || type === "F") {
         ctx.save();
         ctx.translate(unit * 0.5, unit * 0.5);
@@ -1989,9 +2125,17 @@
 
   function paintTrackEditor() {
     if (!hud.trackView) return;
-    hud.trackView.textContent = trackCode
-      ? trackCode + (trackCode.charAt(0) === "M" && !MAP_CLOSED ? " · open layout" : "")
-      : "Campus Loop";
+    if (!trackCode) {
+      hud.trackView.textContent = "Campus Loop";
+    } else if (trackCode.charAt(0) === "M") {
+      var n = parseMap(trackCode).length;
+      hud.trackView.textContent = MAP_CLOSED
+        ? "Custom · CLOSED LOOP · " + n + " pcs"
+        : "Custom · OPEN LAYOUT · " + n + " pcs";
+    } else {
+      hud.trackView.textContent = trackCode + " · open layout";
+    }
+    refreshMenuTrackLabel();
     if (hud.trackPaste && document.activeElement !== hud.trackPaste) {
       hud.trackPaste.value = trackCode;
     }
@@ -2173,18 +2317,48 @@
     var hit = pieceAt(x, y, pieces);
     if (!hit) return;
     var tryR = (hit.r + 1) & 3;
-    var next = { t: hit.t, x: hit.x, y: hit.y, r: tryR };
     var others = pieces.filter(function (p) {
       return p !== hit;
     });
-    if (!canSit(next, others)) return;
-    hit.r = tryR;
+    var next = { t: hit.t, x: hit.x, y: hit.y, r: tryR };
+    if (!canSit(next, others)) {
+      var nudge = [
+        [0, 0],
+        [-1, 0],
+        [0, -1],
+        [1, 0],
+        [0, 1],
+        [-1, -1],
+        [1, -1],
+        [-1, 1],
+        [1, 1],
+      ];
+      var ni;
+      var fitted = null;
+      for (ni = 0; ni < nudge.length; ni++) {
+        var cand = { t: hit.t, x: hit.x + nudge[ni][0], y: hit.y + nudge[ni][1], r: tryR };
+        if (canSit(cand, others)) {
+          fitted = cand;
+          break;
+        }
+      }
+      if (!fitted) return;
+      next = fitted;
+    }
+    hit.t = next.t;
+    hit.x = next.x;
+    hit.y = next.y;
+    hit.r = next.r;
     tileSel = mapKey(hit.x, hit.y);
     commitTrack(encodeMap(pieces));
   }
 
+  var _rotLock = 0;
   function rotateSelected() {
     if (!tileSel) return;
+    var now = Date.now();
+    if (now - _rotLock < 220) return;
+    _rotLock = now;
     var p = tileSel.split(",");
     rotatePiece(+p[0], +p[1]);
   }
@@ -2848,8 +3022,6 @@
     if (!pick) return null;
     var segs = pieceSegs(pick);
     if (!segs.length) return null;
-    var ports = portList(pick);
-    var h = ports.length ? ((ports[0].dir + 2) & 3) * Math.PI * 0.5 : 0;
     var mid;
     if (segs[0].type === "line") {
       mid = { x: (segs[0].ax + segs[0].bx) * 0.5, z: (segs[0].az + segs[0].bz) * 0.5 };
@@ -2857,8 +3029,15 @@
       var a = (segs[0].a0 + segs[0].a1) * 0.5;
       mid = { x: segs[0].cx + Math.cos(a) * segs[0].r, z: segs[0].cz + Math.sin(a) * segs[0].r };
     }
+    var race = projectTrack(mid.x, mid.z);
+    var h = race && isFinite(race.h) ? race.h : 0;
     return { x: mid.x, z: mid.z, h: h };
   }
+
+  var cpuGrid = [
+    { x: -6, z: SF_Z + 2.7, h: 0 },
+    { x: -22, z: SF_Z + 2.7, h: 0 },
+  ];
 
   function applyCustomGrid() {
     var pose = customGridPose();
@@ -2882,11 +3061,15 @@
     var lz = pose ? hx : 1;
     resetRacer(player, playerGridX, playerGridZ, gridHeading, TRACK_LEN - 14);
     if (pose) {
-      resetRacer(cpus[0], pose.x - hx * 8 + lx * 2.7, pose.z - hz * 8 + lz * 2.7, pose.h, TRACK_LEN - 6);
-      resetRacer(cpus[1], pose.x - hx * 16 + lx * 2.7, pose.z - hz * 16 + lz * 2.7, pose.h, TRACK_LEN - 22);
+      cpuGrid[0] = { x: pose.x - hx * 8 + lx * 2.7, z: pose.z - hz * 8 + lz * 2.7, h: pose.h };
+      cpuGrid[1] = { x: pose.x - hx * 16 + lx * 2.7, z: pose.z - hz * 16 + lz * 2.7, h: pose.h };
+      resetRacer(cpus[0], cpuGrid[0].x, cpuGrid[0].z, pose.h, TRACK_LEN - 6);
+      resetRacer(cpus[1], cpuGrid[1].x, cpuGrid[1].z, pose.h, TRACK_LEN - 22);
     } else {
-      resetRacer(cpus[0], -6, SF_Z + 2.7, 0, TRACK_LEN - 6);
-      resetRacer(cpus[1], -22, SF_Z + 2.7, 0, TRACK_LEN - 22);
+      cpuGrid[0] = { x: -6, z: SF_Z + 2.7, h: 0 };
+      cpuGrid[1] = { x: -22, z: SF_Z + 2.7, h: 0 };
+      resetRacer(cpus[0], cpuGrid[0].x, cpuGrid[0].z, 0, TRACK_LEN - 6);
+      resetRacer(cpus[1], cpuGrid[1].x, cpuGrid[1].z, 0, TRACK_LEN - 22);
     }
     if (pose) {
       function pinS(r) {
@@ -2911,6 +3094,7 @@
     launchT = 0;
     launchCall = "";
     launchCallT = 0;
+    _hudHave = false;
     startPhase = "prestart";
     startT = 2;
     redsOn = 0;
@@ -3232,8 +3416,8 @@
       var rz = o.z - r.z;
       var fwd = rx * fx + rz * fz;
       var lat = -rx * fz + rz * fx;
-      if (fwd > 0.4 && fwd < 8.5 && Math.abs(lat) < 2.7) {
-        steer += lat >= 0 ? -0.42 : 0.42;
+      if (fwd > 0.2 && fwd < 11 && Math.abs(lat) < 3.6) {
+        steer += lat >= 0 ? -0.72 : 0.72;
       }
     });
     return clamp(steer, -1, 1);
@@ -3453,7 +3637,7 @@
     if (d >= HIT_RADIUS) return;
     var nx = dx / d;
     var nz = dz / d;
-    var push = (HIT_RADIUS - d) * 0.5;
+    var push = (HIT_RADIUS - d) * 0.62;
     a.x -= nx * push;
     a.z -= nz * push;
     b.x += nx * push;
@@ -3749,6 +3933,7 @@
     hud.finish.classList.toggle("hidden", which !== "finish");
     hud.root.classList.toggle("hidden", which === "title" || which === "lobby" || which === "track");
     hud.revWrap.classList.toggle("hidden", which !== "start");
+    if (which === "title" || which === "track") refreshMenuTrackLabel();
     syncMobileUi();
   }
 
@@ -3978,27 +4163,53 @@
     }
   }
 
+  function speedKph(r) {
+    if (!r) return 0;
+    var fromSpeed = Math.abs(r.speed) * 3.15;
+    var fromSlide = Math.abs(r.slide || 0) * 3.15;
+    return Math.round(Math.max(fromSpeed, fromSlide * 0.35));
+  }
+
+  var _hudX = 0;
+  var _hudZ = 0;
+  var _hudHave = false;
   function updateHud() {
-    hud.lap.textContent = player.lap + "/" + LAPS;
-    hud.time.textContent = formatTime(raceTime);
-    hud.speed.textContent = String(Math.round(Math.abs(player.speed) * 3.15));
+    if (!_hudHave) {
+      _hudX = player.x;
+      _hudZ = player.z;
+      _hudHave = true;
+    }
+    var moved = Math.hypot(player.x - _hudX, player.z - _hudZ);
+    _hudX = player.x;
+    _hudZ = player.z;
+    var live = speedKph(player);
+    var fromMove = lastDt > 0.0001 ? (moved / lastDt) * 3.15 : 0;
+    if (hud.speed) hud.speed.textContent = String(Math.round(Math.max(live, fromMove * 0.92)));
+    if (hud.lap) hud.lap.textContent = player.lap + "/" + LAPS;
+    if (hud.time) hud.time.textContent = formatTime(raceTime);
     var fuel = clamp(player.fuel, 0, 100);
     var tires = clamp(player.tires, 0, 100);
-    hud.fuelFill.style.transform = "scaleX(" + fuel / 100 + ")";
-    hud.tireFill.style.transform = "scaleX(" + tires / 100 + ")";
-    hud.fuelNum.textContent = String(Math.round(fuel));
-    hud.tireNum.textContent = String(Math.round(tires));
-    hud.fuelFill.style.background = fuel < 28 ? "linear-gradient(90deg,#7a1010,#ff4d4d)" : "";
-    hud.tireFill.style.background = tires < 40 ? "linear-gradient(90deg,#8a5a10,#ffd36a)" : "";
+    if (hud.fuelFill) {
+      hud.fuelFill.style.transform = "scaleX(" + fuel / 100 + ")";
+      hud.fuelFill.style.background = fuel < 28 ? "linear-gradient(90deg,#7a1010,#ff4d4d)" : "";
+    }
+    if (hud.tireFill) {
+      hud.tireFill.style.transform = "scaleX(" + tires / 100 + ")";
+      hud.tireFill.style.background = tires < 40 ? "linear-gradient(90deg,#8a5a10,#ffd36a)" : "";
+    }
+    if (hud.fuelNum) hud.fuelNum.textContent = String(Math.round(fuel));
+    if (hud.tireNum) hud.tireNum.textContent = String(Math.round(tires));
     paintRevs();
 
     var pitting = state === "racing" && (pitServicing || inPitLane(player));
     var pct = Math.min(100, Math.round((pitTimer / PIT_HOLD) * 100));
-    hud.pitting.classList.toggle("hidden", !pitting && pitFlash <= 0);
-    if (pitFlash > 0) hud.pitting.textContent = "SERVICED";
-    else if (pitServicing) hud.pitting.textContent = "PITTING  " + pct + "%";
-    else if (inPitLane(player) && pitUsedVisit) hud.pitting.textContent = "SERVICED — drive out";
-    else if (inPitLane(player)) hud.pitting.textContent = "PIT LANE";
+    if (hud.pitting) {
+      hud.pitting.classList.toggle("hidden", !pitting && pitFlash <= 0);
+      if (pitFlash > 0) hud.pitting.textContent = "SERVICED";
+      else if (pitServicing) hud.pitting.textContent = "PITTING  " + pct + "%";
+      else if (inPitLane(player) && pitUsedVisit) hud.pitting.textContent = "SERVICED — drive out";
+      else if (inPitLane(player)) hud.pitting.textContent = "PIT LANE";
+    }
 
     var warn = "";
     if (lateJoinT > 0) warn = "RACE ALREADY GOING — you dropped in mid-race";
@@ -4006,11 +4217,13 @@
     else if (state === "racing" && player.fuel <= 0) warn = "EMPTY — LIMP HOME";
     else if (state === "racing" && player.tires < 40) warn = "TIRES LOOSE — don't carry the sweeper";
     else if (state === "racing" && player.fuel < 38) warn = "PIT WINDOW — peel LEFT into the teal lane";
-    hud.warn.textContent = warn;
-    hud.warn.classList.toggle("hidden", !warn);
-    hud.warn.classList.toggle("late", lateJoinT > 0);
-    hud.warn.classList.toggle("launch", launchCallT > 0 && launchCall !== "DUMP");
-    hud.warn.classList.toggle("dump", launchCallT > 0 && launchCall === "DUMP");
+    if (hud.warn) {
+      hud.warn.textContent = warn;
+      hud.warn.classList.toggle("hidden", !warn);
+      hud.warn.classList.toggle("late", lateJoinT > 0);
+      hud.warn.classList.toggle("launch", launchCallT > 0 && launchCall !== "DUMP");
+      hud.warn.classList.toggle("dump", launchCallT > 0 && launchCall === "DUMP");
+    }
     paintMini();
     paintRaceNames();
   }
@@ -4221,8 +4434,14 @@
       }
     }
     if (!mpMode) {
-      pinGrid(cpus[0], -6, SF_Z + 2.7);
-      pinGrid(cpus[1], -22, SF_Z + 2.7);
+      var g0 = cpuGrid[0];
+      var g1 = cpuGrid[1];
+      var holdH = gridHeading;
+      gridHeading = g0.h != null ? g0.h : holdH;
+      pinGrid(cpus[0], g0.x, g0.z);
+      gridHeading = g1.h != null ? g1.h : holdH;
+      pinGrid(cpus[1], g1.x, g1.z);
+      gridHeading = holdH;
     }
     chaseCamera(dt);
   }
@@ -4617,6 +4836,7 @@
     dt = clamp(dt, 0, 0.05);
     var simDt = dt;
     if ((state === "start" || state === "racing") && mpMode) simDt = dt * gameSpeed;
+    lastDt = simDt;
     if (pitFlash > 0) pitFlash -= dt;
     if (launchT > 0) {
       launchT -= dt;
@@ -4681,6 +4901,9 @@
       } else {
         updateCpu(cpus[0], simDt);
         updateCpu(cpus[1], simDt);
+        bashCars(player, cpus[0]);
+        bashCars(player, cpus[1]);
+        bashCars(cpus[0], cpus[1]);
         bashCars(player, cpus[0]);
         bashCars(player, cpus[1]);
         bashCars(cpus[0], cpus[1]);
@@ -5514,7 +5737,7 @@
     if (hud.tileRot) {
       hud.tileRot.addEventListener("click", function (e) {
         e.preventDefault();
-        rotateSelected();
+        e.stopPropagation();
       });
     }
   }
