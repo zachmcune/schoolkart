@@ -120,6 +120,7 @@ var code = [
   sliceFn("wallSeg"),
   sliceFn("skipLeftBarrier"),
   sliceFn("wallKindFor"),
+  sliceFn("wallCutsRibbon"),
   sliceFn("placeWalls"),
   "function puffHit() {}",
   "function poseCar(r) { if (r.mesh && r.mesh.position) r.mesh.position.set(r.x, 0, r.z); }",
@@ -713,6 +714,10 @@ assert(Math.abs(angDiff(graze.heading, grazeH)) < 0.22, "wall graze keeps headin
 assert(Math.abs(angDiff(graze.heading, Math.PI)) > 1.2, "wall graze does not snap 180");
 assert(graze.speed < 24, "wall graze loses some speed");
 assert(Math.abs(graze.slide) > 0.15, "wall graze slides along the rail, slide=" + graze.slide);
+var railH = graze.heading;
+var railK;
+for (railK = 0; railK < 12; railK++) sim.bashWall(graze, { ax: -30, az: 4, bx: 30, bz: 4, thick: 0.55 });
+assert(Math.abs(angDiff(graze.heading, railH)) < 0.22, "repeated rail graze does not stack a half-spin");
 
 var nose = blankCar(3.8, 0, 0, 26);
 sim.bashWall(nose, { ax: 5, az: -40, bx: 5, bz: 40, thick: 0.55 });
@@ -720,7 +725,8 @@ assert(Math.abs(angDiff(nose.heading, 0)) < 0.45, "head-on is a short spin, not 
 assert(Math.abs(angDiff(nose.heading, Math.PI)) > 1.6, "head-on does not snap to 180");
 assert(nose.speed < 12, "head-on kills most forward speed");
 
-assert(src.indexOf("hitKeepYaw") !== -1, "hits shove without atan2 yaw snap");
+assert(src.indexOf("hitKeepYaw") !== -1 && src.indexOf("hitYawT") !== -1, "hits shove without atan2 yaw snap; corner graze does not stack spin");
+assert(src.indexOf("wallCutsRibbon") !== -1, "inside-corner wall chords cannot sit on the ribbon");
 assert(!/function bashWall\([\s\S]{0,700}heading = Math.atan2/.test(src), "bashWall does not snap heading to velocity");
 assert(!/function bashCars\([\s\S]{0,900}heading = Math.atan2/.test(src), "bashCars does not snap heading to velocity");
 assert(src.indexOf("function steerWheelYaw") !== -1 && src.indexOf("return -steer * 0.42") !== -1, "A = POINT LEFT, D = POINT RIGHT");
@@ -927,6 +933,70 @@ function proveDrive(pieces, label) {
 
 proveDrive(rectPieces(), "rectangle race");
 proveDrive(kitPieces(), "90s+sweeper+S/F kit");
+
+function proveClean90s(pieces, label, lapFrac) {
+  lapFrac = lapFrac == null ? 0.8 : lapFrac;
+  sim.lockRacePath(sim.encodeMap(pieces));
+  sim.placeWalls();
+  var pose = sim.customGridPose();
+  var car = blankCar(pose.x, pose.z, pose.h, 28);
+  car.fuel = 100;
+  car.tires = 100;
+  var maxSlide = 0;
+  var spinFrames = 0;
+  var travelled = 0;
+  var lastS = sim.projectTrack(car.x, car.z).s;
+  var t;
+  var seconds = Math.max(48, sim.TRACK_LEN / 16);
+  for (t = 0; t < seconds; t += 1 / 60) {
+    var line = sim.projectTrack(car.x, car.z);
+    var look = sim.centerlinePoint(line.s + 16);
+    var err = angDiff(look.h, car.heading);
+    if (line.dist > 1.5) {
+      var home = Math.atan2(line.z - car.z, line.x - car.x);
+      err = angDiff(home, car.heading) * 0.55 + err * 0.45;
+    }
+    var steer = err * 1.6;
+    if (steer > 1) steer = 1;
+    if (steer < -1) steer = -1;
+    var gas = line.dist < 6.2;
+    var brake = false;
+    if (line.name === "the90" && car.speed > 30) gas = false;
+    var h0 = car.heading;
+    sim.applyMotion(car, steer, gas, brake, false, 1 / 60, true);
+    sim.bashAllWalls(car);
+    if (Math.abs(car.slide) > maxSlide) maxSlide = Math.abs(car.slide);
+    if (Math.abs(car.slide) > 5.2 || Math.abs(angDiff(car.heading, h0)) > 0.09) spinFrames += 1;
+    var nowS = sim.projectTrack(car.x, car.z).s;
+    var ds = nowS - lastS;
+    if (ds < -sim.TRACK_LEN * 0.5) ds += sim.TRACK_LEN;
+    if (ds > 0 && ds < 18) travelled += ds;
+    lastS = nowS;
+  }
+  assert(
+    travelled > sim.TRACK_LEN * lapFrac,
+    label + " clean line covers a lap, went=" + travelled.toFixed(0) + "/" + sim.TRACK_LEN.toFixed(0)
+  );
+  assert(maxSlide < 5.2, label + " clean 90s keep the car, slide=" + maxSlide.toFixed(2));
+  assert(spinFrames < 6, label + " no half-spin at each corner, frames=" + spinFrames);
+}
+
+proveClean90s(rectPieces(), "rectangle 90s");
+
+sim.lockRacePath("");
+var hs = 0;
+var sH;
+for (sH = 0; sH < sim.TRACK_LEN; sH += 5) {
+  if (sim.centerlinePoint(sH).name === "hairpin") {
+    hs = sH;
+    break;
+  }
+}
+var hpPt = sim.centerlinePoint(hs + 6);
+var hpCar = blankCar(hpPt.x, hpPt.z, hpPt.h, 32);
+var hpI;
+for (hpI = 0; hpI < 24; hpI++) sim.applyMotion(hpCar, 0, true, false, false, 1 / 60, true);
+assert(Math.abs(hpCar.slide) > 1.1, "Campus Loop hairpin still punishes late/no brake, slide=" + hpCar.slide);
 
 var pitRect = rectPieces();
 pitRect[2] = { t: "P", x: 3, y: 1, r: 0 };

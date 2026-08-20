@@ -117,6 +117,7 @@ var code = [
   sliceFn("wallSeg"),
   sliceFn("skipLeftBarrier"),
   sliceFn("wallKindFor"),
+  sliceFn("wallCutsRibbon"),
   sliceFn("placeWalls"),
   sliceFn("inPitLane"),
   sliceFn("inPitGrab"),

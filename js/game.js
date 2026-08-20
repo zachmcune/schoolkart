@@ -1705,6 +1705,18 @@
     return "low";
   }
 
+  function wallCutsRibbon(w) {
+    var n = 4;
+    var i;
+    for (i = 0; i <= n; i++) {
+      var t = i / n;
+      var mx = w.ax + (w.bx - w.ax) * t;
+      var mz = w.az + (w.bz - w.az) * t;
+      if (projectTrack(mx, mz).dist < ASPHALT + 2.2) return true;
+    }
+    return false;
+  }
+
   function placeWalls() {
     WALLS.length = 0;
     var OFF = ASPHALT + RUNOFF + 0.38;
@@ -1724,24 +1736,23 @@
       var kR = wallKindFor(p, -1);
       if (!skipLeftBarrier(p)) {
         var jumpL = lastL && Math.hypot(lx - lastL.x, lz - lastL.z) > STEP * 2.4;
-        if (lastL && !jumpL) wallSeg(lastL.x, lastL.z, lx, lz, 0.5, lastL.kind, false);
-        lastL = { x: lx, z: lz, kind: kL };
+        var kinkL = lastL && Math.abs(Math.atan2(Math.sin(p.h - lastL.h), Math.cos(p.h - lastL.h))) > 0.55;
+        if (lastL && !jumpL && !kinkL) wallSeg(lastL.x, lastL.z, lx, lz, 0.5, lastL.kind, false);
+        lastL = { x: lx, z: lz, kind: kL, h: p.h };
       } else {
         lastL = null;
       }
       var jump = lastR && Math.hypot(rx - lastR.x, rz - lastR.z) > STEP * 2.4;
-      if (lastR && !jump) wallSeg(lastR.x, lastR.z, rx, rz, 0.5, lastR.kind, false);
-      lastR = { x: rx, z: rz, kind: kR };
+      var kinkR = lastR && Math.abs(Math.atan2(Math.sin(p.h - lastR.h), Math.cos(p.h - lastR.h))) > 0.55;
+      if (lastR && !jump && !kinkR) wallSeg(lastR.x, lastR.z, rx, rz, 0.5, lastR.kind, false);
+      lastR = { x: rx, z: rz, kind: kR, h: p.h };
     }
     var keep = [];
     var wi;
     for (wi = 0; wi < WALLS.length; wi++) {
       var w = WALLS[wi];
-      var mx = (w.ax + w.bx) * 0.5;
-      var mz = (w.az + w.bz) * 0.5;
-      var hit = projectTrack(mx, mz);
-      if (hit.dist < ASPHALT + 1.6) continue;
       if (Math.hypot(w.bx - w.ax, w.bz - w.az) > STEP * 2.4) continue;
+      if (wallCutsRibbon(w)) continue;
       keep.push(w);
     }
     WALLS.length = 0;
@@ -3103,6 +3114,7 @@
     r.launchT = 0;
     r.launchArmed = false;
     r.aiT = 0;
+    r.hitYawT = 0;
     r.mesh.position.set(x, rideHeight(), z);
     r.mesh.rotation.set(0, -heading, 0);
   }
@@ -3745,25 +3757,32 @@
   }
 
   function hitKeepYaw(r, vx, vz, nx, nz, impact) {
-    vx *= 0.82;
-    vz *= 0.82;
-    if (impact > 10) {
-      vx *= 0.7;
-      vz *= 0.7;
-    }
     var c = Math.cos(r.heading);
     var s = Math.sin(r.heading);
-    r.speed = vx * c + vz * s;
-    r.slide = -vx * s + vz * c;
     var into = clamp(-(c * nx + s * nz), 0, 1);
     var side = c * nz - s * nx;
     var dir = side >= 0 ? 1 : -1;
-    if (into > 0.72) {
+    // A 90 graze used to rewrite heading from the bounce and stack a
+    // 0.1 rad spin every frame you kissed the rail. That is a half-spin
+    // on every custom corner. Graze: keep heading, lose speed, slide.
+    // Only a real square hit may spin, and only once per contact.
+    var square = into > 0.85 && impact > 12 && !(r.hitYawT > 0);
+    if (square) {
+      vx *= 0.57;
+      vz *= 0.57;
+      r.speed = vx * c + vz * s;
+      r.slide = -vx * s + vz * c;
       r.heading += dir * clamp(impact * 0.016, 0.1, 0.36);
       r.slide += dir * clamp(impact * 0.2, 2.2, 8.5);
+      r.hitYawT = 0.28;
     } else {
-      r.heading += dir * clamp(impact * 0.006 * (1 - into), 0, 0.1);
-      r.slide += dir * impact * 0.14;
+      r.speed *= 0.82;
+      if (impact > 10) r.speed *= 0.88;
+      if (!(r.hitYawT > 0)) {
+        r.slide += dir * clamp(impact * 0.12, 0, 3.2);
+        r.heading += dir * clamp(impact * 0.004 * (1 - into), 0, 0.04);
+        if (impact > 3) r.hitYawT = 0.12;
+      }
     }
   }
 
@@ -3855,6 +3874,7 @@
   function bashAllWalls(r) {
     if (!r) return 0;
     if (r.hitFxT > 0) r.hitFxT -= 0.016;
+    if (r.hitYawT > 0) r.hitYawT -= 0.016;
     var best = 0;
     var i;
     for (i = 0; i < WALLS.length; i++) {
