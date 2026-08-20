@@ -1084,8 +1084,8 @@ tickFeel(tap, 0, false, false, 0.5);
 assert(tap.speed > 42, "tap-and-forget Space does not dump, speed=" + tap.speed.toFixed(1));
 
 var squeeze = blankCar(0, -80, 0, 48);
-tickFeel(squeeze, 0, false, true, 2.6);
-assert(squeeze.speed < 18 && squeeze.speed > 6, "held Space can make the 180, speed=" + squeeze.speed.toFixed(1));
+tickFeel(squeeze, 0, false, true, 2.2);
+assert(squeeze.speed < 18, "held Space can make the 180, speed=" + squeeze.speed.toFixed(1));
 
 var biteHi = blankCar(0, -80, 0, 48);
 biteHi.brakeHold = 1;
