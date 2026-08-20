@@ -108,6 +108,9 @@ waitHealth()
         assert(html.indexOf("Point Pages at this host") === -1, "no Pages stub");
         assert(html.indexOf("btn-create") !== -1, "lobby on origin");
         assert(html.indexOf("display-name") !== -1, "name field on origin");
+        assert(html.indexOf("Right gas · Left brake · Tilt to steer") !== -1, "mobile hint");
+        assert(html.indexOf("body-swatches") !== -1, "garage on origin");
+        assert(html.indexOf("btn-track") !== -1, "track editor on origin");
       });
     });
   })
@@ -252,7 +255,7 @@ function lobbyExtras() {
     var h = pair[0];
     var g = pair[1];
     var code;
-    h.send({ t: "create", name: "Zachary" });
+    h.send({ t: "create", name: "Zachary", body: 0xd4a017, wing: 0x1a1a1a, track: "SsLH!!Rs" });
     return h
       .waitFor(function (m) {
         return m.t === "room";
@@ -261,6 +264,9 @@ function lobbyExtras() {
         code = roomMsg.code;
         assert(roomMsg.players[0].name === "Zachary", "host display name");
         assert(roomMsg.speed === 1, "default speed 1");
+        assert(roomMsg.track === "SsLHRs", "track sanitized");
+        assert(roomMsg.players[0].body === 0xd4a017, "host body color");
+        assert(roomMsg.players[0].wing === 0x1a1a1a, "host wing color");
         g.send({ t: "join", code: code, name: "Maya" });
         return g.waitFor(function (m) {
           return m.t === "room" && m.players && m.players.length === 2;

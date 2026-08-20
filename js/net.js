@@ -28,6 +28,9 @@
     url: toWs(global.SCHOOLKART_SERVER || ""),
     id: uid(),
     name: "House 7",
+    body: 0xf4f1ea,
+    wing: 0x148f8c,
+    track: "",
     ws: null,
     connected: false,
     active: false,
@@ -102,6 +105,10 @@
     send({ t: "bots", cars: cars });
   };
 
+  net.setTrack = function (code) {
+    send({ t: "track", code: String(code || "").slice(0, 80) });
+  };
+
   function applyRoom(msg) {
     net.room = msg.code;
     net.hostId = msg.hostId;
@@ -111,6 +118,7 @@
     net.holdDelay = msg.holdDelay || net.holdDelay;
     net.players = msg.players || [];
     net.speed = msg.speed == null ? net.speed : msg.speed;
+    if (msg.track != null) net.track = String(msg.track || "");
     try {
       sessionStorage.setItem("sk_room", net.room);
     } catch (e) {}
@@ -149,7 +157,13 @@
       net.ws = ws;
       net.connected = true;
       net.status = "online";
-      send({ t: "hello", id: net.id, name: net.name || "House 7" });
+      send({
+        t: "hello",
+        id: net.id,
+        name: net.name || "House 7",
+        body: net.body,
+        wing: net.wing,
+      });
       if (cb) cb(null);
     };
     ws.onerror = function () {
@@ -212,12 +226,24 @@
 
   net.create = function (name) {
     net.name = name || net.name;
-    send({ t: "create", name: net.name });
+    send({
+      t: "create",
+      name: net.name,
+      body: net.body,
+      wing: net.wing,
+      track: net.track || "",
+    });
   };
 
   net.join = function (code, name) {
     net.name = name || net.name;
-    send({ t: "join", code: String(code || "").toUpperCase(), name: net.name });
+    send({
+      t: "join",
+      code: String(code || "").toUpperCase(),
+      name: net.name,
+      body: net.body,
+      wing: net.wing,
+    });
   };
 
   net.leave = function () {

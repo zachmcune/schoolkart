@@ -60,6 +60,16 @@ function clampSpeed(n) {
   return 1;
 }
 
+function cleanHex(n, fallback) {
+  n = +n;
+  if (!isFinite(n) || n < 0 || n > 0xffffff) return fallback;
+  return n | 0;
+}
+
+function cleanTrack(raw) {
+  return String(raw || "").replace(/[^sSLRHCKPt]/g, "").slice(0, 80);
+}
+
 var rooms = new Map();
 
 function code5() {
@@ -81,6 +91,8 @@ function roster(room) {
       connected: p.connected,
       ghost: p.ghost,
       bot: !!p.bot,
+      body: p.body,
+      wing: p.wing,
     };
   });
 }
@@ -104,6 +116,7 @@ function roomMsg(room) {
     holdDelay: room.holdDelay,
     raceTime: room.raceTime || 0,
     speed: room.speed || 1,
+    track: room.track || "",
     players: roster(room),
   };
 }
@@ -200,6 +213,7 @@ function makeRoom() {
     players: [],
     raceTime: 0,
     speed: 1,
+    track: "",
   };
   rooms.set(code, room);
   return room;
@@ -230,6 +244,8 @@ function blankCar(id, name, slot, ws) {
     pit: 0,
     finished: 0,
     bot: false,
+    body: 0xf4f1ea,
+    wing: 0x148f8c,
   };
 }
 
@@ -282,6 +298,8 @@ function carList(room) {
       finished: p.finished,
       ghost: p.ghost,
       connected: p.connected,
+      body: p.body,
+      wing: p.wing,
     };
   });
 }
@@ -445,9 +463,11 @@ wss.on("connection", function (ws) {
       var created = makeRoom();
       var slot = 0;
       created.hostId = self.id;
-      created.players.push(
-        blankCar(self.id, cleanName(msg.name), slot, ws)
-      );
+      created.track = cleanTrack(msg.track);
+      var hostCar = blankCar(self.id, cleanName(msg.name), slot, ws);
+      hostCar.body = cleanHex(msg.body, hostCar.body);
+      hostCar.wing = cleanHex(msg.wing, hostCar.wing);
+      created.players.push(hostCar);
       self.room = created;
       send(ws, roomMsg(created));
       sendEnter(ws, created, created.players[0]);
@@ -468,6 +488,8 @@ wss.on("connection", function (ws) {
         existing.ghost = false;
         existing.leftAt = 0;
         if (msg.name) existing.name = cleanName(msg.name);
+        if (msg.body != null) existing.body = cleanHex(msg.body, existing.body);
+        if (msg.wing != null) existing.wing = cleanHex(msg.wing, existing.wing);
         self.room = room;
         broadcast(room, roomMsg(room));
         sendEnter(ws, room, existing, { rejoin: true });
@@ -483,6 +505,8 @@ wss.on("connection", function (ws) {
         return;
       }
       var newbie = blankCar(self.id, cleanName(msg.name), ns, ws);
+      newbie.body = cleanHex(msg.body, newbie.body);
+      newbie.wing = cleanHex(msg.wing, newbie.wing);
       room.players.push(newbie);
       self.room = room;
       broadcast(room, roomMsg(room));
@@ -543,6 +567,17 @@ wss.on("connection", function (ws) {
         return;
       }
       room.speed = clampSpeed(msg.n);
+      broadcast(room, roomMsg(room));
+      return;
+    }
+
+    if (msg.t === "track") {
+      if (self.id !== room.hostId) {
+        send(ws, { t: "err", msg: "Only the host can set the track" });
+        return;
+      }
+      if (room.phase !== "lobby" && room.phase !== "finish") return;
+      room.track = cleanTrack(msg.code);
       broadcast(room, roomMsg(room));
       return;
     }

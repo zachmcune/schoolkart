@@ -3,6 +3,7 @@
    Feel spec: Pit Crew Designer (fuel/tires/handling locked)
 
    Controls: W gas, Space brake, S reverse, A/D steer.
+   Phones (landscape): right half = gas, left half = brake, tilt = steer.
    Pit: peel LEFT onto a split lane. Halfway in, the car is grabbed
    and serviced ~2.5s, then released to drive out. One service per visit.
    Start: PRE-START blue flash, five reds at 1s, hold 0.2–3s all ON,
@@ -83,6 +84,32 @@
   ];
 
   var keys = Object.create(null);
+  var touchCtl = {
+    gas: false,
+    brake: false,
+    rev: false,
+    steer: 0,
+    pads: {},
+    gyroOn: false,
+    gyroNeedCal: true,
+    gyroCenter: 0,
+    hintShown: false,
+    tiltAsked: false,
+    tiltGranted: false,
+  };
+  var playerBody = 0xf4f1ea;
+  var playerWing = TEAL_DEEP;
+  var BODY_SWATCHES = [0xf4f1ea, 0xd4a017, 0xb4532e, 0x3d8cff, 0x9b59b6, 0x2ecc71, 0xe67e22, 0x1a1a1a];
+  var WING_SWATCHES = [0x148f8c, 0x1a1a1a, 0xf4efe6, 0xff2a44, 0xffe566, 0x3d8cff];
+  var trackCode = "";
+  var trackRoot = null;
+  var stampTrees = [];
+  try {
+    var pb = parseInt(localStorage.getItem("sk_body"), 10);
+    var pw = parseInt(localStorage.getItem("sk_wing"), 10);
+    if (isFinite(pb) && pb >= 0 && pb <= 0xffffff) playerBody = pb | 0;
+    if (isFinite(pw) && pw >= 0 && pw <= 0xffffff) playerWing = pw | 0;
+  } catch (e0) {}
   var state = "title";
   var startPhase = "prestart";
   var startT = 0;
@@ -180,6 +207,17 @@
     hostTools: document.getElementById("host-tools"),
     nameInput: document.getElementById("display-name"),
     speedBtn: document.getElementById("btn-speed"),
+    circuit: document.getElementById("circuit-name"),
+    touchLayer: document.getElementById("touch-layer"),
+    revBtn: document.getElementById("rev-btn"),
+    mobileHint: document.getElementById("mobile-hint"),
+    tiltBtn: document.getElementById("tilt-btn"),
+    rotateHint: document.getElementById("rotate-hint"),
+    bodySwatches: document.getElementById("body-swatches"),
+    wingSwatches: document.getElementById("wing-swatches"),
+    trackScreen: document.getElementById("track-screen"),
+    trackView: document.getElementById("track-code-view"),
+    trackPaste: document.getElementById("track-paste"),
     lights: [
       document.getElementById("rl0"),
       document.getElementById("rl1"),
@@ -208,7 +246,12 @@
     try {
       sessionStorage.setItem("sk_name", n);
     } catch (e) {}
-    if (net) net.name = n;
+    if (net) {
+      net.name = n;
+      net.body = playerBody;
+      net.wing = playerWing;
+      net.track = trackCode;
+    }
     player.name = n;
     return n;
   }
@@ -277,6 +320,11 @@
 
   var PATH = [];
   var TRACK_LEN = 0;
+  var RIBBON_SEGS = 360;
+
+  function cleanTrack(raw) {
+    return String(raw || "").replace(/[^sSLRHCKPt]/g, "").slice(0, 80);
+  }
 
   function addLine(ax, az, bx, bz, name) {
     var len = Math.hypot(bx - ax, bz - az);
@@ -342,26 +390,180 @@
     if (Math.abs(d) >= 0.4) pathArc(r, d, name);
   }
 
-  pathLine(430, "start");
-  pathArc(40, 48, "the90");
-  pathArc(13, 42, "the90");
-  pathLine(320, "short");
-  pathArc(12, 88, "chicane");
-  pathLine(150, "chicane");
-  pathArc(9, -100, "chicane");
-  pathLine(18, "chicane");
-  pathArc(13, 60, "chicane");
-  pathSnap(180, 18, "chicane");
-  pathLine(_x - -360, "north");
-  pathArc(11, 180, "hairpin");
-  pathLine(18, "exit");
-  pathArc(16, -90, "kink");
-  var sweepR = -200 - _x;
-  var southLen = _z - sweepR - SF_Z;
-  pathLine(southLen, "west");
-  pathArc(sweepR, 90, "sweeper");
+  var PIT_META = { ax: 8, az: -62, bx: 118, bz: -62, on: true };
 
-  var RIBBON_SEGS = Math.max(360, Math.round(TRACK_LEN / 2.4));
+  function resetPathCursor() {
+    PATH = [];
+    TRACK_LEN = 0;
+    _x = -200;
+    _z = SF_Z;
+    _h = 0;
+    stampTrees = [];
+  }
+
+  function setDefaultPit() {
+    PIT_LANE.x0 = 8;
+    PIT_LANE.x1 = 118;
+    PIT_LANE.z0 = -67.4;
+    PIT_LANE.z1 = -56.6;
+    PIT_GRAB.x0 = 58;
+    PIT_GRAB.x1 = 90;
+    PIT_GRAB.z0 = -67.4;
+    PIT_GRAB.z1 = -56.6;
+    PIT_PAVE.length = 0;
+    PIT_PAVE.push(
+      { x0: -90, x1: 36, z0: -74.0, z1: -58.0 },
+      { x0: -20, x1: 50, z0: -71.6, z1: -56.0 },
+      { x0: 8, x1: 118, z0: -71.6, z1: -56.0 },
+      PIT_LANE,
+      PIT_GRAB,
+      { x0: 96, x1: 160, z0: -71.6, z1: -56.0 },
+      { x0: 124, x1: 185, z0: -74.0, z1: -62.0 }
+    );
+    PIT_META.ax = PIT_LANE.x0;
+    PIT_META.az = (PIT_LANE.z0 + PIT_LANE.z1) * 0.5;
+    PIT_META.bx = PIT_LANE.x1;
+    PIT_META.bz = PIT_META.az;
+    PIT_META.on = true;
+  }
+
+  function clearPit() {
+    PIT_LANE.x0 = 9999;
+    PIT_LANE.x1 = 10000;
+    PIT_LANE.z0 = 9999;
+    PIT_LANE.z1 = 10000;
+    PIT_GRAB.x0 = 9999;
+    PIT_GRAB.x1 = 10000;
+    PIT_GRAB.z0 = 9999;
+    PIT_GRAB.z1 = 10000;
+    PIT_PAVE.length = 0;
+    PIT_META.on = false;
+  }
+
+  function placePitHere() {
+    var fx = Math.cos(_h);
+    var fz = Math.sin(_h);
+    var lx = Math.cos(_h + Math.PI * 0.5);
+    var lz = Math.sin(_h + Math.PI * 0.5);
+    var len = 110;
+    var inset = 12;
+    var half = 5.4;
+    var xs = [];
+    var zs = [];
+    function add(x, z) {
+      xs.push(x);
+      zs.push(z);
+    }
+    add(_x + lx * (inset - half), _z + lz * (inset - half));
+    add(_x + lx * (inset + half), _z + lz * (inset + half));
+    add(_x + fx * len + lx * (inset - half), _z + fz * len + lz * (inset - half));
+    add(_x + fx * len + lx * (inset + half), _z + fz * len + lz * (inset + half));
+    var x0 = Math.min.apply(null, xs);
+    var x1 = Math.max.apply(null, xs);
+    var z0 = Math.min.apply(null, zs);
+    var z1 = Math.max.apply(null, zs);
+    PIT_LANE.x0 = x0;
+    PIT_LANE.x1 = x1;
+    PIT_LANE.z0 = z0;
+    PIT_LANE.z1 = z1;
+    PIT_META.ax = _x + lx * inset;
+    PIT_META.az = _z + lz * inset;
+    PIT_META.bx = _x + fx * len + lx * inset;
+    PIT_META.bz = _z + fz * len + lz * inset;
+    PIT_META.on = true;
+    var gx = [];
+    var gz = [];
+    var t0 = 0.48;
+    var t1 = 0.78;
+    add = function (x, z) {
+      gx.push(x);
+      gz.push(z);
+    };
+    add(PIT_META.ax + (PIT_META.bx - PIT_META.ax) * t0 + lx * -half, PIT_META.az + (PIT_META.bz - PIT_META.az) * t0 + lz * -half);
+    add(PIT_META.ax + (PIT_META.bx - PIT_META.ax) * t0 + lx * half, PIT_META.az + (PIT_META.bz - PIT_META.az) * t0 + lz * half);
+    add(PIT_META.ax + (PIT_META.bx - PIT_META.ax) * t1 + lx * -half, PIT_META.az + (PIT_META.bz - PIT_META.az) * t1 + lz * -half);
+    add(PIT_META.ax + (PIT_META.bx - PIT_META.ax) * t1 + lx * half, PIT_META.az + (PIT_META.bz - PIT_META.az) * t1 + lz * half);
+    PIT_GRAB.x0 = Math.min.apply(null, gx);
+    PIT_GRAB.x1 = Math.max.apply(null, gx);
+    PIT_GRAB.z0 = Math.min.apply(null, gz);
+    PIT_GRAB.z1 = Math.max.apply(null, gz);
+    PIT_PAVE.length = 0;
+    PIT_PAVE.push(PIT_LANE, PIT_GRAB);
+  }
+
+  function autoClosePath() {
+    var dx = -200 - _x;
+    var dz = SF_Z - _z;
+    if (Math.hypot(dx, dz) < 8 && Math.abs(Math.atan2(Math.sin(-_h), Math.cos(-_h))) < 0.12) return;
+    var want = (Math.atan2(dz, dx) * 180) / Math.PI;
+    pathSnap(want, 20, "close");
+    var left = Math.hypot(-200 - _x, SF_Z - _z);
+    if (left > 2) pathLine(left, "close");
+    pathSnap(0, 16, "close");
+  }
+
+  function buildCampusPath() {
+    pathLine(430, "start");
+    pathArc(40, 48, "the90");
+    pathArc(13, 42, "the90");
+    pathLine(320, "short");
+    pathArc(12, 88, "chicane");
+    pathLine(150, "chicane");
+    pathArc(9, -100, "chicane");
+    pathLine(18, "chicane");
+    pathArc(13, 60, "chicane");
+    pathSnap(180, 18, "chicane");
+    pathLine(_x - -360, "north");
+    pathArc(11, 180, "hairpin");
+    pathLine(18, "exit");
+    pathArc(16, -90, "kink");
+    var sweepR = -200 - _x;
+    var southLen = _z - sweepR - SF_Z;
+    pathLine(southLen, "west");
+    pathArc(sweepR, 90, "sweeper");
+  }
+
+  function buildCodePath(code) {
+    var i;
+    var hadPit = false;
+    for (i = 0; i < code.length; i++) {
+      var ch = code.charAt(i);
+      if (ch === "s") pathLine(70, "short");
+      else if (ch === "S") pathLine(160, "start");
+      else if (ch === "L") pathArc(22, 90, "the90");
+      else if (ch === "R") pathArc(22, -90, "the90");
+      else if (ch === "H") pathArc(11, 180, "hairpin");
+      else if (ch === "C") {
+        pathArc(12, 88, "chicane");
+        pathLine(40, "chicane");
+        pathArc(9, -100, "chicane");
+        pathLine(12, "chicane");
+        pathArc(13, 60, "chicane");
+      } else if (ch === "K") pathArc(16, -90, "kink");
+      else if (ch === "P") {
+        placePitHere();
+        pathLine(110, "start");
+        hadPit = true;
+      } else if (ch === "t") {
+        stampTrees.push({
+          x: _x + Math.cos(_h + Math.PI * 0.5) * (ASPHALT + 8),
+          z: _z + Math.sin(_h + Math.PI * 0.5) * (ASPHALT + 8),
+        });
+      }
+    }
+    if (!hadPit) clearPit();
+    autoClosePath();
+  }
+
+  function rebuildPath(code) {
+    resetPathCursor();
+    if (code) buildCodePath(code);
+    else {
+      setDefaultPit();
+      buildCampusPath();
+    }
+    RIBBON_SEGS = Math.max(360, Math.round(TRACK_LEN / 2.4));
+  }
 
   function pointOnSeg(seg, u) {
     if (seg.type === "line") {
@@ -394,13 +596,14 @@
 
   var miniPts = [];
   var miniBox = { x0: 0, z0: 0, x1: 0, z1: 0 };
-  (function bakeMini() {
+  function bakeMini() {
     var n = 140;
     var i;
     var x0 = Infinity;
     var z0 = Infinity;
     var x1 = -Infinity;
     var z1 = -Infinity;
+    miniPts.length = 0;
     for (i = 0; i <= n; i++) {
       var p = centerlinePoint((i / n) * TRACK_LEN);
       miniPts.push(p.x, p.z);
@@ -413,7 +616,10 @@
     miniBox.z0 = z0;
     miniBox.x1 = x1;
     miniBox.z1 = z1;
-  })();
+  }
+
+  rebuildPath("");
+  bakeMini();
 
   function projectTrack(px, pz) {
     var best = null;
@@ -535,8 +741,157 @@
       new THREE.MeshLambertMaterial({ color: color, side: THREE.DoubleSide })
     );
     mesh.position.set((b.x0 + b.x1) * 0.5, y, (b.z0 + b.z1) * 0.5);
-    scene.add(mesh);
     return mesh;
+  }
+
+  function disposeGroup(g) {
+    if (!g) return;
+    while (g.children.length) {
+      var c = g.children[0];
+      disposeGroup(c);
+      g.remove(c);
+      if (c.geometry) c.geometry.dispose();
+    }
+  }
+
+  function addTrackMesh() {
+    gantryReds = [];
+    gantryBlues = [];
+    if (trackRoot) {
+      scene.remove(trackRoot);
+      disposeGroup(trackRoot);
+    }
+    trackRoot = new THREE.Group();
+    scene.add(trackRoot);
+
+    var apron = makeRibbon(ASPHALT + 11, 0.03, 0x6aaa40, null);
+    if (apron) trackRoot.add(apron);
+    var runoff = makeRibbon(ASPHALT + 5.4, 0.045, 0xe0b85a, null);
+    if (runoff) trackRoot.add(runoff);
+
+    trackRoot.add(makeRibbon(ASPHALT, 0.07, 0x10100e, null));
+    trackRoot.add(makeRibbon(0.42, 0.095, 0xffffff, null));
+    trackRoot.add(makeEdges(ASPHALT - 0.38, 0.22, 0.096, 0xf4f1e6));
+    trackRoot.add(makeEdges(-(ASPHALT - 0.38), 0.22, 0.096, 0xf4f1e6));
+    var kerb90 = makeRibbon(ASPHALT + 0.78, 0.085, 0xff2a44, ["the90"]);
+    var kerbHair = makeRibbon(ASPHALT + 0.78, 0.085, 0xff2a44, ["hairpin"]);
+    var kerbSweep = makeRibbon(ASPHALT + 0.78, 0.085, 0xff2a44, ["sweeper"]);
+    var kerbChi = makeRibbon(ASPHALT + 0.78, 0.085, 0xff2a44, ["chicane"]);
+    var kerbW90 = makeRibbon(ASPHALT + 0.38, 0.086, 0xffffff, ["the90"]);
+    var kerbWHair = makeRibbon(ASPHALT + 0.38, 0.086, 0xffffff, ["hairpin"]);
+    var kerbWSweep = makeRibbon(ASPHALT + 0.38, 0.086, 0xffffff, ["sweeper"]);
+    var kerbWChi = makeRibbon(ASPHALT + 0.38, 0.086, 0xffffff, ["chicane"]);
+    if (kerb90) trackRoot.add(kerb90);
+    if (kerbHair) trackRoot.add(kerbHair);
+    if (kerbSweep) trackRoot.add(kerbSweep);
+    if (kerbChi) trackRoot.add(kerbChi);
+    if (kerbW90) trackRoot.add(kerbW90);
+    if (kerbWHair) trackRoot.add(kerbWHair);
+    if (kerbWSweep) trackRoot.add(kerbWSweep);
+    if (kerbWChi) trackRoot.add(kerbWChi);
+
+    var p;
+    for (p = 0; p < PIT_PAVE.length; p++) {
+      var pv = paveRect(PIT_PAVE[p], 0.08, 0x3d4a5c);
+      trackRoot.add(pv);
+    }
+    if (PIT_META.on) {
+      var grab = paveRect(PIT_GRAB, 0.12, TEAL);
+      trackRoot.add(grab);
+      addBox((PIT_LANE.x0 + PIT_LANE.x1) * 0.5, 0.115, PIT_LANE.z0, PIT_LANE.x1 - PIT_LANE.x0, 0.03, 0.34, 0xffe566, trackRoot);
+      addBox((PIT_LANE.x0 + PIT_LANE.x1) * 0.5, 0.115, PIT_LANE.z1, PIT_LANE.x1 - PIT_LANE.x0, 0.03, 0.34, 0x7cffd4, trackRoot);
+    }
+    if (!trackCode) {
+      addBox(62, 0.82, -69.6, 70, 1.55, 0.62, 0x2a2018, trackRoot);
+      addBox(62, 1.62, -69.6, 70, 0.12, 0.7, TEAL, trackRoot);
+      var pitDecal = labelPlane("PIT", 7.2, 2.8, "#0a2a28", "#2ec8c3");
+      pitDecal.rotation.x = -Math.PI * 0.5;
+      pitDecal.position.set(72, 0.16, -62.0);
+      trackRoot.add(pitDecal);
+      var inDecal = labelPlane("IN", 5.4, 2.2, "#102018", "#ffe566");
+      inDecal.rotation.x = -Math.PI * 0.5;
+      inDecal.position.set(-20, 0.16, -66);
+      trackRoot.add(inDecal);
+      var outDecal = labelPlane("OUT", 5.8, 2.2, "#102018", "#7cffd4");
+      outDecal.rotation.x = -Math.PI * 0.5;
+      outDecal.position.set(148, 0.16, -66);
+      trackRoot.add(outDecal);
+      for (var hsh = 0; hsh < 5; hsh++) {
+        addBox(62 + hsh * 3.6, 0.14, -62.0, 1.15, 0.02, 9.2, 0xffffff, trackRoot);
+      }
+    } else if (PIT_META.on) {
+      var pitDecal2 = labelPlane("PIT", 7.2, 2.8, "#0a2a28", "#2ec8c3");
+      pitDecal2.rotation.x = -Math.PI * 0.5;
+      pitDecal2.position.set((PIT_GRAB.x0 + PIT_GRAB.x1) * 0.5, 0.16, (PIT_GRAB.z0 + PIT_GRAB.z1) * 0.5);
+      trackRoot.add(pitDecal2);
+    }
+
+    var start = centerlinePoint(0);
+    var stripe = new THREE.Mesh(
+      new THREE.BoxGeometry(1.6, 0.14, ASPHALT * 2),
+      new THREE.MeshLambertMaterial({ color: 0xffffff, side: THREE.DoubleSide })
+    );
+    stripe.position.set(trackCode ? start.x : 0, 0.1, trackCode ? start.z : SF_Z);
+    stripe.rotation.y = trackCode ? -start.h : 0;
+    trackRoot.add(stripe);
+
+    var gxs = [-6, -14, -22];
+    var gzs = [SF_Z + 2.7, SF_Z - 2.7, SF_Z + 2.7];
+    for (var gb = 0; gb < 3; gb++) {
+      addBox(gxs[gb], 0.09, gzs[gb], 5.2, 0.03, 2.6, 0xffffff, trackRoot);
+      addBox(gxs[gb], 0.1, gzs[gb], 4.6, 0.02, 0.12, 0x111111, trackRoot);
+    }
+
+    var gy = SF_Z - ASPHALT - 1.1;
+    addBox(0, 6.4, gy, 12, 0.35, 0.35, 0x2a2018, trackRoot);
+    addBox(-5.2, 5.1, gy, 0.3, 6.4, 0.3, 0x2a2018, trackRoot);
+    addBox(5.2, 5.1, gy, 0.3, 6.4, 0.3, 0x2a2018, trackRoot);
+    gantryBlues.push(addBox(-4.4, 6.55, gy, 1.1, 0.7, 0.4, 0x1a3040, trackRoot));
+    gantryBlues.push(addBox(4.4, 6.55, gy, 1.1, 0.7, 0.4, 0x1a3040, trackRoot));
+    for (var li = 0; li < 5; li++) {
+      gantryReds.push(addBox(-2.4 + li * 1.2, 6.55, gy, 0.7, 0.7, 0.4, 0x3a1010, trackRoot));
+    }
+
+    function cornerFlag(x, z, title) {
+      addBox(x, 1.4, z, 0.2, 2.8, 0.2, 0x2a2018, trackRoot);
+      var pl = labelPlane(title, 7.4, 2.2, "#f4efe6", "#148f8c");
+      pl.position.set(x, 3.2, z);
+      trackRoot.add(pl);
+    }
+    function flagOn(name, title, side) {
+      var s = 0;
+      var i;
+      for (i = 0; i < PATH.length; i++) {
+        if (PATH[i].name === name) {
+          s = PATH[i].startS + PATH[i].len * 0.55;
+          break;
+        }
+      }
+      var fp = centerlinePoint(s);
+      var nx = -Math.sin(fp.h);
+      var nz = Math.cos(fp.h);
+      cornerFlag(fp.x + nx * (ASPHALT + 7) * side, fp.z + nz * (ASPHALT + 7) * side, title);
+    }
+    flagOn("the90", "THE 90", -1);
+    flagOn("chicane", "CHICANE", 1);
+    flagOn("hairpin", "HAIRPIN", -1);
+    flagOn("sweeper", "SWEEPER", 1);
+
+    for (var st = 0; st < stampTrees.length; st++) {
+      var tree = stampTrees[st];
+      var trunk = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.4, 0.5, 3, 5),
+        new THREE.MeshLambertMaterial({ color: 0x6a4020, side: THREE.DoubleSide })
+      );
+      trunk.position.set(tree.x, 1.5, tree.z);
+      trackRoot.add(trunk);
+      var leaf = new THREE.Mesh(
+        new THREE.ConeGeometry(2.4, 4.6, 6),
+        new THREE.MeshLambertMaterial({ color: 0x3f7a30, side: THREE.DoubleSide })
+      );
+      leaf.position.set(tree.x, 4.8, tree.z);
+      trackRoot.add(leaf);
+    }
   }
 
   function addWorld() {
@@ -547,80 +902,7 @@
 
     addBox(-40, -0.2, 80, 1100, 0.4, 900, 0x4e8c32);
     addBox(8, 0.02, 40, 120, 0.06, 90, 0x5a9a3a);
-    var apron = makeRibbon(ASPHALT + 11, 0.03, 0x6aaa40, null);
-    if (apron) scene.add(apron);
-    var runoff = makeRibbon(ASPHALT + 5.4, 0.045, 0xe0b85a, null);
-    if (runoff) scene.add(runoff);
-
-    scene.add(makeRibbon(ASPHALT, 0.07, 0x10100e, null));
-    scene.add(makeRibbon(0.42, 0.095, 0xffffff, null));
-    scene.add(makeEdges(ASPHALT - 0.38, 0.22, 0.096, 0xf4f1e6));
-    scene.add(makeEdges(-(ASPHALT - 0.38), 0.22, 0.096, 0xf4f1e6));
-    var kerb90 = makeRibbon(ASPHALT + 0.78, 0.085, 0xff2a44, ["the90"]);
-    var kerbHair = makeRibbon(ASPHALT + 0.78, 0.085, 0xff2a44, ["hairpin"]);
-    var kerbSweep = makeRibbon(ASPHALT + 0.78, 0.085, 0xff2a44, ["sweeper"]);
-    var kerbChi = makeRibbon(ASPHALT + 0.78, 0.085, 0xff2a44, ["chicane"]);
-    var kerbW90 = makeRibbon(ASPHALT + 0.38, 0.086, 0xffffff, ["the90"]);
-    var kerbWHair = makeRibbon(ASPHALT + 0.38, 0.086, 0xffffff, ["hairpin"]);
-    var kerbWSweep = makeRibbon(ASPHALT + 0.38, 0.086, 0xffffff, ["sweeper"]);
-    var kerbWChi = makeRibbon(ASPHALT + 0.38, 0.086, 0xffffff, ["chicane"]);
-    if (kerb90) scene.add(kerb90);
-    if (kerbHair) scene.add(kerbHair);
-    if (kerbSweep) scene.add(kerbSweep);
-    if (kerbChi) scene.add(kerbChi);
-    if (kerbW90) scene.add(kerbW90);
-    if (kerbWHair) scene.add(kerbWHair);
-    if (kerbWSweep) scene.add(kerbWSweep);
-    if (kerbWChi) scene.add(kerbWChi);
-
-    for (var p = 0; p < PIT_PAVE.length; p++) {
-      paveRect(PIT_PAVE[p], 0.08, 0x3d4a5c);
-    }
-    paveRect(PIT_GRAB, 0.12, TEAL);
-    addBox((PIT_LANE.x0 + PIT_LANE.x1) * 0.5, 0.115, PIT_LANE.z0, PIT_LANE.x1 - PIT_LANE.x0, 0.03, 0.34, 0xffe566);
-    addBox((PIT_LANE.x0 + PIT_LANE.x1) * 0.5, 0.115, PIT_LANE.z1, PIT_LANE.x1 - PIT_LANE.x0, 0.03, 0.34, 0x7cffd4);
-    // Pit wall between the racing line and the bypass — this is a side lane.
-    addBox(62, 0.82, -69.6, 70, 1.55, 0.62, 0x2a2018);
-    addBox(62, 1.62, -69.6, 70, 0.12, 0.7, TEAL);
-    var pitDecal = labelPlane("PIT", 7.2, 2.8, "#0a2a28", "#2ec8c3");
-    pitDecal.rotation.x = -Math.PI * 0.5;
-    pitDecal.position.set(72, 0.16, -62.0);
-    scene.add(pitDecal);
-    var inDecal = labelPlane("IN", 5.4, 2.2, "#102018", "#ffe566");
-    inDecal.rotation.x = -Math.PI * 0.5;
-    inDecal.position.set(-20, 0.16, -66);
-    scene.add(inDecal);
-    var outDecal = labelPlane("OUT", 5.8, 2.2, "#102018", "#7cffd4");
-    outDecal.rotation.x = -Math.PI * 0.5;
-    outDecal.position.set(148, 0.16, -66);
-    scene.add(outDecal);
-    for (var hsh = 0; hsh < 5; hsh++) {
-      addBox(62 + hsh * 3.6, 0.14, -62.0, 1.15, 0.02, 9.2, 0xffffff);
-    }
-
-    var stripe = new THREE.Mesh(
-      new THREE.BoxGeometry(1.6, 0.14, ASPHALT * 2),
-      new THREE.MeshLambertMaterial({ color: 0xffffff, side: THREE.DoubleSide })
-    );
-    stripe.position.set(0, 0.1, SF_Z);
-    scene.add(stripe);
-
-    var gxs = [-6, -14, -22];
-    var gzs = [SF_Z + 2.7, SF_Z - 2.7, SF_Z + 2.7];
-    for (var gb = 0; gb < 3; gb++) {
-      addBox(gxs[gb], 0.09, gzs[gb], 5.2, 0.03, 2.6, 0xffffff);
-      addBox(gxs[gb], 0.1, gzs[gb], 4.6, 0.02, 0.12, 0x111111);
-    }
-
-    var gy = SF_Z - ASPHALT - 1.1;
-    addBox(0, 6.4, gy, 12, 0.35, 0.35, 0x2a2018);
-    addBox(-5.2, 5.1, gy, 0.3, 6.4, 0.3, 0x2a2018);
-    addBox(5.2, 5.1, gy, 0.3, 6.4, 0.3, 0x2a2018);
-    gantryBlues.push(addBox(-4.4, 6.55, gy, 1.1, 0.7, 0.4, 0x1a3040));
-    gantryBlues.push(addBox(4.4, 6.55, gy, 1.1, 0.7, 0.4, 0x1a3040));
-    for (var li = 0; li < 5; li++) {
-      gantryReds.push(addBox(-2.4 + li * 1.2, 6.55, gy, 0.7, 0.7, 0.4, 0x3a1010));
-    }
+    addTrackMesh();
 
     addBox(8, 4.2, SF_Z - 17, 36, 6.4, 7, 0x8a4030);
     addBox(8, 7.6, SF_Z - 17, 38, 0.8, 8, 0xd8b48a);
@@ -671,31 +953,6 @@
       scene.add(face);
     }
 
-    function cornerFlag(x, z, title) {
-      addBox(x, 1.4, z, 0.2, 2.8, 0.2, 0x2a2018);
-      var pl = labelPlane(title, 7.4, 2.2, "#f4efe6", "#148f8c");
-      pl.position.set(x, 3.2, z);
-      scene.add(pl);
-    }
-    function flagOn(name, title, side) {
-      var s = 0;
-      var i;
-      for (i = 0; i < PATH.length; i++) {
-        if (PATH[i].name === name) {
-          s = PATH[i].startS + PATH[i].len * 0.55;
-          break;
-        }
-      }
-      var p = centerlinePoint(s);
-      var nx = -Math.sin(p.h);
-      var nz = Math.cos(p.h);
-      cornerFlag(p.x + nx * (ASPHALT + 7) * side, p.z + nz * (ASPHALT + 7) * side, title);
-    }
-    flagOn("the90", "THE 90", -1);
-    flagOn("chicane", "CHICANE", 1);
-    flagOn("hairpin", "HAIRPIN", -1);
-    flagOn("sweeper", "SWEEPER", 1);
-
     for (var t = 0; t < 14; t++) {
       var tx = -80 + (t % 7) * 36;
       var tz = t < 7 ? 210 : -130;
@@ -714,6 +971,69 @@
     }
 
     addSkyBits();
+  }
+
+  function circuitLabel() {
+    if (hud.circuit) {
+      hud.circuit.textContent = trackCode ? "Custom · #7" : "Campus Loop · #7";
+    }
+  }
+
+  function applyTrack(code, persist) {
+    code = cleanTrack(code);
+    if (code === trackCode && trackRoot) {
+      circuitLabel();
+      return;
+    }
+    trackCode = code;
+    if (persist !== false) {
+      try {
+        localStorage.setItem("sk_track", trackCode);
+      } catch (e) {}
+    }
+    if (net) net.track = trackCode;
+    rebuildPath(trackCode);
+    bakeMini();
+    addTrackMesh();
+    resetGrid();
+    circuitLabel();
+    paintTrackEditor();
+  }
+
+  function maybeApplyNetTrack(code) {
+    code = cleanTrack(code || "");
+    if (code === trackCode) return;
+    if (state === "start" || state === "racing") return;
+    applyTrack(code, false);
+  }
+
+  function adoptRoomTrack() {
+    if (!net) return;
+    var code = cleanTrack(net.track || "");
+    if (code === trackCode && trackRoot) return;
+    trackCode = code;
+    if (net) net.track = trackCode;
+    rebuildPath(trackCode);
+    bakeMini();
+    addTrackMesh();
+    circuitLabel();
+    paintTrackEditor();
+  }
+
+  function restoreLocalTrack() {
+    var st = "";
+    try {
+      st = localStorage.getItem("sk_track") || "";
+    } catch (e) {}
+    applyTrack(st, false);
+  }
+
+  function paintTrackEditor() {
+    if (!hud.trackView) return;
+    hud.trackView.textContent = trackCode || "Campus Loop";
+    if (hud.trackPaste && document.activeElement !== hud.trackPaste) {
+      hud.trackPaste.value = trackCode;
+    }
   }
 
   var sky = {
@@ -1045,6 +1365,8 @@
     var body = carMat(bodyColor, 0.3);
     var wing = carMat(accent, 0.24);
     var halo = carMat(0xf4efe6, 0.2);
+    body.userData.part = "body";
+    wing.userData.part = "wing";
 
     var nose = new THREE.Mesh(new THREE.BoxGeometry(2.35, 0.22, 0.34), body);
     nose.position.set(1.85, 0.34, 0);
@@ -1163,11 +1485,26 @@
     blob.position.y = 0.03;
     g.add(blob);
     g.userData.wheels = wheels;
+    g.userData.bodyMat = body;
+    g.userData.wingMat = wing;
     return g;
   }
 
-  function createRacer(kind, color, name, num) {
-    var mesh = makeCar(color, kind === "player" ? TEAL_DEEP : 0x1a1a1a, num);
+  function paintCar(mesh, bodyHex, wingHex) {
+    if (!mesh || !mesh.userData) return;
+    if (mesh.userData.bodyMat && bodyHex != null) {
+      mesh.userData.bodyMat.color.setHex(bodyHex);
+      mesh.userData.bodyMat.emissive.setHex(bodyHex);
+    }
+    if (mesh.userData.wingMat && wingHex != null) {
+      mesh.userData.wingMat.color.setHex(wingHex);
+      mesh.userData.wingMat.emissive.setHex(wingHex);
+    }
+  }
+
+  function createRacer(kind, color, name, num, wing) {
+    var wcol = wing != null ? wing : kind === "player" ? playerWing : 0x1a1a1a;
+    var mesh = makeCar(color, wcol, num);
     scene.add(mesh);
     return {
       kind: kind,
@@ -1190,7 +1527,7 @@
     };
   }
 
-  var player = createRacer("player", 0xf4f1ea, "House 7", 7);
+  var player = createRacer("player", playerBody, "House 7", 7, playerWing);
   var cpus = [
     createRacer("cpu", 0xd4a017, "Hall Monitor", 12),
     createRacer("cpu", 0xb4532e, "Sub Teacher", 21),
@@ -1208,6 +1545,7 @@
     r.passedHalf = false;
     r.lastX = x;
     r.s = s;
+    r.lastS = s;
     r.brakeHold = 0;
     r.finished = false;
     r.finishTime = 0;
@@ -1240,6 +1578,7 @@
   }
 
   function inPitLane(r) {
+    if (trackCode) return PIT_META.on && (inRect(r.x, r.z, PIT_LANE) || onPitPavement(r.x, r.z));
     var leftOfRace = SF_Z + ASPHALT + 1;
     return (
       inRect(r.x, r.z, PIT_LANE) ||
@@ -1251,6 +1590,14 @@
   }
 
   function inPitGrab(r) {
+    if (trackCode) {
+      if (!PIT_META.on || !onPitPavement(r.x, r.z)) return false;
+      var dx = PIT_META.bx - PIT_META.ax;
+      var dz = PIT_META.bz - PIT_META.az;
+      var len2 = dx * dx + dz * dz || 1;
+      var t = ((r.x - PIT_META.ax) * dx + (r.z - PIT_META.az) * dz) / len2;
+      return t >= 0.5 && t <= 1.15;
+    }
     var mid = (PIT_LANE.x0 + PIT_LANE.x1) * 0.5;
     var leftOfRace = SF_Z + ASPHALT + 1.2;
     // Off the racing line, into the LEFT split, past halfway — that is the box.
@@ -1259,6 +1606,22 @@
 
   function updateLaps(r) {
     if (r.finished) return;
+    if (trackCode) {
+      var prev = r.lastS != null ? r.lastS : r.s;
+      if (prev < TRACK_LEN * 0.5 && r.s >= TRACK_LEN * 0.5) r.passedHalf = true;
+      if (r.passedHalf && prev > TRACK_LEN * 0.72 && r.s < TRACK_LEN * 0.28) {
+        r.passedHalf = false;
+        r.lap += 1;
+        if (r.lap > LAPS) {
+          r.finished = true;
+          r.finishTime = raceTime;
+          r.lap = LAPS;
+        }
+      }
+      r.lastS = r.s;
+      r.lastX = r.x;
+      return;
+    }
     if (r.z > 8 && r.lastX > 8 && r.x <= 8 && Math.cos(r.heading) < -0.15) {
       r.passedHalf = true;
     }
@@ -1506,21 +1869,24 @@
     var steer = 0;
     if (left) steer += 1;
     if (right) steer -= 1;
+    var keySteer = !!(left || right);
     return {
-      steer: steer,
-      throttle: !!up,
-      reverse: !!down,
-      brake: !!keys.Space,
+      steer: keySteer ? steer : touchCtl.steer || 0,
+      throttle: !!(up || touchCtl.gas),
+      reverse: !!(down || touchCtl.rev),
+      brake: !!(keys.Space || touchCtl.brake),
     };
   }
 
   function setScreen(which) {
     hud.title.classList.toggle("hidden", which !== "title");
     if (hud.lobby) hud.lobby.classList.toggle("hidden", which !== "lobby");
+    if (hud.trackScreen) hud.trackScreen.classList.toggle("hidden", which !== "track");
     hud.countdown.classList.toggle("hidden", which !== "start");
     hud.finish.classList.toggle("hidden", which !== "finish");
-    hud.root.classList.toggle("hidden", which === "title" || which === "lobby");
+    hud.root.classList.toggle("hidden", which === "title" || which === "lobby" || which === "track");
     hud.revWrap.classList.toggle("hidden", which !== "start");
+    syncMobileUi();
   }
 
   function paintLights(n, blue) {
@@ -1664,6 +2030,7 @@
     clearMe();
     if (net) net.leave();
     resetGrid();
+    touchCtl.gyroNeedCal = true;
     state = "start";
     setScreen("start");
     hud.startMsg.textContent = "PRE-START";
@@ -2047,13 +2414,16 @@
     sendBotStates();
   }
 
-  function ensureRemote(id, slot, name) {
+  function ensureRemote(id, slot, name, body, wing) {
     if (remotes[id]) {
       if (name) remotes[id].r.name = name;
+      if (body != null || wing != null) paintCar(remotes[id].r.mesh, body, wing);
       return remotes[id];
     }
     var skin = SKINS[slot % SKINS.length];
-    var r = createRacer("net", skin.color, name || skin.name, skin.num);
+    var col = body != null ? body : skin.color;
+    var wcol = wing != null ? wing : 0x1a1a1a;
+    var r = createRacer("net", col, name || skin.name, skin.num, wcol);
     remotes[id] = { r: r, from: null, to: null, at: 0, ghost: false };
     return remotes[id];
   }
@@ -2065,7 +2435,7 @@
       if (c.id === (net && net.id)) return;
       if (hostBots[c.id]) return;
       seen[c.id] = true;
-      var rem = ensureRemote(c.id, c.slot || 0, c.name);
+      var rem = ensureRemote(c.id, c.slot || 0, c.name, c.body, c.wing);
       rem.ghost = !!c.ghost;
       rem.r.mesh.visible = true;
       rem.r.mesh.traverse(function (ch) {
@@ -2179,6 +2549,9 @@
       if (p.bot) li.classList.add("bot");
       if (p.id === lobbyPick) li.classList.add("pick");
       hud.roster.appendChild(li);
+      if (p.id !== net.id && !p.bot && remotes[p.id]) {
+        paintCar(remotes[p.id].r.mesh, p.body, p.wing);
+      }
     });
     paintRaceNames();
   }
@@ -2206,7 +2579,9 @@
     var g = gridSlot(slot);
     playerGridX = g.x;
     playerGridZ = g.z;
+    adoptRoomTrack();
     resetGrid();
+    touchCtl.gyroNeedCal = true;
     state = "start";
     setScreen("start");
     hud.startMsg.textContent = "PRE-START";
@@ -2237,6 +2612,7 @@
     var g = gridSlot(slot);
     playerGridX = g.x;
     playerGridZ = g.z;
+    adoptRoomTrack();
     resetGrid();
     var restore = null;
     if (msg && msg.rejoin && beenRacing(you)) restore = you;
@@ -2395,6 +2771,236 @@
     requestAnimationFrame(tick);
   }
 
+  function isPhoneLike() {
+    var touch = navigator.maxTouchPoints > 0 || "ontouchstart" in window;
+    if (!touch) return false;
+    var fine = false;
+    var hover = false;
+    try {
+      fine = window.matchMedia("(pointer: fine)").matches;
+      hover = window.matchMedia("(hover: hover)").matches;
+    } catch (e) {}
+    if (fine && hover) return false;
+    return Math.min(screen.width, screen.height) <= 920;
+  }
+
+  function isLandscape() {
+    return window.innerWidth >= window.innerHeight;
+  }
+
+  function needsTiltTap() {
+    return (
+      typeof window.DeviceOrientationEvent !== "undefined" &&
+      typeof window.DeviceOrientationEvent.requestPermission === "function" &&
+      !touchCtl.tiltGranted
+    );
+  }
+
+  function showFirstMobileHint() {
+    if (!hud.mobileHint || !isPhoneLike()) return;
+    var seen = false;
+    try {
+      seen = localStorage.getItem("sk_mobile_hint") === "1";
+    } catch (e) {}
+    if (seen) return;
+    hud.mobileHint.classList.remove("hidden");
+    touchCtl.hintShown = true;
+    try {
+      localStorage.setItem("sk_mobile_hint", "1");
+    } catch (e2) {}
+    setTimeout(function () {
+      if (hud.mobileHint) hud.mobileHint.classList.add("hidden");
+    }, 5600);
+  }
+
+  function syncMobileUi() {
+    var phone = isPhoneLike();
+    var drive = state === "start" || state === "racing";
+    if (hud.touchLayer) hud.touchLayer.classList.toggle("hidden", !(phone && drive));
+    if (hud.rotateHint) {
+      hud.rotateHint.classList.toggle("hidden", !(phone && drive && !isLandscape()));
+    }
+    if (hud.tiltBtn) {
+      hud.tiltBtn.classList.toggle("hidden", !(phone && drive && needsTiltTap()));
+    }
+    if (hud.revHint && phone) {
+      hud.revHint.textContent = "HOLD the right half — park the needle in the green.";
+    }
+    if (phone && !touchCtl.hintShown) showFirstMobileHint();
+  }
+
+  function screenAngle() {
+    if (window.screen && screen.orientation && typeof screen.orientation.angle === "number") {
+      return screen.orientation.angle;
+    }
+    if (typeof window.orientation === "number") return window.orientation;
+    return isLandscape() ? 90 : 0;
+  }
+
+  function tiltRaw(e) {
+    var ang = screenAngle();
+    if (ang === 90) return Number(e.beta) || 0;
+    if (ang === -90 || ang === 270) return -(Number(e.beta) || 0);
+    if (ang === 180) return -(Number(e.gamma) || 0);
+    return Number(e.gamma) || 0;
+  }
+
+  function applyGyro(raw) {
+    if (touchCtl.gyroNeedCal) {
+      touchCtl.gyroCenter = raw;
+      touchCtl.gyroNeedCal = false;
+    }
+    var d = raw - touchCtl.gyroCenter;
+    if (d > 180) d -= 360;
+    if (d < -180) d += 360;
+    var dead = 6;
+    if (Math.abs(d) < dead) {
+      touchCtl.steer = 0;
+      return;
+    }
+    var mag = clamp((Math.abs(d) - dead) / 28, 0, 1);
+    // Match keyboard: A / left = +steer, D / right = -steer.
+    touchCtl.steer = (d > 0 ? -1 : 1) * mag;
+  }
+
+  function onOrient(e) {
+    if (!isPhoneLike()) return;
+    if (state !== "start" && state !== "racing") return;
+    if (!isLandscape()) {
+      touchCtl.steer = 0;
+      return;
+    }
+    applyGyro(tiltRaw(e));
+  }
+
+  function askTiltPermission() {
+    if (touchCtl.tiltAsked && touchCtl.tiltGranted) return;
+    touchCtl.tiltAsked = true;
+    if (
+      typeof window.DeviceOrientationEvent !== "undefined" &&
+      typeof window.DeviceOrientationEvent.requestPermission === "function"
+    ) {
+      window.DeviceOrientationEvent.requestPermission()
+        .then(function (s) {
+          touchCtl.tiltGranted = s === "granted";
+          if (touchCtl.tiltGranted) {
+            window.addEventListener("deviceorientation", onOrient, true);
+            touchCtl.gyroNeedCal = true;
+          }
+          syncMobileUi();
+        })
+        .catch(function () {
+          touchCtl.tiltGranted = false;
+          syncMobileUi();
+        });
+      return;
+    }
+    touchCtl.tiltGranted = true;
+    window.addEventListener("deviceorientation", onOrient, true);
+    touchCtl.gyroNeedCal = true;
+    syncMobileUi();
+  }
+
+  function syncPads() {
+    var gas = false;
+    var brake = false;
+    var id;
+    for (id in touchCtl.pads) {
+      if (!Object.prototype.hasOwnProperty.call(touchCtl.pads, id)) continue;
+      if (touchCtl.pads[id] === "gas") gas = true;
+      if (touchCtl.pads[id] === "brake") brake = true;
+    }
+    touchCtl.gas = gas;
+    touchCtl.brake = brake;
+  }
+
+  function bindMobile() {
+    var layer = hud.touchLayer;
+    if (!layer) return;
+    layer.addEventListener("pointerdown", function (e) {
+      if (e.target && e.target.id === "rev-btn") return;
+      e.preventDefault();
+      var half = e.clientX >= window.innerWidth * 0.5 ? "gas" : "brake";
+      touchCtl.pads[e.pointerId] = half;
+      syncPads();
+      try {
+        layer.setPointerCapture(e.pointerId);
+      } catch (err) {}
+    });
+    function endPad(e) {
+      delete touchCtl.pads[e.pointerId];
+      syncPads();
+    }
+    layer.addEventListener("pointerup", endPad);
+    layer.addEventListener("pointercancel", endPad);
+    layer.addEventListener("pointerleave", endPad);
+    if (hud.revBtn) {
+      hud.revBtn.addEventListener("pointerdown", function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        touchCtl.rev = true;
+        hud.revBtn.classList.add("held");
+      });
+      function endRev(e) {
+        e.stopPropagation();
+        touchCtl.rev = false;
+        hud.revBtn.classList.remove("held");
+      }
+      hud.revBtn.addEventListener("pointerup", endRev);
+      hud.revBtn.addEventListener("pointercancel", endRev);
+      hud.revBtn.addEventListener("pointerleave", endRev);
+    }
+    if (hud.tiltBtn) {
+      hud.tiltBtn.addEventListener("click", function (e) {
+        e.preventDefault();
+        askTiltPermission();
+      });
+    }
+    if (!needsTiltTap()) {
+      window.addEventListener("deviceorientation", onOrient, true);
+      touchCtl.tiltGranted = true;
+    }
+  }
+
+  function hexCss(n) {
+    return "#" + ("000000" + (n | 0).toString(16)).slice(-6);
+  }
+
+  function persistPaint() {
+    try {
+      localStorage.setItem("sk_body", String(playerBody));
+      localStorage.setItem("sk_wing", String(playerWing));
+    } catch (e) {}
+    if (net) {
+      net.body = playerBody;
+      net.wing = playerWing;
+    }
+    paintCar(player.mesh, playerBody, playerWing);
+    paintGarage();
+  }
+
+  function paintGarage() {
+    function fill(el, list, cur, which) {
+      if (!el) return;
+      el.innerHTML = "";
+      list.forEach(function (hex) {
+        var b = document.createElement("button");
+        b.type = "button";
+        b.className = "swatch" + (hex === cur ? " on" : "");
+        b.style.background = hexCss(hex);
+        b.setAttribute("aria-label", which + " " + hexCss(hex));
+        b.addEventListener("click", function () {
+          if (which === "body") playerBody = hex;
+          else playerWing = hex;
+          persistPaint();
+        });
+        el.appendChild(b);
+      });
+    }
+    fill(hud.bodySwatches, BODY_SWATCHES, playerBody, "body");
+    fill(hud.wingSwatches, WING_SWATCHES, playerWing, "wing");
+  }
+
   function typingField(el) {
     return el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA");
   }
@@ -2441,11 +3047,16 @@
   });
   window.addEventListener("blur", function () {
     keys = Object.create(null);
+    touchCtl.pads = {};
+    touchCtl.gas = false;
+    touchCtl.brake = false;
+    touchCtl.rev = false;
     // pitTimer stays on blur. Leave the pit lane to reset a visit.
   });
   window.addEventListener("resize", function () {
     renderer.setSize(window.innerWidth, window.innerHeight);
     layoutCamera();
+    syncMobileUi();
   });
 
   function showBoot(text, isErr) {
@@ -2504,6 +3115,7 @@
           rejoin: beenRacing(loadMe(net.room)),
         });
       }
+      if (msg && msg.track != null) maybeApplyNetTrack(msg.track);
       paintRoster();
     });
     net.on("lights", function () {
@@ -2536,6 +3148,7 @@
         } catch (e) {}
         net.leave();
       }
+      restoreLocalTrack();
       state = "title";
       setScreen("title");
       showBoot("Host kicked you", true);
@@ -2689,13 +3302,82 @@
       clearRemotes();
       clearHostBots();
       applyGameSpeed(1);
+      restoreLocalTrack();
       state = "title";
       setScreen("title");
       showBoot("");
     });
   }
 
+  var btnTrack = document.getElementById("btn-track");
+  var btnTrackUndo = document.getElementById("btn-track-undo");
+  var btnTrackCampus = document.getElementById("btn-track-campus");
+  var btnTrackCopy = document.getElementById("btn-track-copy");
+  var btnTrackDone = document.getElementById("btn-track-done");
+  var tileRow = document.getElementById("tile-row");
+  if (btnTrack) {
+    btnTrack.addEventListener("click", function () {
+      if (state !== "title") return;
+      state = "track";
+      setScreen("track");
+      paintTrackEditor();
+    });
+  }
+  if (tileRow) {
+    tileRow.addEventListener("click", function (e) {
+      var t = e.target;
+      while (t && t !== tileRow && !t.getAttribute("data-tile")) t = t.parentNode;
+      if (!t || t === tileRow) return;
+      var ch = t.getAttribute("data-tile");
+      if (!ch || trackCode.length >= 80) return;
+      applyTrack(trackCode + ch, true);
+      if (net && net.active && net.isHost() && net.setTrack) net.setTrack(trackCode);
+    });
+  }
+  if (btnTrackUndo) {
+    btnTrackUndo.addEventListener("click", function () {
+      applyTrack(trackCode.slice(0, -1), true);
+    });
+  }
+  if (btnTrackCampus) {
+    btnTrackCampus.addEventListener("click", function () {
+      applyTrack("", true);
+    });
+  }
+  if (btnTrackCopy) {
+    btnTrackCopy.addEventListener("click", function () {
+      var s = trackCode || "";
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(s).catch(function () {});
+      }
+      if (hud.trackPaste) {
+        hud.trackPaste.value = s;
+        hud.trackPaste.select();
+      }
+    });
+  }
+  if (btnTrackDone) {
+    btnTrackDone.addEventListener("click", function () {
+      if (hud.trackPaste) applyTrack(hud.trackPaste.value, true);
+      if (net && net.active && net.isHost() && net.setTrack) net.setTrack(trackCode);
+      state = "title";
+      setScreen("title");
+    });
+  }
+  if (hud.trackPaste) {
+    hud.trackPaste.addEventListener("change", function () {
+      applyTrack(hud.trackPaste.value, true);
+    });
+  }
+
   addWorld();
+  bindMobile();
+  paintGarage();
+  persistPaint();
+  try {
+    var savedTrack = localStorage.getItem("sk_track") || "";
+    if (savedTrack) applyTrack(savedTrack, false);
+  } catch (eTrack) {}
   resetGrid();
   setScreen("title");
 
