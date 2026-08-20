@@ -22,10 +22,10 @@ Local: `npm start`, then open `http://localhost:8787` (or whatever `PORT` is). S
 
 | Thing | Rule |
 | --- | --- |
-| Handling | Brake or you run wide. Wind the two long straights. Decreasing-radius **90**, left-right **chicane** (lift or clip grass), real **180 hairpin** (late brake = dump), **sweeper** only on fresh tires. Holding W the whole way loses. |
+| Handling | Brake or you run wide. Wind the two long straights. Decreasing-radius **90**, left-right **chicane** (lift or clip the kerb / sand), real **180 hairpin** (late brake = dump), **sweeper** only on fresh tires. Holding W the whole way loses. |
 | Fuel | The **clock**. Ticks even while coasting. Burn is tuned so **5 laps still force one box** — never a second stop. Skip it and limp home. |
 | Tires | **Handling** (sloppy, run wide) — never a speed cap. Worn tires can still crawl to the box. Only **empty fuel** limps. |
-| Grass | A **crawl** plus extra wear. Never faster than asphalt, never parked at 0. Miss the peel and you can still roll back on. Holding W on the lawn loses. Readable green / sandy runoff — not a black void. |
+| Grass | A **crawl** plus extra wear — only if you get past the runoff onto infield patches. Never faster than asphalt, never parked at 0. The 180 and chicane use painted runoff / sand, not a grass beach. Holding W off-course loses. |
 | Pit | Peel **LEFT** off the south straight onto a real side lane (bypass) that runs parallel and merges back. Drive **halfway IN that lane** — then the car is grabbed and serviced (~2.5s, fuel + tires) and you drive out. Clipping the entry ramp does **not** count. One service per visit. |
 
 **Controls:** W / ↑ throttle (also revs on the grid) · **Space = brake** · **S / ↓ reverse** · A D / ← → steer · Enter or Space on the title to grid up.
@@ -36,7 +36,9 @@ Local: `npm start`, then open `http://localhost:8787` (or whatever `PORT` is). S
 
 **Start:** skip formation lap. Blue PRE-START flash, five reds one-by-one (~1s), random hold (0.2–3s) with all five ON, lights out = GO. Fuel clock starts at lights-out. The car is **locked to the grid** until GO — no creep, no jump-roll. **W** climbs the needle through the green and can overshoot — lift to catch the mark. In the green at GO = GOOD / GREAT. Below = SLUGGISH getaway (~1.5s). Past the mark / at max = **DUMP** (spin + dust, then full race pace). Holding W at the top is a fail, not a free GOOD. Space is brake after GO.
 
-**Hits:** cars bash — shove, spin, no ghosting through each other. **Walls** are **only** outside the 180, the chicane, and the sweeper. They collide. Not a cage.
+**Course (chase-cam read):** asphalt ribbon → red/white kerbs → painted/asphalt runoff → barrier. Not a grey snake on a green field. Kerbs on every named corner (90 / hairpin / chicane / sweeper / kink) — mountable, a dive wiggles, not a ramp.
+
+**Hits:** cars bash — shove, spin, no ghosting through each other. **Barriers** run both sides, continuous except the **LEFT pit peel** (stays open, no clip-grab). Low grey concrete + dark two-rail steel. Taller only outside the 180 / chicane / sweeper. They collide. Not a go-kart cage.
 
 **Nametags:** billboard labels sit **above the halo** on every car (you, humans, bots). Your tag is the lobby name, or **YOU** if empty. Other humans use their lobby name. One bot is exactly **BowieKnife99**; others are Hall Monitor / Sub Teacher / campus kids. Tags shrink a bit in the pack and fade when far — no flicker, no full-screen plaques.
 
@@ -85,7 +87,7 @@ npm test
 
 Repo is also a static site (HTML + CSS + JS + Three.js from CDN). Public Pages currently deploys from this branch (`cursor/campus-loop-playable-f645`). Use Railway as the school link.
 
-`index.html` is marked `no-store`. JS/CSS are versioned (`?v=mp30`) so a **normal reload** picks up the lobby.
+`index.html` is marked `no-store`. JS/CSS are versioned (`?v=mp31`) so a **normal reload** picks up the lobby.
 
 **Install (PWA):** on phone Safari / Chrome, Add to Home Screen. Standalone landscape chrome, dark splash (`#1a120e`). Original teal/cream mark (192 + 512 + apple-touch-icon). The service worker is network-first and does **not** cache the race or the websocket — a new Railway deploy is not a trapped old build. Offline play is not required.
 

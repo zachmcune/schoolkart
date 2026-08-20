@@ -10,7 +10,8 @@
    lights out = GO. Fuel starts then. Car is locked to the grid until GO.
    W is a timing game — climb through the green, lift to catch it.
    Hold to max dumps a spin on lights-out.
-   Walls: ONLY outside the 180 / chicane / sweeper. They collide.
+   Course: asphalt → kerbs → painted runoff → concrete + two-rail.
+   Barriers both sides except the LEFT pit peel. Grass is infield patches only.
    FX lock: two fat launch puffs, thin grey worn streaks, short white
    slip, one spinout burst, one sharp hit spark. */
 (function () {
@@ -48,6 +49,8 @@
   var REV_DROP = 0.72;
   var GETAWAY_T = 1.5;
   var ASPHALT = 8.6;
+  var RUNOFF = 3.8;
+  var KERB_NAMES = ["the90", "hairpin", "chicane", "sweeper", "kink"];
   var GRASS_MAX = 8.5;
   var GRASS_ROLL = 4;
   var GRASS_DUMP = 40;
@@ -650,7 +653,14 @@
     }
     var dist = Math.sqrt(best.d2);
     var inPit = inRect(px, pz, PIT_GRAB);
-    var onAsphalt = dist <= ASPHALT || onPitPavement(px, pz);
+    var onPit = onPitPavement(px, pz);
+    var onAsphalt = dist <= ASPHALT || onPit;
+    var onKerb =
+      !onPit &&
+      KERB_NAMES.indexOf(best.name) !== -1 &&
+      dist > ASPHALT - 0.12 &&
+      dist < ASPHALT + 1.15;
+    var onRunoff = !onAsphalt && dist <= ASPHALT + RUNOFF;
     return {
       x: best.x,
       z: best.z,
@@ -660,7 +670,9 @@
       name: best.name,
       onAsphalt: onAsphalt,
       inPit: inPit,
-      grass: !onAsphalt,
+      kerb: onKerb,
+      onRunoff: onRunoff,
+      grass: !onAsphalt && !onRunoff && !onPit,
     };
   }
 
@@ -688,18 +700,35 @@
     return new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ color: color, side: THREE.DoubleSide }));
   }
 
-  function makeRibbon(half, y, color, onlyNames) {
+  function ribbonMat(color) {
+    if (color && typeof color === "object") return color;
+    return new THREE.MeshLambertMaterial({ color: color, side: THREE.DoubleSide });
+  }
+
+  function makeRibbon(half, y, color, onlyNames, uvStep, offset) {
     var segs = RIBBON_SEGS;
     var pos = [];
     var idx = [];
+    var uvs = uvStep ? [] : null;
     var used = 0;
+    var off = offset || 0;
+    var sided = offset != null && offset !== 0;
     for (var i = 0; i <= segs; i++) {
       var p = centerlinePoint((i / segs) * TRACK_LEN);
       if (onlyNames && onlyNames.indexOf(p.name) === -1) continue;
       var nx = -Math.sin(p.h);
       var nz = Math.cos(p.h);
-      pos.push(p.x + nx * half, y, p.z + nz * half);
-      pos.push(p.x - nx * half, y, p.z - nz * half);
+      if (sided) {
+        pos.push(p.x + nx * (off + half), y, p.z + nz * (off + half));
+        pos.push(p.x + nx * (off - half), y, p.z + nz * (off - half));
+      } else {
+        pos.push(p.x + nx * half, y, p.z + nz * half);
+        pos.push(p.x - nx * half, y, p.z - nz * half);
+      }
+      if (uvs) {
+        uvs.push(used * uvStep, 1);
+        uvs.push(used * uvStep, 0);
+      }
       if (used > 0) {
         var a = (used - 1) * 2;
         idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
@@ -710,8 +739,28 @@
     var geo = new THREE.BufferGeometry();
     geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
     geo.setIndex(idx);
+    if (uvs) geo.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
     geo.computeVertexNormals();
-    return new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ color: color, side: THREE.DoubleSide }));
+    return new THREE.Mesh(geo, ribbonMat(color));
+  }
+
+  var _kerbTex = null;
+  function kerbTex() {
+    if (_kerbTex) return _kerbTex;
+    var c = document.createElement("canvas");
+    c.width = 32;
+    c.height = 8;
+    var ctx = c.getContext("2d");
+    ctx.fillStyle = "#e2182a";
+    ctx.fillRect(0, 0, 16, 8);
+    ctx.fillStyle = "#f4efe6";
+    ctx.fillRect(16, 0, 16, 8);
+    _kerbTex = new THREE.CanvasTexture(c);
+    _kerbTex.wrapS = THREE.RepeatWrapping;
+    _kerbTex.wrapT = THREE.ClampToEdgeWrapping;
+    _kerbTex.magFilter = THREE.NearestFilter;
+    _kerbTex.minFilter = THREE.NearestFilter;
+    return _kerbTex;
   }
 
   function addBox(x, y, z, w, h, d, color, parent) {
@@ -776,31 +825,32 @@
     trackRoot = new THREE.Group();
     scene.add(trackRoot);
 
-    var apron = makeRibbon(ASPHALT + 11, 0.03, 0x4e8c2e, null);
-    if (apron) trackRoot.add(apron);
-    var runoff = makeRibbon(ASPHALT + 5.4, 0.045, 0xd4a84a, null);
+    // Sand ONLY at the 180 and the chicane — discrete, not a beach around the lap.
+    var sandH = makeRibbon(ASPHALT + RUNOFF + 1.45, 0.018, 0xc4ae78, ["hairpin"]);
+    var sandC = makeRibbon(ASPHALT + RUNOFF + 1.45, 0.018, 0xc4ae78, ["chicane"]);
+    if (sandH) trackRoot.add(sandH);
+    if (sandC) trackRoot.add(sandC);
+    // Painted/asphalt runoff — the ribbon's shoulders. Never a green apron.
+    var runoff = makeRibbon(ASPHALT + RUNOFF, 0.03, 0x2a2e34, null);
     if (runoff) trackRoot.add(runoff);
 
-    trackRoot.add(makeRibbon(ASPHALT, 0.07, 0x0c0c0b, null));
-    trackRoot.add(makeRibbon(0.42, 0.095, 0xffffff, null));
-    trackRoot.add(makeEdges(ASPHALT - 0.38, 0.22, 0.096, 0xf4f1e6));
-    trackRoot.add(makeEdges(-(ASPHALT - 0.38), 0.22, 0.096, 0xf4f1e6));
-    var kerb90 = makeRibbon(ASPHALT + 0.78, 0.085, 0xff2a44, ["the90"]);
-    var kerbHair = makeRibbon(ASPHALT + 0.78, 0.085, 0xff2a44, ["hairpin"]);
-    var kerbSweep = makeRibbon(ASPHALT + 0.78, 0.085, 0xff2a44, ["sweeper"]);
-    var kerbChi = makeRibbon(ASPHALT + 0.78, 0.085, 0xff2a44, ["chicane"]);
-    var kerbW90 = makeRibbon(ASPHALT + 0.38, 0.086, 0xffffff, ["the90"]);
-    var kerbWHair = makeRibbon(ASPHALT + 0.38, 0.086, 0xffffff, ["hairpin"]);
-    var kerbWSweep = makeRibbon(ASPHALT + 0.38, 0.086, 0xffffff, ["sweeper"]);
-    var kerbWChi = makeRibbon(ASPHALT + 0.38, 0.086, 0xffffff, ["chicane"]);
-    if (kerb90) trackRoot.add(kerb90);
-    if (kerbHair) trackRoot.add(kerbHair);
-    if (kerbSweep) trackRoot.add(kerbSweep);
-    if (kerbChi) trackRoot.add(kerbChi);
-    if (kerbW90) trackRoot.add(kerbW90);
-    if (kerbWHair) trackRoot.add(kerbWHair);
-    if (kerbWSweep) trackRoot.add(kerbWSweep);
-    if (kerbWChi) trackRoot.add(kerbWChi);
+    trackRoot.add(makeRibbon(ASPHALT, 0.055, 0x1a1a1c, null));
+    trackRoot.add(makeRibbon(0.42, 0.08, 0xc8c4b8, null));
+    trackRoot.add(makeEdges(ASPHALT - 0.38, 0.22, 0.072, 0xf4f1e6));
+    trackRoot.add(makeEdges(-(ASPHALT - 0.38), 0.22, 0.072, 0xf4f1e6));
+    var kerbMat = new THREE.MeshLambertMaterial({
+      map: kerbTex(),
+      color: 0xffffff,
+      side: THREE.DoubleSide,
+    });
+    var kn;
+    for (kn = 0; kn < KERB_NAMES.length; kn++) {
+      var names = [KERB_NAMES[kn]];
+      var kL = makeRibbon(0.52, 0.078, kerbMat, names, 1.35, +(ASPHALT + 0.42));
+      var kR = makeRibbon(0.52, 0.078, kerbMat, names, 1.35, -(ASPHALT + 0.42));
+      if (kL) trackRoot.add(kL);
+      if (kR) trackRoot.add(kR);
+    }
 
     var p;
     for (p = 0; p < PIT_PAVE.length; p++) {
@@ -814,8 +864,8 @@
       addBox((PIT_LANE.x0 + PIT_LANE.x1) * 0.5, 0.115, PIT_LANE.z1, PIT_LANE.x1 - PIT_LANE.x0, 0.03, 0.34, 0x7cffd4, trackRoot);
     }
     if (!trackCode) {
-      addBox(62, 0.82, -69.6, 70, 1.55, 0.62, 0x2a2018, trackRoot);
-      addBox(62, 1.62, -69.6, 70, 0.12, 0.7, TEAL, trackRoot);
+      addBox(62, 0.82, -54.2, 70, 1.55, 0.62, 0x2a2018, trackRoot);
+      addBox(62, 1.62, -54.2, 70, 0.12, 0.7, TEAL, trackRoot);
       var pitDecal = labelPlane("PIT", 7.2, 2.8, "#0a2a28", "#2ec8c3");
       pitDecal.rotation.x = -Math.PI * 0.5;
       pitDecal.position.set(72, 0.16, -62.0);
@@ -882,7 +932,8 @@
       var fp = centerlinePoint(s);
       var nx = -Math.sin(fp.h);
       var nz = Math.cos(fp.h);
-      cornerFlag(fp.x + nx * (ASPHALT + 7) * side, fp.z + nz * (ASPHALT + 7) * side, title);
+      var flagOff = ASPHALT + RUNOFF + 2.3;
+      cornerFlag(fp.x + nx * flagOff * side, fp.z + nz * flagOff * side, title);
     }
     flagOn("the90", "THE 90", -1);
     flagOn("chicane", "CHICANE", 1);
@@ -917,72 +968,123 @@
       bx: bx,
       bz: bz,
       thick: thick || 0.55,
-      kind: kind || "armco",
+      kind: kind || "low",
       silent: !!silent,
     });
   }
 
-  function wallArcOutsides(name, offset, step, kind, thick) {
+  function skipLeftBarrier(p) {
+    if (!PIT_META.on) return false;
+    var nx = -Math.sin(p.h);
+    var nz = Math.cos(p.h);
+    var wx = p.x + nx * (ASPHALT + RUNOFF + 0.4);
+    var wz = p.z + nz * (ASPHALT + RUNOFF + 0.4);
+    if (onPitPavement(wx, wz) || inRect(wx, wz, PIT_LANE) || inRect(wx, wz, PIT_GRAB)) return true;
+    var ix = p.x + nx * (ASPHALT + 1.6);
+    var iz = p.z + nz * (ASPHALT + 1.6);
+    return onPitPavement(ix, iz);
+  }
+
+  function wallKindFor(p, side) {
+    if (p.name !== "hairpin" && p.name !== "chicane" && p.name !== "sweeper") return "low";
     var i;
     for (i = 0; i < PATH.length; i++) {
       var seg = PATH[i];
-      if (seg.name !== name || seg.type !== "arc") continue;
-      var side = seg.a1 >= seg.a0 ? -1 : 1;
-      var last = null;
-      var s;
-      for (s = 0; s <= seg.len + 0.01; s += step) {
-        var p = pointOnSeg(seg, clamp(s / seg.len, 0, 1));
-        var nx = -Math.sin(p.h) * side;
-        var nz = Math.cos(p.h) * side;
-        var x = p.x + nx * offset;
-        var z = p.z + nz * offset;
-        if (last) wallSeg(last.x, last.z, x, z, thick, kind, false);
-        last = { x: x, z: z };
-      }
+      if (seg.type !== "arc" || seg.name !== p.name) continue;
+      var dx = p.x - seg.cx;
+      var dz = p.z - seg.cz;
+      if (Math.abs(Math.hypot(dx, dz) - seg.r) > 3) continue;
+      var nx = -Math.sin(p.h);
+      var nz = Math.cos(p.h);
+      var insideLeft = -dx * nx + -dz * nz > 0;
+      var outside = insideLeft ? -1 : 1;
+      return side === outside ? "tall" : "low";
     }
+    return "low";
   }
 
   function placeWalls() {
     WALLS.length = 0;
-    // Designer lock: ONLY outside the 180 / chicane / sweeper. Not a cage.
-    wallArcOutsides("hairpin", ASPHALT + 1.75, 6.5, "armco", 0.6);
-    wallArcOutsides("chicane", ASPHALT + 1.55, 7, "armco", 0.5);
-    wallArcOutsides("sweeper", ASPHALT + 1.9, 12, "armco", 0.55);
-  }
-
-  function drawWalls() {
-    var i;
-    for (i = 0; i < WALLS.length; i++) {
-      var w = WALLS[i];
-      if (w.silent) continue;
-      var dx = w.bx - w.ax;
-      var dz = w.bz - w.az;
-      var len = Math.hypot(dx, dz);
-      var kerb = w.kind === "kerb";
-      var h = kerb ? 0.26 : 1.05;
-      var dpth = kerb ? 0.62 : 0.38;
-      var col = kerb ? 0xff2a44 : w.kind === "pit" ? 0x2a2018 : 0xb8b4a8;
-      var mesh = new THREE.Mesh(
-        new THREE.BoxGeometry(len, h, dpth),
-        new THREE.MeshLambertMaterial({ color: col, side: THREE.DoubleSide })
-      );
-      mesh.position.set((w.ax + w.bx) * 0.5, h * 0.5, (w.az + w.bz) * 0.5);
-      mesh.rotation.set(0, -Math.atan2(dz, dx), 0);
-      trackRoot.add(mesh);
-      if (!kerb) {
-        var cap = new THREE.Mesh(
-          new THREE.BoxGeometry(len, 0.1, dpth + 0.08),
-          new THREE.MeshLambertMaterial({ color: w.kind === "pit" ? TEAL : 0x8a4030, side: THREE.DoubleSide })
-        );
-        cap.position.set(mesh.position.x, h + 0.04, mesh.position.z);
-        cap.rotation.copy(mesh.rotation);
-        trackRoot.add(cap);
+    var OFF = ASPHALT + RUNOFF + 0.38;
+    var STEP = 7.6;
+    var lastL = null;
+    var lastR = null;
+    var s;
+    for (s = 0; s <= TRACK_LEN + 0.01; s += STEP) {
+      var p = centerlinePoint(s);
+      var nx = -Math.sin(p.h);
+      var nz = Math.cos(p.h);
+      var lx = p.x + nx * OFF;
+      var lz = p.z + nz * OFF;
+      var rx = p.x - nx * OFF;
+      var rz = p.z - nz * OFF;
+      var kL = wallKindFor(p, 1);
+      var kR = wallKindFor(p, -1);
+      if (!skipLeftBarrier(p)) {
+        if (lastL) wallSeg(lastL.x, lastL.z, lx, lz, 0.5, lastL.kind, false);
+        lastL = { x: lx, z: lz, kind: kL };
+      } else {
+        lastL = null;
       }
+      if (lastR) wallSeg(lastR.x, lastR.z, rx, rz, 0.5, lastR.kind, false);
+      lastR = { x: rx, z: rz, kind: kR };
     }
   }
 
+  function drawWalls() {
+    var vis = [];
+    var i;
+    for (i = 0; i < WALLS.length; i++) {
+      if (!WALLS[i].silent) vis.push(WALLS[i]);
+    }
+    if (!vis.length) return;
+    var n = vis.length;
+    var box = new THREE.BoxGeometry(1, 1, 1);
+    var matC = new THREE.MeshLambertMaterial({ color: 0x6e7178 });
+    var matR = new THREE.MeshLambertMaterial({ color: 0x1c1e22 });
+    var matP = new THREE.MeshLambertMaterial({ color: 0x2a2c30 });
+    var concrete = new THREE.InstancedMesh(box, matC, n);
+    var railLo = new THREE.InstancedMesh(box, matR, n);
+    var railHi = new THREE.InstancedMesh(box, matR, n);
+    var posts = new THREE.InstancedMesh(box, matP, n);
+    var dummy = new THREE.Object3D();
+    function stamp(im, idx, x, y, z, sx, sy, sz, rotY) {
+      dummy.position.set(x, y, z);
+      dummy.rotation.set(0, rotY, 0);
+      dummy.scale.set(sx, sy, sz);
+      dummy.updateMatrix();
+      im.setMatrixAt(idx, dummy.matrix);
+    }
+    for (i = 0; i < n; i++) {
+      var w = vis[i];
+      var dx = w.bx - w.ax;
+      var dz = w.bz - w.az;
+      var len = Math.hypot(dx, dz);
+      var rotY = -Math.atan2(dz, dx);
+      var mx = (w.ax + w.bx) * 0.5;
+      var mz = (w.az + w.bz) * 0.5;
+      var tall = w.kind === "tall";
+      var ch = tall ? 1.18 : 0.58;
+      var cd = tall ? 0.42 : 0.36;
+      stamp(concrete, i, mx, ch * 0.5, mz, len, ch, cd, rotY);
+      var r0 = ch + (tall ? 0.26 : 0.2);
+      var r1 = ch + (tall ? 0.58 : 0.42);
+      stamp(railLo, i, mx, r0, mz, len * 0.98, 0.08, 0.08, rotY);
+      stamp(railHi, i, mx, r1, mz, len * 0.98, 0.08, 0.08, rotY);
+      stamp(posts, i, w.ax, (r1 + 0.06) * 0.5, w.az, 0.1, r1 + 0.06, 0.1, rotY);
+    }
+    concrete.instanceMatrix.needsUpdate = true;
+    railLo.instanceMatrix.needsUpdate = true;
+    railHi.instanceMatrix.needsUpdate = true;
+    posts.instanceMatrix.needsUpdate = true;
+    trackRoot.add(concrete);
+    trackRoot.add(railLo);
+    trackRoot.add(railHi);
+    trackRoot.add(posts);
+  }
+
   function addWorld() {
-    scene.add(new THREE.HemisphereLight(0xffe6c4, 0x162214, 0.38));
+    scene.add(new THREE.HemisphereLight(0xffe6c4, 0x1c1a18, 0.38));
     var sun = new THREE.DirectionalLight(0xfff4dc, 1.55);
     sun.position.set(72, 58, -42);
     scene.add(sun);
@@ -990,8 +1092,7 @@
     shade.position.set(-55, 16, 48);
     scene.add(shade);
 
-    addBox(-40, -0.2, 80, 1100, 0.4, 900, 0x3a6e28);
-    addBox(8, 0.02, 40, 120, 0.06, 90, 0x458434);
+    addBox(-40, -0.2, 80, 1100, 0.4, 900, 0x3f3c36);
     addTrackMesh();
 
     addBox(8, 4.2, SF_Z - 17, 36, 6.4, 7, 0x8a4030);
@@ -1005,7 +1106,9 @@
     addBox(28, 4.8, -36, 14, 9.6, 16, 0xa34628);
     addBox(28, 10, -36, 16, 0.9, 18, 0x7a301c);
     addBox(-36, 3.8, -28, 18, 7.6, 10, 0xc4683a);
-    addBox(8, 0.35, -30, 24, 0.16, 32, 0x6f9a42);
+    addBox(8, 0.12, -30, 22, 0.1, 28, 0x6f9a42);
+    addBox(-36, 0.1, 18, 32, 0.08, 24, 0x5f8a38);
+    addBox(42, 0.1, 72, 18, 0.08, 16, 0x6a9240);
     addBox(-48, 4.4, 96, 22, 8.8, 14, 0xa34628);
     addBox(-48, 9.2, 96, 24, 0.8, 16, 0x7a301c);
 
@@ -1943,6 +2046,13 @@
     }
     if (r.tires < TIRE_FLOOR) r.tires = TIRE_FLOOR;
     if (tire < 0.45) r.slide += (Math.random() - 0.5) * 4.2 * dt;
+    if (info.kerb) {
+      var dive = Math.abs(r.speed) / 36;
+      var bite = clamp((info.dist - (ASPHALT - 0.2)) / 1.1, 0.18, 1);
+      var wob = bite * dive;
+      r.slide += Math.sin((raceTime + r.x * 0.05) * 28) * 14 * wob * dt;
+      r.heading += Math.sin((raceTime + r.z * 0.04) * 17) * 0.7 * wob * dt;
+    }
 
     r.heading += steer * maxYaw * dt * (r.speed < 0 ? -1 : 1);
     r.x += Math.cos(r.heading) * r.speed * dt;

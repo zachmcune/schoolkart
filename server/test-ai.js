@@ -59,6 +59,8 @@ var code = [
   "var REV_GREAT_LO = 0.64;",
   "var REV_GREAT_HI = 0.74;",
   "var ASPHALT = 8.6;",
+  "var RUNOFF = 3.8;",
+  "var KERB_NAMES = ['the90', 'hairpin', 'chicane', 'sweeper', 'kink'];",
   "var GRASS_MAX = 8.5;",
   "var GRASS_ROLL = 4;",
   "var GRASS_DUMP = 40;",
@@ -231,6 +233,22 @@ function assert(cond, msg) {
 }
 
 assert(Math.abs(sim.TRACK_LEN - 1978.98) < 2, "Campus Loop length " + sim.TRACK_LEN);
+var line = sim.projectTrack(0, -80);
+assert(line.onAsphalt && !line.grass, "racing line is asphalt");
+var shoulder = sim.projectTrack(0, -80 - 8.6 - 2);
+assert(!shoulder.onAsphalt && !shoulder.grass && shoulder.onRunoff, "painted runoff is not lawn");
+var past = sim.projectTrack(0, -80 - 8.6 - 3.8 - 3);
+assert(past.grass, "beyond runoff can crawl");
+var kerbPt = null;
+for (var ks = 0; ks < sim.TRACK_LEN; ks += 6) {
+  var kp = sim.centerlinePoint(ks);
+  if (kp.name !== "the90") continue;
+  var knx = -Math.sin(kp.h);
+  var knz = Math.cos(kp.h);
+  kerbPt = sim.projectTrack(kp.x + knx * 9.0, kp.z + knz * 9.0);
+  if (kerbPt.kerb) break;
+}
+assert(kerbPt && kerbPt.kerb && !kerbPt.grass, "named-corner kerb is mountable, not lawn");
 var hp = 0;
 var longs = 0;
 for (var d = 0; d < sim.TRACK_LEN; d += 4) {
