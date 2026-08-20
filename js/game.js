@@ -1228,7 +1228,8 @@
     MAP_SURF = [];
     MAP_CLOSED = false;
     if (code) {
-      if (code.charAt(0) === "M") buildMapPath(code);
+      var head = code.charAt(0);
+      if (head === "M" || head === "m") buildMapPath(code);
       else {
         buildCodePath(code);
         MAP_CLOSED = TRACK_LEN > 80;
@@ -2241,7 +2242,17 @@
   var tilePick = "";
   var tileSel = "";
   var editorDrag = null;
+  var _eatClick = 0;
   var _tileArt = {};
+
+  function eatNextClick() {
+    // Chromebook fat-tap: pointerdown on Track/Copy, click lands on Solo/Done.
+    _eatClick = Date.now() + 700;
+  }
+
+  function clickIsEaten() {
+    return Date.now() < _eatClick;
+  }
 
   function tileArt(type, rot, size) {
     var key = type + rot + ":" + size;
@@ -2594,12 +2605,18 @@
     if (!MAP_TYPES[t] || x < 0 || y < 0 || x >= MAP_W || y >= MAP_H) return;
     var next = { t: t, x: x, y: y, r: r || 0 };
     if (!cellsInBoard(footprint(next))) return;
-    var pieces = parseMap(trackCode).filter(function (p) {
-      return !footprintsOverlap(p, next);
-    });
-    pieces.push(next);
+    var pieces = parseMap(trackCode);
+    var hit = pieceAt(x, y, pieces);
+    var without = pieces;
+    if (hit) {
+      without = pieces.filter(function (p) {
+        return !(p.x === hit.x && p.y === hit.y);
+      });
+    }
+    if (!canSit(next, without)) return;
+    without.push(next);
     tileSel = mapKey(x, y);
-    commitTrack(encodeMap(pieces));
+    commitTrack(encodeMap(without));
   }
 
   function movePiece(x0, y0, x1, y1) {
@@ -4508,6 +4525,7 @@
 
   function startSequence() {
     if (joining) return;
+    if (state === "track") return;
     if (net && net.active && mpMode) return;
     mpMode = false;
     lateJoinT = 0;
@@ -6030,7 +6048,15 @@
     });
   }
   if (btnSolo) {
-    btnSolo.addEventListener("click", function () {
+    btnSolo.addEventListener("pointerdown", function (e) {
+      if (clickIsEaten() || state !== "title") {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    });
+    btnSolo.addEventListener("click", function (e) {
+      if (clickIsEaten()) return;
+      if (state !== "title") return;
       joining = false;
       lateJoinT = 0;
       clearMe();
@@ -6077,7 +6103,14 @@
   var btnTrackCopy = document.getElementById("btn-track-copy");
   var btnTrackDone = document.getElementById("btn-track-done");
   if (btnTrack) {
-    btnTrack.addEventListener("click", function () {
+    function openTrackEditor(e) {
+      if (e) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+      if (state === "start" || state === "racing" || state === "lobby") return;
+      eatNextClick();
+      if (state === "track") return;
       if (state !== "title") return;
       state = "track";
       tilePick = "";
@@ -6085,6 +6118,13 @@
       editorDrag = null;
       setScreen("track");
       paintTrackEditor();
+    }
+    btnTrack.addEventListener("pointerdown", function (e) {
+      if (e.button != null && e.button !== 0) return;
+      openTrackEditor(e);
+    });
+    btnTrack.addEventListener("click", function (e) {
+      openTrackEditor(e);
     });
   }
 
@@ -6203,6 +6243,7 @@
     killGhost();
     clearDropMarks();
     editorDrag = null;
+    if (live) eatNextClick();
     var over = hitAt(x, y);
     if (!live) {
       if (from === "palette") {
@@ -6273,7 +6314,7 @@
     );
     if (hud.tileBoard) {
       hud.tileBoard.addEventListener("click", function (e) {
-        if (editorDrag) return;
+        if (editorDrag || clickIsEaten()) return;
         var hit = tileFromNode(e.target);
         if (hit && hit.kind === "cell" && tilePick && !hit.ch) placePiece(tilePick, hit.x, hit.y, 0);
       });
@@ -6289,6 +6330,7 @@
 
   if (btnTrackUndo) {
     btnTrackUndo.addEventListener("click", function () {
+      if (clickIsEaten()) return;
       if (!trackUndo.length) {
         if (trackCode.charAt(0) === "M") return;
         applyTrack(trackCode.slice(0, -1), true);
@@ -6300,25 +6342,57 @@
   }
   if (btnTrackCampus) {
     btnTrackCampus.addEventListener("click", function () {
+      if (clickIsEaten()) return;
       restoreCampusLoop();
     });
   }
-  if (btnTrackCopy) {
-    btnTrackCopy.addEventListener("click", function () {
-      var s = trackCode || "";
-      var packed = parseMap(s);
-      if (packed.length) s = encodeMap(packed);
+  function copyShareString() {
+    if (state !== "track") {
+      state = "track";
+      setScreen("track");
+    }
+    var s = trackCode || "";
+    var packed = parseMap(s);
+    if (packed.length) s = encodeMap(packed);
+    if (hud.trackPaste) {
+      hud.trackPaste.value = s;
+      hud.trackPaste.focus();
+      hud.trackPaste.select();
+    }
+    var copied = false;
+    try {
       if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(s).catch(function () {});
+        copied = true;
       }
-      if (hud.trackPaste) {
-        hud.trackPaste.value = s;
-        hud.trackPaste.select();
+    } catch (err) {}
+    if (!copied) {
+      try {
+        copied = document.execCommand("copy");
+      } catch (err2) {
+        copied = false;
       }
+    }
+    return copied;
+  }
+  if (btnTrackCopy) {
+    btnTrackCopy.addEventListener("pointerdown", function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      eatNextClick();
+      copyShareString();
+    });
+    btnTrackCopy.addEventListener("click", function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      eatNextClick();
+      copyShareString();
     });
   }
   if (btnTrackDone) {
-    btnTrackDone.addEventListener("click", function () {
+    btnTrackDone.addEventListener("click", function (e) {
+      if (clickIsEaten()) return;
+      if (state !== "track") return;
       syncShareField();
       applyTrack(trackCode, true, true);
       if (net && net.active && net.isHost() && net.setTrack) net.setTrack(isDriveableLoop() ? trackCode : "");

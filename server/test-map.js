@@ -1674,6 +1674,16 @@ function proveTurnIcons() {
   assert(src.indexOf("if (pieces[i].x === x && pieces[i].y === y)") !== -1, "rotate finds only the selected origin");
   assert(src.indexOf("if (!canSit(next, others)) return;") !== -1, "rotate does not nudge the piece onto neighbors");
   assert(src.indexOf("var bN = parseMap(board).length") !== -1, "Solo keeps the board when the share field is stale 90s-only");
+  assert(sliceFn("placePiece").indexOf("if (!canSit(next, without)) return") !== -1, "drop adds a piece; it does not wipe the board");
+  assert(sliceFn("placePiece").indexOf("!footprintsOverlap") === -1, "4th drop does not filter-erase neighbors");
+  assert(sliceFn("placePiece").indexOf("without.push(next)") !== -1, "drop pushes onto the kept board");
+  assert(sliceFn("startSequence").indexOf('state === "track"') !== -1, "Track stays in the editor and does not start a race");
+  assert(src.indexOf("function copyShareString") !== -1 && src.indexOf("hud.trackPaste.focus()") !== -1, "Copy focuses the share field and keeps the editor");
+  assert(src.indexOf('btnTrackCopy.addEventListener("pointerdown"') !== -1, "Copy copies on press so Done cannot steal the tap");
+  assert(src.indexOf("function eatNextClick") !== -1, "a drop does not click Done and close the editor");
+  var copySlice = src.slice(src.indexOf("function copyShareString"), src.indexOf("if (btnTrackDone)"));
+  assert(copySlice.indexOf('state = "title"') === -1, "Copy does not dismiss the editor");
+  assert(copySlice.indexOf("setScreen(\"title\")") === -1, "Copy does not switch to title");
 }
 
 sim.lockRacePath("");

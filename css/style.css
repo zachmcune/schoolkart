@@ -440,10 +440,18 @@ kbd {
   color: #fff;
 }
 
+.lobby-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  justify-content: center;
+  margin: 12px 0 8px;
+}
+
 #lobby-screen .lobby-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 12px;
   justify-content: center;
   margin: 14px 0 8px;
 }
