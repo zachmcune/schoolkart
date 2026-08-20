@@ -121,6 +121,8 @@ var code = [
   sliceFn("skipLeftBarrier"),
   sliceFn("wallKindFor"),
   sliceFn("wallCutsRibbon"),
+  sliceFn("joinColinearWall"),
+  sliceFn("mergeColinearWalls"),
   sliceFn("placeWalls"),
   "function puffHit() {}",
   "function poseCar(r) { if (r.mesh && r.mesh.position) r.mesh.position.set(r.x, 0, r.z); }",
@@ -154,6 +156,7 @@ var code = [
   "  bashAllWalls: bashAllWalls,",
   "  bashWall: bashWall,",
   "  bashCars: bashCars,",
+  "  setWalls: function (w) { WALLS.length = 0; var i; for (i = 0; i < w.length; i++) WALLS.push(w[i]); },",
   "  speedKph: speedKph,",
   "  menuTrackName: menuTrackName,",
   "  isCustomCircuit: isCustomCircuit,",
@@ -743,9 +746,20 @@ assert(Math.abs(angDiff(graze.heading, Math.PI)) > 1.2, "wall graze does not sna
 assert(graze.speed < 24, "wall graze loses some speed");
 assert(Math.abs(graze.slide) > 0.15, "wall graze slides along the rail, slide=" + graze.slide);
 var railH = graze.heading;
+var pinSpd = graze.speed;
 var railK;
 for (railK = 0; railK < 12; railK++) sim.bashWall(graze, { ax: -30, az: 4, bx: 30, bz: 4, thick: 0.55 });
 assert(Math.abs(angDiff(graze.heading, railH)) < 0.22, "repeated rail graze does not stack a half-spin");
+assert(graze.speed > pinSpd * 0.92, "pinned graze does not restack speed dumps, spd=" + graze.speed.toFixed(2));
+
+var railA = { ax: -30, az: 4, bx: 30, bz: 4, thick: 0.55 };
+var railB = { ax: -30, az: 4.04, bx: 30, bz: 4.04, thick: 0.55 };
+sim.setWalls([railA, railB]);
+var stacked = blankCar(0, 2.7, grazeH, 24);
+stacked.slide = 0;
+sim.bashAllWalls(stacked);
+assert(stacked.speed > 18, "overlapping rails dump once, not a stacked freeze, spd=" + stacked.speed.toFixed(2));
+sim.setWalls([]);
 
 var nose = blankCar(3.8, 0, 0, 26);
 sim.bashWall(nose, { ax: 5, az: -40, bx: 5, bz: 40, thick: 0.55 });
@@ -754,7 +768,11 @@ assert(Math.abs(angDiff(nose.heading, Math.PI)) > 1.6, "head-on does not snap to
 assert(nose.speed < 12, "head-on kills most forward speed");
 
 assert(src.indexOf("hitKeepYaw") !== -1 && src.indexOf("hitYawT") !== -1, "hits shove without atan2 yaw snap; corner graze does not stack spin");
+assert(/else if \(!\(r\.hitYawT > 0\)\) \{\s*r\.speed \*= 0\.82/.test(src), "graze speed dump is gated while pinned");
+assert(src.indexOf("var nearI = -1") !== -1 && src.indexOf("One collider per frame") !== -1, "joins resolve one wall, not every overlapping capsule");
+assert(src.indexOf("function mergeColinearWalls") !== -1, "colinear rails become one collider per edge");
 assert(src.indexOf("wallCutsRibbon") !== -1, "inside-corner wall chords cannot sit on the ribbon");
+assert(src.indexOf("ASPHALT + 3.0") !== -1, "inside rails that clip the chassis are dropped");
 assert(!/function bashWall\([\s\S]{0,700}heading = Math.atan2/.test(src), "bashWall does not snap heading to velocity");
 assert(!/function bashCars\([\s\S]{0,900}heading = Math.atan2/.test(src), "bashCars does not snap heading to velocity");
 assert(src.indexOf("function steerWheelYaw") !== -1 && src.indexOf("return -steer * 0.42") !== -1, "A = POINT LEFT, D = POINT RIGHT");
@@ -1059,6 +1077,80 @@ var zig = [
 proveModulesFit(rectPieces(), "rectangle 90s");
 proveModulesFit(kitPieces(), "kit 90s+sweeper+chicane");
 proveModulesFit(zig, "chicane S next to 90s and straights");
+
+function proveNoLock(code, label) {
+  assert(sim.lockRacePath(code), label + " must Solo as a closed custom");
+  assert(sim.isDriveableLoop(), label + " stays a driveable custom");
+  assert(sim.menuTrackName() === "CUSTOM CIRCUIT", label + " Solo label stays CUSTOM");
+  sim.placeWalls();
+  var pose = sim.customGridPose();
+  assert(pose, label + " has a grid on the ribbon");
+  var car = blankCar(pose.x, pose.z, pose.h, 18);
+  car.fuel = 100;
+  car.tires = 100;
+  var lockFrames = 0;
+  var hadPace = false;
+  var freezeRun = 0;
+  var maxFreeze = 0;
+  var spinFrames = 0;
+  var travelled = 0;
+  var lastS = sim.projectTrack(car.x, car.z).s;
+  var t;
+  var seconds = Math.max(36, sim.TRACK_LEN / 12);
+  for (t = 0; t < seconds; t += 1 / 60) {
+    var line = sim.projectTrack(car.x, car.z);
+    var look = sim.centerlinePoint(line.s + 14);
+    var lookFar = sim.centerlinePoint(line.s + 26);
+    var err = angDiff(look.h, car.heading);
+    if (line.dist > 1.4) {
+      var home = Math.atan2(line.z - car.z, line.x - car.x);
+      err = angDiff(home, car.heading) * 0.55 + err * 0.45;
+    }
+    var steer = err * 1.65;
+    if (steer > 1) steer = 1;
+    if (steer < -1) steer = -1;
+    var tight =
+      line.name === "the90" ||
+      line.name === "chicane" ||
+      look.name === "the90" ||
+      look.name === "chicane" ||
+      lookFar.name === "the90" ||
+      lookFar.name === "chicane";
+    var gas = line.dist < 6.4;
+    var brake = false;
+    if (tight && car.speed > 26) {
+      gas = false;
+      brake = true;
+    } else if (tight && car.speed > 22) {
+      gas = false;
+    }
+    var h0 = car.heading;
+    sim.applyMotion(car, steer, gas, brake, false, 1 / 60, true);
+    sim.bashAllWalls(car);
+    if (car.speed > 12) hadPace = true;
+    if (hadPace && car.speed < 4 && !line.grass) lockFrames += 1;
+    if (car.speed < 1.2) {
+      freezeRun += 1;
+      if (freezeRun > maxFreeze) maxFreeze = freezeRun;
+    } else freezeRun = 0;
+    if (Math.abs(car.slide) > 5.2 || Math.abs(angDiff(car.heading, h0)) > 0.1) spinFrames += 1;
+    var nowS = sim.projectTrack(car.x, car.z).s;
+    var ds = nowS - lastS;
+    if (ds < -sim.TRACK_LEN * 0.5) ds += sim.TRACK_LEN;
+    if (ds > 0 && ds < 18) travelled += ds;
+    lastS = nowS;
+  }
+  assert(
+    travelled > sim.TRACK_LEN * 0.85,
+    label + " driven without dying, went=" + travelled.toFixed(0) + "/" + sim.TRACK_LEN.toFixed(0)
+  );
+  assert(lockFrames === 0, label + " must not lock at turns, lockFrames=" + lockFrames);
+  assert(maxFreeze < 18, label + " must not freeze on the ribbon, freeze=" + maxFreeze);
+  assert(spinFrames < 8, label + " no half-spin at each corner, frames=" + spinFrames);
+}
+
+proveNoLock(yell, "yell 4-piece rectangle MR220R321R332R233");
+proveNoLock(sim.encodeMap(zig), "chicane board");
 var chi = { t: "C", x: 2, y: 2, r: 0 };
 assert(sim.ribbonFitsFootprint(chi), "lone chicane S lives inside its cell");
 var chiPts = sim.chicanePts(2, 2, 0);

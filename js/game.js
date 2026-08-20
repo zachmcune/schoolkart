@@ -1826,7 +1826,7 @@
       var t = i / n;
       var mx = w.ax + (w.bx - w.ax) * t;
       var mz = w.az + (w.bz - w.az) * t;
-      if (projectTrack(mx, mz).dist < ASPHALT + 2.2) return true;
+      if (projectTrack(mx, mz).dist < ASPHALT + 3.0) return true;
     }
     return false;
   }
@@ -1870,7 +1870,78 @@
       keep.push(w);
     }
     WALLS.length = 0;
+    keep = mergeColinearWalls(keep);
     for (wi = 0; wi < keep.length; wi++) WALLS.push(keep[wi]);
+  }
+
+  function joinColinearWall(a, b) {
+    if ((a.kind || "low") !== (b.kind || "low")) return null;
+    var adx = a.bx - a.ax;
+    var adz = a.bz - a.az;
+    var bdx = b.bx - b.ax;
+    var bdz = b.bz - b.az;
+    var al = Math.hypot(adx, adz) || 1;
+    var bl = Math.hypot(bdx, bdz) || 1;
+    var dot = (adx * bdx + adz * bdz) / (al * bl);
+    if (Math.abs(dot) < 0.9995) return null;
+    var ends = [
+      [a.ax, a.az],
+      [a.bx, a.bz],
+      [b.ax, b.az],
+      [b.bx, b.bz],
+    ];
+    function close(i, j) {
+      return Math.hypot(ends[i][0] - ends[j][0], ends[i][1] - ends[j][1]) < 0.22;
+    }
+    if (!(close(0, 2) || close(0, 3) || close(1, 2) || close(1, 3))) return null;
+    var bi = 0;
+    var bj = 1;
+    var best = -1;
+    var i;
+    var j;
+    for (i = 0; i < 4; i++) {
+      for (j = i + 1; j < 4; j++) {
+        var d = Math.hypot(ends[i][0] - ends[j][0], ends[i][1] - ends[j][1]);
+        if (d > best) {
+          best = d;
+          bi = i;
+          bj = j;
+        }
+      }
+    }
+    return {
+      ax: ends[bi][0],
+      az: ends[bi][1],
+      bx: ends[bj][0],
+      bz: ends[bj][1],
+      thick: Math.max(a.thick || 0.55, b.thick || 0.55),
+      kind: a.kind || "low",
+      silent: !!(a.silent && b.silent),
+    };
+  }
+
+  function mergeColinearWalls(list) {
+    var out = list.slice();
+    var changed = true;
+    var guard = 0;
+    while (changed && guard < 120) {
+      changed = false;
+      guard += 1;
+      var a;
+      var b;
+      for (a = 0; a < out.length; a++) {
+        for (b = a + 1; b < out.length; b++) {
+          var joined = joinColinearWall(out[a], out[b]);
+          if (!joined || wallCutsRibbon(joined)) continue;
+          out[a] = joined;
+          out.splice(b, 1);
+          changed = true;
+          break;
+        }
+        if (changed) break;
+      }
+    }
+    return out;
   }
 
   function drawWalls() {
@@ -3860,14 +3931,12 @@
       r.heading += dir * clamp(impact * 0.016, 0.1, 0.36);
       r.slide += dir * clamp(impact * 0.2, 2.2, 8.5);
       r.hitYawT = 0.28;
-    } else {
+    } else if (!(r.hitYawT > 0)) {
       r.speed *= 0.82;
       if (impact > 10) r.speed *= 0.88;
-      if (!(r.hitYawT > 0)) {
-        r.slide += dir * clamp(impact * 0.12, 0, 3.2);
-        r.heading += dir * clamp(impact * 0.004 * (1 - into), 0, 0.04);
-        if (impact > 3) r.hitYawT = 0.12;
-      }
+      r.slide += dir * clamp(impact * 0.12, 0, 3.2);
+      r.heading += dir * clamp(impact * 0.004 * (1 - into), 0, 0.04);
+      if (impact > 3) r.hitYawT = 0.12;
     }
   }
 
@@ -3960,13 +4029,22 @@
     if (!r) return 0;
     if (r.hitFxT > 0) r.hitFxT -= 0.016;
     if (r.hitYawT > 0) r.hitYawT -= 0.016;
-    var best = 0;
+    // Joins and chorded 90s overlap 2–4 capsules. Hitting every one
+    // restacks graze dumps into a freeze. One collider per frame.
+    var nearI = -1;
+    var nearD = 1e9;
     var i;
     for (i = 0; i < WALLS.length; i++) {
-      var imp = bashWall(r, WALLS[i]);
-      if (imp > best) best = imp;
+      var w = WALLS[i];
+      var rad = 1.35 + (w.thick || 0.55) * 0.5;
+      var d = Math.sqrt(closestOnSeg(r.x, r.z, w.ax, w.az, w.bx, w.bz).d2);
+      if (d < rad && d < nearD) {
+        nearD = d;
+        nearI = i;
+      }
     }
-    return best;
+    if (nearI < 0) return 0;
+    return bashWall(r, WALLS[nearI]);
   }
 
   var fxPool = [];
