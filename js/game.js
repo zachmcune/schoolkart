@@ -659,7 +659,7 @@
       !onPit &&
       KERB_NAMES.indexOf(best.name) !== -1 &&
       dist > ASPHALT - 0.12 &&
-      dist < ASPHALT + 1.15;
+      dist < ASPHALT + 1.5;
     var onRunoff = !onAsphalt && dist <= ASPHALT + RUNOFF;
     return {
       x: best.x,
@@ -696,7 +696,10 @@
     var geo = new THREE.BufferGeometry();
     geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
     geo.setIndex(idx);
-    geo.computeVertexNormals();
+    var en = [];
+    var ei;
+    for (ei = 0; ei < pos.length; ei += 3) en.push(0, 1, 0);
+    geo.setAttribute("normal", new THREE.Float32BufferAttribute(en, 3));
     return new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ color: color, side: THREE.DoubleSide }));
   }
 
@@ -740,7 +743,10 @@
     geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
     geo.setIndex(idx);
     if (uvs) geo.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
-    geo.computeVertexNormals();
+    var nrm = [];
+    var ni;
+    for (ni = 0; ni < pos.length; ni += 3) nrm.push(0, 1, 0);
+    geo.setAttribute("normal", new THREE.Float32BufferAttribute(nrm, 3));
     return new THREE.Mesh(geo, ribbonMat(color));
   }
 
@@ -751,9 +757,9 @@
     c.width = 32;
     c.height = 8;
     var ctx = c.getContext("2d");
-    ctx.fillStyle = "#e2182a";
+    ctx.fillStyle = "#ff2038";
     ctx.fillRect(0, 0, 16, 8);
-    ctx.fillStyle = "#f4efe6";
+    ctx.fillStyle = "#fff6ee";
     ctx.fillRect(16, 0, 16, 8);
     _kerbTex = new THREE.CanvasTexture(c);
     _kerbTex.wrapS = THREE.RepeatWrapping;
@@ -826,19 +832,29 @@
     scene.add(trackRoot);
 
     // Sand ONLY at the 180 and the chicane — discrete, not a beach around the lap.
-    var sandH = makeRibbon(ASPHALT + RUNOFF + 1.45, 0.018, 0xc4ae78, ["hairpin"]);
-    var sandC = makeRibbon(ASPHALT + RUNOFF + 1.45, 0.018, 0xc4ae78, ["chicane"]);
+    var sandH = makeRibbon(ASPHALT + RUNOFF + 1.45, 0.018, 0xe0c888, ["hairpin"]);
+    var sandC = makeRibbon(ASPHALT + RUNOFF + 1.45, 0.018, 0xe0c888, ["chicane"]);
     if (sandH) trackRoot.add(sandH);
     if (sandC) trackRoot.add(sandC);
-    // Painted/asphalt runoff — the ribbon's shoulders. Never a green apron.
-    var runoff = makeRibbon(ASPHALT + RUNOFF, 0.03, 0x2a2e34, null);
+    // Painted runoff = lighter/cooler grey. Asphalt = darker. Must read apart.
+    var runoffMat = new THREE.MeshLambertMaterial({
+      color: 0x8d97a6,
+      emissive: 0x2a3038,
+      side: THREE.DoubleSide,
+    });
+    var runoff = makeRibbon(ASPHALT + RUNOFF, 0.03, runoffMat, null);
     if (runoff) trackRoot.add(runoff);
 
-    trackRoot.add(makeRibbon(ASPHALT, 0.055, 0x1a1a1c, null));
-    trackRoot.add(makeRibbon(0.42, 0.08, 0xc8c4b8, null));
-    trackRoot.add(makeEdges(ASPHALT - 0.38, 0.22, 0.072, 0xf4f1e6));
-    trackRoot.add(makeEdges(-(ASPHALT - 0.38), 0.22, 0.072, 0xf4f1e6));
-    var kerbMat = new THREE.MeshLambertMaterial({
+    var asphaltMat = new THREE.MeshLambertMaterial({
+      color: 0x3a3e46,
+      emissive: 0x101214,
+      side: THREE.DoubleSide,
+    });
+    trackRoot.add(makeRibbon(ASPHALT, 0.055, asphaltMat, null));
+    trackRoot.add(makeRibbon(0.42, 0.08, 0xd8d2c6, null));
+    trackRoot.add(makeEdges(ASPHALT - 0.38, 0.22, 0.072, 0xf4efe6));
+    trackRoot.add(makeEdges(-(ASPHALT - 0.38), 0.22, 0.072, 0xf4efe6));
+    var kerbMat = new THREE.MeshBasicMaterial({
       map: kerbTex(),
       color: 0xffffff,
       side: THREE.DoubleSide,
@@ -846,8 +862,8 @@
     var kn;
     for (kn = 0; kn < KERB_NAMES.length; kn++) {
       var names = [KERB_NAMES[kn]];
-      var kL = makeRibbon(0.52, 0.078, kerbMat, names, 1.35, +(ASPHALT + 0.42));
-      var kR = makeRibbon(0.52, 0.078, kerbMat, names, 1.35, -(ASPHALT + 0.42));
+      var kL = makeRibbon(0.9, 0.09, kerbMat, names, 0.42, +(ASPHALT + 0.55));
+      var kR = makeRibbon(0.9, 0.09, kerbMat, names, 0.42, -(ASPHALT + 0.55));
       if (kL) trackRoot.add(kL);
       if (kR) trackRoot.add(kR);
     }
@@ -956,8 +972,24 @@
       trackRoot.add(leaf);
     }
 
+    addInfieldGrass();
     placeWalls();
     drawWalls();
+  }
+
+  function addInfieldGrass() {
+    var OFF = ASPHALT + RUNOFF + 7.5;
+    var s;
+    for (s = 90; s < TRACK_LEN - 50; s += 210) {
+      var p = centerlinePoint(s);
+      if (p.name === "start" || skipLeftBarrier(p)) continue;
+      var nx = -Math.sin(p.h);
+      var nz = Math.cos(p.h);
+      var x = p.x + nx * OFF;
+      var z = p.z + nz * OFF;
+      if (onPitPavement(x, z)) continue;
+      addBox(x, 0.06, z, 30, 0.1, 20, 0x4ea03c, trackRoot);
+    }
   }
 
   function wallSeg(ax, az, bx, bz, thick, kind, silent) {
@@ -1040,9 +1072,9 @@
     if (!vis.length) return;
     var n = vis.length;
     var box = new THREE.BoxGeometry(1, 1, 1);
-    var matC = new THREE.MeshLambertMaterial({ color: 0x6e7178 });
-    var matR = new THREE.MeshLambertMaterial({ color: 0x1c1e22 });
-    var matP = new THREE.MeshLambertMaterial({ color: 0x2a2c30 });
+    var matC = new THREE.MeshLambertMaterial({ color: 0xd2d6dc, emissive: 0x3e4248 });
+    var matR = new THREE.MeshLambertMaterial({ color: 0x14161a });
+    var matP = new THREE.MeshLambertMaterial({ color: 0x1a1c20 });
     var concrete = new THREE.InstancedMesh(box, matC, n);
     var railLo = new THREE.InstancedMesh(box, matR, n);
     var railHi = new THREE.InstancedMesh(box, matR, n);
@@ -1064,11 +1096,11 @@
       var mx = (w.ax + w.bx) * 0.5;
       var mz = (w.az + w.bz) * 0.5;
       var tall = w.kind === "tall";
-      var ch = tall ? 1.18 : 0.58;
-      var cd = tall ? 0.42 : 0.36;
+      var ch = tall ? 1.28 : 0.9;
+      var cd = tall ? 0.64 : 0.58;
       stamp(concrete, i, mx, ch * 0.5, mz, len, ch, cd, rotY);
-      var r0 = ch + (tall ? 0.26 : 0.2);
-      var r1 = ch + (tall ? 0.58 : 0.42);
+      var r0 = ch + 0.16;
+      var r1 = ch + (tall ? 0.5 : 0.38);
       stamp(railLo, i, mx, r0, mz, len * 0.98, 0.08, 0.08, rotY);
       stamp(railHi, i, mx, r1, mz, len * 0.98, 0.08, 0.08, rotY);
       stamp(posts, i, w.ax, (r1 + 0.06) * 0.5, w.az, 0.1, r1 + 0.06, 0.1, rotY);
@@ -1084,7 +1116,7 @@
   }
 
   function addWorld() {
-    scene.add(new THREE.HemisphereLight(0xffe6c4, 0x1c1a18, 0.38));
+    scene.add(new THREE.HemisphereLight(0xffe6c4, 0x2c2a28, 0.52));
     var sun = new THREE.DirectionalLight(0xfff4dc, 1.55);
     sun.position.set(72, 58, -42);
     scene.add(sun);
@@ -1092,7 +1124,7 @@
     shade.position.set(-55, 16, 48);
     scene.add(shade);
 
-    addBox(-40, -0.2, 80, 1100, 0.4, 900, 0x3f3c36);
+    addBox(-40, -0.2, 80, 1100, 0.4, 900, 0x6a655c);
     addTrackMesh();
 
     addBox(8, 4.2, SF_Z - 17, 36, 6.4, 7, 0x8a4030);
@@ -1106,9 +1138,10 @@
     addBox(28, 4.8, -36, 14, 9.6, 16, 0xa34628);
     addBox(28, 10, -36, 16, 0.9, 18, 0x7a301c);
     addBox(-36, 3.8, -28, 18, 7.6, 10, 0xc4683a);
-    addBox(8, 0.12, -30, 22, 0.1, 28, 0x6f9a42);
-    addBox(-36, 0.1, 18, 32, 0.08, 24, 0x5f8a38);
-    addBox(42, 0.1, 72, 18, 0.08, 16, 0x6a9240);
+    addBox(8, 0.12, -30, 22, 0.1, 28, 0x4ea03c);
+    addBox(48, 0.08, -46, 36, 0.1, 18, 0x4ea03c);
+    addBox(-36, 0.1, 18, 32, 0.08, 24, 0x4ea03c);
+    addBox(42, 0.1, 72, 18, 0.08, 16, 0x4ea03c);
     addBox(-48, 4.4, 96, 22, 8.8, 14, 0xa34628);
     addBox(-48, 9.2, 96, 24, 0.8, 16, 0x7a301c);
 

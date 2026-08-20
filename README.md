@@ -36,7 +36,7 @@ Local: `npm start`, then open `http://localhost:8787` (or whatever `PORT` is). S
 
 **Start:** skip formation lap. Blue PRE-START flash, five reds one-by-one (~1s), random hold (0.2–3s) with all five ON, lights out = GO. Fuel clock starts at lights-out. The car is **locked to the grid** until GO — no creep, no jump-roll. **W** climbs the needle through the green and can overshoot — lift to catch the mark. In the green at GO = GOOD / GREAT. Below = SLUGGISH getaway (~1.5s). Past the mark / at max = **DUMP** (spin + dust, then full race pace). Holding W at the top is a fail, not a free GOOD. Space is brake after GO.
 
-**Course (chase-cam read):** asphalt ribbon → red/white kerbs → painted/asphalt runoff → barrier. Not a grey snake on a green field. Kerbs on every named corner (90 / hairpin / chicane / sweeper / kink) — mountable, a dive wiggles, not a ramp.
+**Course (chase-cam read):** asphalt ribbon → red/white kerbs → painted/asphalt runoff → barrier. Asphalt is the darker grey; runoff is a lighter/cooler painted grey — they must read apart, never black-on-black. Kerbs on every named corner (90 / hairpin / chicane / sweeper / kink) pop red/white. Discrete green infield patches sit past the runoff, not a lawn. Concrete wall bases are light grey under dark two-rail steel. Kerbs are mountable; a dive wiggles, not a ramp.
 
 **Hits:** cars bash — shove, spin, no ghosting through each other. **Barriers** run both sides, continuous except the **LEFT pit peel** (stays open, no clip-grab). Low grey concrete + dark two-rail steel. Taller only outside the 180 / chicane / sweeper. They collide. Not a go-kart cage.
 
@@ -87,7 +87,7 @@ npm test
 
 Repo is also a static site (HTML + CSS + JS + Three.js from CDN). Public Pages currently deploys from this branch (`cursor/campus-loop-playable-f645`). Use Railway as the school link.
 
-`index.html` is marked `no-store`. JS/CSS are versioned (`?v=mp31`) so a **normal reload** picks up the lobby.
+`index.html` is marked `no-store`. JS/CSS are versioned (`?v=mp32`) so a **normal reload** picks up the lobby.
 
 **Install (PWA):** on phone Safari / Chrome, Add to Home Screen. Standalone landscape chrome, dark splash (`#1a120e`). Original teal/cream mark (192 + 512 + apple-touch-icon). The service worker is network-first and does **not** cache the race or the websocket — a new Railway deploy is not a trapped old build. Offline play is not required.
 
