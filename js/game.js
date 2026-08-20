@@ -90,6 +90,7 @@
   var pitServicing = false;
   var lastTs = 0;
   var camYaw = 0.6;
+  var camFollowH = 0;
   var revs = 0;
   var launchMul = 1;
   var launchT = 0;
@@ -128,9 +129,9 @@
   scene.fog = new THREE.Fog(0xffb072, 140, 560);
 
   var camera = new THREE.PerspectiveCamera(
-    58,
+    60,
     window.innerWidth / window.innerHeight,
-    0.4,
+    0.35,
     680
   );
   layoutCamera();
@@ -657,43 +658,68 @@
     return new THREE.MeshBasicMaterial({ color: color, side: THREE.DoubleSide });
   }
 
+  function skyExtrude(shape, thick, mat) {
+    return new THREE.Mesh(
+      new THREE.ExtrudeGeometry(shape, { depth: thick, bevelEnabled: false, steps: 1 }),
+      mat
+    );
+  }
+
+  function campus7Tex() {
+    var c = document.createElement("canvas");
+    c.width = 256;
+    c.height = 64;
+    var ctx = c.getContext("2d");
+    ctx.fillStyle = "#148f8c";
+    ctx.fillRect(0, 0, 256, 64);
+    ctx.save();
+    ctx.translate(256, 0);
+    ctx.scale(-1, 1);
+    ctx.fillStyle = "#f4efe6";
+    ctx.font = "bold 34px Trebuchet MS, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("CAMPUS 7", 128, 34);
+    ctx.restore();
+    return new THREE.CanvasTexture(c);
+  }
+
   function makeBlimpMesh() {
     var g = new THREE.Group();
     var hullPts = [
-      new THREE.Vector2(0.02, 10.4),
-      new THREE.Vector2(1.5, 8.8),
-      new THREE.Vector2(2.9, 6.4),
-      new THREE.Vector2(3.9, 3.4),
-      new THREE.Vector2(4.2, 0.5),
-      new THREE.Vector2(3.8, -2.6),
-      new THREE.Vector2(2.7, -5.6),
-      new THREE.Vector2(1.45, -8.2),
-      new THREE.Vector2(0.55, -10.4),
-      new THREE.Vector2(0.02, -11.4),
+      new THREE.Vector2(0.02, 11.2),
+      new THREE.Vector2(1.8, 9.4),
+      new THREE.Vector2(3.4, 6.6),
+      new THREE.Vector2(4.5, 3.2),
+      new THREE.Vector2(4.85, 0.2),
+      new THREE.Vector2(4.35, -3.0),
+      new THREE.Vector2(3.1, -6.0),
+      new THREE.Vector2(1.6, -8.6),
+      new THREE.Vector2(0.6, -10.8),
+      new THREE.Vector2(0.02, -12.0),
     ];
-    var hull = new THREE.Mesh(new THREE.LatheGeometry(hullPts, 8), skyMat(0x2ec8c3));
+    var hull = new THREE.Mesh(new THREE.LatheGeometry(hullPts, 10), skyMat(0x2ec8c3));
     hull.rotation.z = -Math.PI * 0.5;
     g.add(hull);
     var bandPts = [
-      new THREE.Vector2(4.05, 1.35),
-      new THREE.Vector2(4.32, 0.45),
-      new THREE.Vector2(4.32, -0.55),
-      new THREE.Vector2(4.05, -1.4),
+      new THREE.Vector2(4.7, 1.5),
+      new THREE.Vector2(5.05, 0.5),
+      new THREE.Vector2(5.05, -0.6),
+      new THREE.Vector2(4.7, -1.55),
     ];
-    var band = new THREE.Mesh(new THREE.LatheGeometry(bandPts, 8), skyMat(0xf4efe6));
+    var band = new THREE.Mesh(new THREE.LatheGeometry(bandPts, 10), skyMat(0xf4efe6));
     band.rotation.z = -Math.PI * 0.5;
     g.add(band);
 
     var finShape = new THREE.Shape();
-    finShape.moveTo(0, 0);
-    finShape.lineTo(-4.2, 0.35);
-    finShape.lineTo(-1.6, 4.6);
-    finShape.lineTo(0.2, 0.15);
-    var finGeo = new THREE.ShapeGeometry(finShape);
+    finShape.moveTo(0.15, 0);
+    finShape.lineTo(-5.1, 0.45);
+    finShape.lineTo(-1.8, 5.4);
+    finShape.closePath();
     var finMat = skyMat(0xff2d8a);
     function addFin(roll) {
-      var fin = new THREE.Mesh(finGeo, finMat);
-      fin.position.set(-9.6, 0, 0);
+      var fin = skyExtrude(finShape, 0.28, finMat);
+      fin.position.set(-10.2, 0, -0.14);
       fin.rotation.x = roll;
       g.add(fin);
     }
@@ -702,26 +728,42 @@
     addFin(Math.PI * 0.5);
     addFin(-Math.PI * 0.5);
 
+    var letterTex = campus7Tex();
+    var letterMat = new THREE.MeshBasicMaterial({ map: letterTex, side: THREE.DoubleSide });
+    var letterA = new THREE.Mesh(new THREE.PlaneGeometry(7.6, 1.9), letterMat);
+    letterA.position.set(0.8, 0.15, 4.95);
+    g.add(letterA);
+    var letterB = letterA.clone();
+    letterB.position.z = -4.95;
+    letterB.rotation.y = Math.PI;
+    g.add(letterB);
+
     var gond = new THREE.Group();
-    var cabin = new THREE.Mesh(new THREE.CylinderGeometry(0.72, 0.78, 3.4, 6), skyMat(0xf4efe6));
+    var cabin = new THREE.Mesh(new THREE.CylinderGeometry(0.85, 0.92, 4.0, 7), skyMat(0xf4efe6));
     cabin.rotation.z = Math.PI * 0.5;
     gond.add(cabin);
-    var cabinNose = new THREE.Mesh(new THREE.SphereGeometry(0.72, 6, 4), skyMat(0xf4efe6));
-    cabinNose.position.x = 1.7;
+    var cabinNose = new THREE.Mesh(new THREE.SphereGeometry(0.85, 6, 4), skyMat(0xf4efe6));
+    cabinNose.position.x = 2.0;
     gond.add(cabinNose);
-    var cabinTail = new THREE.Mesh(new THREE.SphereGeometry(0.78, 6, 4), skyMat(0xf4efe6));
-    cabinTail.position.x = -1.7;
+    var cabinTail = new THREE.Mesh(new THREE.SphereGeometry(0.92, 6, 4), skyMat(0xf4efe6));
+    cabinTail.position.x = -2.0;
     gond.add(cabinTail);
     var windowMat = skyMat(0x1a3040);
     var w;
     for (w = -1; w <= 1; w++) {
-      var pane = new THREE.Mesh(new THREE.PlaneGeometry(0.55, 0.38), windowMat);
-      pane.position.set(w * 0.85, 0.08, 0.74);
+      var pane = new THREE.Mesh(new THREE.PlaneGeometry(0.62, 0.42), windowMat);
+      pane.position.set(w * 0.95, 0.1, 0.88);
       gond.add(pane);
     }
-    gond.position.set(1.6, -4.7, 0);
+    var strutL = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 1.6, 4), skyMat(0x2a2018));
+    strutL.position.set(0.8, 1.15, 0.35);
+    gond.add(strutL);
+    var strutR = strutL.clone();
+    strutR.position.z = -0.35;
+    gond.add(strutR);
+    gond.position.set(1.8, -5.6, 0);
     g.add(gond);
-    g.scale.setScalar(1.15);
+    g.scale.setScalar(1.85);
     return g;
   }
 
@@ -729,59 +771,60 @@
     var g = new THREE.Group();
     var body = skyMat(0xff2d8a);
     var paint = skyMat(0xf4efe6);
-    var fuse = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.46, 6.4, 7), body);
+    var fuse = new THREE.Mesh(new THREE.CylinderGeometry(0.78, 0.88, 7.2, 8), paint);
     fuse.rotation.z = Math.PI * 0.5;
     g.add(fuse);
-    var nose = new THREE.Mesh(new THREE.ConeGeometry(0.46, 2.1, 7), body);
+    var nose = new THREE.Mesh(new THREE.ConeGeometry(0.88, 2.4, 8), body);
     nose.rotation.z = -Math.PI * 0.5;
-    nose.position.x = 4.2;
+    nose.position.x = 4.75;
     g.add(nose);
-    var tailCone = new THREE.Mesh(new THREE.ConeGeometry(0.4, 1.8, 7), body);
+    var tailCone = new THREE.Mesh(new THREE.ConeGeometry(0.78, 2.1, 8), paint);
     tailCone.rotation.z = Math.PI * 0.5;
-    tailCone.position.x = -4.05;
+    tailCone.position.x = -4.6;
     g.add(tailCone);
-    var canopy = new THREE.Mesh(new THREE.SphereGeometry(0.42, 6, 4), skyMat(0x7ee0ff));
-    canopy.scale.set(1.55, 0.72, 0.78);
-    canopy.position.set(1.15, 0.42, 0);
+    var canopy = new THREE.Mesh(new THREE.SphereGeometry(0.7, 6, 4), skyMat(0x7ee0ff));
+    canopy.scale.set(1.7, 0.78, 0.82);
+    canopy.position.set(1.35, 0.72, 0);
     g.add(canopy);
 
     var wingSh = new THREE.Shape();
-    wingSh.moveTo(0.55, 0);
-    wingSh.lineTo(-0.65, 6.4);
-    wingSh.lineTo(1.45, 6.4);
-    wingSh.lineTo(2.15, 0);
-    var wingGeo = new THREE.ShapeGeometry(wingSh);
-    var wingR = new THREE.Mesh(wingGeo, paint);
+    wingSh.moveTo(0.7, 0);
+    wingSh.lineTo(-0.85, 7.4);
+    wingSh.lineTo(1.7, 7.4);
+    wingSh.lineTo(2.5, 0);
+    wingSh.closePath();
+    var wingR = skyExtrude(wingSh, 0.22, paint);
     wingR.rotation.x = -Math.PI * 0.5;
-    wingR.position.set(0.15, 0, 0);
+    wingR.position.set(0.2, 0.11, 0);
     g.add(wingR);
     var wingL = wingR.clone();
     wingL.scale.z = -1;
     g.add(wingL);
 
     var stabSh = new THREE.Shape();
-    stabSh.moveTo(0.15, 0);
-    stabSh.lineTo(-0.35, 2.15);
-    stabSh.lineTo(0.85, 2.15);
-    stabSh.lineTo(1.15, 0);
-    var stabGeo = new THREE.ShapeGeometry(stabSh);
-    var stabR = new THREE.Mesh(stabGeo, paint);
+    stabSh.moveTo(0.2, 0);
+    stabSh.lineTo(-0.45, 2.5);
+    stabSh.lineTo(1.0, 2.5);
+    stabSh.lineTo(1.35, 0);
+    stabSh.closePath();
+    var stabR = skyExtrude(stabSh, 0.16, paint);
     stabR.rotation.x = -Math.PI * 0.5;
-    stabR.position.set(-3.35, 0.12, 0);
+    stabR.position.set(-3.7, 0.2, 0);
     g.add(stabR);
     var stabL = stabR.clone();
     stabL.scale.z = -1;
     g.add(stabL);
 
     var vSh = new THREE.Shape();
-    vSh.moveTo(0, 0);
-    vSh.lineTo(-1.55, 0.15);
-    vSh.lineTo(-0.35, 2.35);
-    var vFin = new THREE.Mesh(new THREE.ShapeGeometry(vSh), body);
-    vFin.position.set(-3.45, 0.2, 0);
+    vSh.moveTo(0.15, 0);
+    vSh.lineTo(-1.85, 0.2);
+    vSh.lineTo(-0.25, 2.8);
+    vSh.closePath();
+    var vFin = skyExtrude(vSh, 0.18, body);
+    vFin.position.set(-3.85, 0.25, -0.09);
     g.add(vFin);
 
-    g.scale.setScalar(1.25);
+    g.scale.setScalar(2.05);
     return g;
   }
 
@@ -806,8 +849,8 @@
 
   function launchPlane() {
     var flip = Math.random() > 0.5 ? 1 : -1;
-    sky.from = new THREE.Vector3(-420 * flip, 72 + Math.random() * 10, 40 + Math.random() * 80);
-    sky.to = new THREE.Vector3(400 * flip, 78 + Math.random() * 8, -30 + Math.random() * 70);
+    sky.from = new THREE.Vector3(-460 * flip, 88 + Math.random() * 10, 30 + Math.random() * 90);
+    sky.to = new THREE.Vector3(440 * flip, 94 + Math.random() * 8, -40 + Math.random() * 80);
     sky.planeU = 0;
     sky.plane.visible = true;
     sky.trail.visible = true;
@@ -822,10 +865,10 @@
   function updateSky(dt) {
     sky.t += dt;
     if (sky.blimp) {
-      var a = sky.t * 0.07;
-      var bx = -30 + Math.cos(a) * 168;
-      var bz = 46 + Math.sin(a) * 148;
-      var by = 90 + Math.sin(a * 2.1) * 3.5;
+      var a = sky.t * 0.038;
+      var bx = -30 + Math.cos(a) * 188;
+      var bz = 46 + Math.sin(a) * 168;
+      var by = 108 + Math.sin(a * 2.1) * 3.5;
       sky.blimp.position.set(bx, by, bz);
       sky.blimp.rotation.set(0, -a - Math.PI * 0.5, Math.sin(a) * 0.05);
     }
@@ -834,11 +877,11 @@
       sky.planeWait -= dt;
       if (sky.planeWait <= 0) {
         launchPlane();
-        sky.planeWait = 16 + Math.random() * 14;
+        sky.planeWait = 22 + Math.random() * 16;
       }
       return;
     }
-    sky.planeU += dt / 15;
+    sky.planeU += dt / 22;
     if (sky.planeU >= 1) {
       sky.planeU = -1;
       sky.plane.visible = false;
@@ -1492,14 +1535,28 @@
   }
 
   function chaseCamera(dt) {
-    var back = 11.5;
-    var up = 4.8;
-    var fx = Math.cos(player.heading);
-    var fz = Math.sin(player.heading);
+    var turn = Math.atan2(
+      Math.sin(player.heading - camFollowH),
+      Math.cos(player.heading - camFollowH)
+    );
+    camFollowH += turn * (1 - Math.pow(0.018, dt));
+    var back = 7.2;
+    var up = 2.55;
+    var fx = Math.cos(camFollowH);
+    var fz = Math.sin(camFollowH);
     var desired = new THREE.Vector3(player.x - fx * back, up, player.z - fz * back);
-    var look = new THREE.Vector3(player.x + fx * 7, 1.2, player.z + fz * 7);
     desired.y = up;
-    camera.position.lerp(desired, 1 - Math.pow(0.0015, dt));
+    var lx = Math.cos(player.heading);
+    var lz = Math.sin(player.heading);
+    var look = new THREE.Vector3(player.x + lx * 16, 0.9, player.z + lz * 16);
+    camera.up.set(0, 1, 0);
+    if (camera.position.y > 10 || camera.position.distanceToSquared(desired) > 220) {
+      camera.position.copy(desired);
+      camFollowH = player.heading;
+    } else {
+      camera.position.lerp(desired, 1 - Math.pow(0.00035, dt));
+    }
+    camera.position.y = up;
     camera.lookAt(look);
   }
 
