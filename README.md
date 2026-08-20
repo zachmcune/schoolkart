@@ -38,6 +38,8 @@ Local: `npm start`, then open `http://localhost:8787` (or whatever `PORT` is). S
 
 **Hits:** cars bash — shove, spin, no ghosting through each other. **Walls** are **only** outside the 180, the chicane, and the sweeper. They collide. Not a cage.
 
+**Nametags:** small labels float over every car (you, CPUs, online). Multiplayer uses the lobby display name. One CPU is always **BowieKnife99**; others stay Hall Monitor / Sub Teacher / etc.
+
 **FX (designer lock, few, short, readable at 30fps):** two fat tire puffs at lights-out · thin grey streaks from the rears when tires are bad · short white slip off the outside wheels on a hard turn · one dust burst on a spin-out · one sharp spark at a hit (not a cloud). Launch puffs and hit sparks do not look the same.
 
 Car **#7** is white/teal by default. Title-screen garage picks body + wing colors (saved on the device). Friends see your paint in the room. Campus is golden-hour brick with **one** clock tower. Original IP only.
@@ -81,6 +83,6 @@ npm test
 
 Repo is also a static site (HTML + CSS + JS + Three.js from CDN). Public Pages currently deploys from this branch (`cursor/campus-loop-playable-f645`). Use Railway as the school link.
 
-`index.html` is marked `no-store`. JS/CSS are versioned (`?v=mp22`) so a **normal reload** picks up the lobby.
+`index.html` is marked `no-store`. JS/CSS are versioned (`?v=mp23`) so a **normal reload** picks up the lobby.
 
 No bundler. Keyboard on Chromebooks. Phones get tilt + halves. Light enough for school Chrome / integrated graphics.

@@ -36,6 +36,7 @@ var GHOST_MS = 120000;
 var ALPHA = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 var HIT = 2.55;
 var BOT_NAMES = [
+  "BowieKnife99",
   "Hall Monitor",
   "Sub Teacher",
   "Library Kid",

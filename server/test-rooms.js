@@ -307,6 +307,7 @@ function lobbyExtras() {
         var bot = withBot.players.filter(function (p) {
           return p.bot;
         })[0];
+        assert(bot.name === "BowieKnife99", "first cpu is BowieKnife99");
         h.send({ t: "kick", id: "joinE" });
         return g
           .waitFor(function (m) {

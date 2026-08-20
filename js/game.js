@@ -259,6 +259,7 @@
       net.track = trackCode;
     }
     player.name = n;
+    paintNameTag(player);
     return n;
   }
 
@@ -1587,7 +1588,7 @@
     var wcol = wing != null ? wing : kind === "player" ? playerWing : 0x1a1a1a;
     var mesh = makeCar(color, wcol, num);
     scene.add(mesh);
-    return {
+    var racer = {
       kind: kind,
       name: name,
       mesh: mesh,
@@ -1606,12 +1607,55 @@
       finished: false,
       finishTime: 0,
     };
+    attachNameTag(racer);
+    return racer;
+  }
+
+  function attachNameTag(r) {
+    var c = document.createElement("canvas");
+    c.width = 256;
+    c.height = 64;
+    var tex = new THREE.CanvasTexture(c);
+    tex.minFilter = THREE.LinearFilter;
+    var spr = new THREE.Sprite(
+      new THREE.SpriteMaterial({
+        map: tex,
+        transparent: true,
+        depthWrite: false,
+      })
+    );
+    spr.scale.set(2.6, 0.65, 1);
+    spr.position.set(0, 2.42, 0);
+    spr.userData.canvas = c;
+    r.mesh.add(spr);
+    r.tag = spr;
+    paintNameTag(r);
+  }
+
+  function paintNameTag(r) {
+    if (!r || !r.tag) return;
+    var c = r.tag.userData.canvas;
+    var ctx = c.getContext("2d");
+    ctx.clearRect(0, 0, 256, 64);
+    ctx.fillStyle = r.kind === "player" ? "rgba(20,143,140,0.88)" : "rgba(18,12,8,0.82)";
+    ctx.fillRect(12, 16, 232, 34);
+    ctx.font = "bold 26px Trebuchet MS, Arial, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.lineJoin = "round";
+    ctx.strokeStyle = "rgba(8,6,4,0.92)";
+    ctx.lineWidth = 5;
+    ctx.fillStyle = "#f4efe6";
+    var t = String(r.name || "House 7").slice(0, 14);
+    ctx.strokeText(t, 128, 34);
+    ctx.fillText(t, 128, 34);
+    r.tag.material.map.needsUpdate = true;
   }
 
   var player = createRacer("player", playerBody, "House 7", 7, playerWing);
   var cpus = [
-    createRacer("cpu", 0xd4a017, "Hall Monitor", 12),
-    createRacer("cpu", 0xb4532e, "Sub Teacher", 21),
+    createRacer("cpu", 0xd4a017, "BowieKnife99", 12),
+    createRacer("cpu", 0xb4532e, "Hall Monitor", 21),
   ];
 
   function resetRacer(r, x, z, heading, s) {
@@ -1877,7 +1921,7 @@
       steer = clamp(steer * 0.3 + herr * 1.35, -1, 1);
     }
     var curve = upcomingSlow(r.s);
-    var want = MAX_SPEED * (r.name === "Hall Monitor" ? 0.8 : 0.74);
+    var want = MAX_SPEED * (r.name === "BowieKnife99" || r.name === "Hall Monitor" ? 0.8 : 0.74);
     want *= 1 - clamp(curve.worst, 0, 0.64);
     if (curve.tight) want = Math.min(want, 19);
     applyMotion(r, steer, r.speed < want, r.speed > want + 3.5, false, dt, false);
@@ -2370,7 +2414,7 @@
       if (!cpus[0].finished && !player.finished) place += 1;
       if (cpus[1].finished && cpus[1].finishTime < player.finishTime) place += 1;
       var names = ["1st", "2nd", "3rd"];
-      hud.finishPlace.textContent = names[place - 1] + " · vs Hall Monitor & Sub Teacher";
+      hud.finishPlace.textContent = names[place - 1] + " · vs BowieKnife99 & Hall Monitor";
     }
   }
 
@@ -2660,6 +2704,7 @@
         hostBots[p.id] = r;
       }
       hostBots[p.id].name = p.name || hostBots[p.id].name;
+      paintNameTag(hostBots[p.id]);
     });
     Object.keys(hostBots).forEach(function (id) {
       if (!keep[id]) {
@@ -2726,7 +2771,10 @@
 
   function ensureRemote(id, slot, name, body, wing) {
     if (remotes[id]) {
-      if (name) remotes[id].r.name = name;
+      if (name) {
+        remotes[id].r.name = name;
+        paintNameTag(remotes[id].r);
+      }
       if (body != null || wing != null) paintCar(remotes[id].r.mesh, body, wing);
       return remotes[id];
     }
@@ -3614,6 +3662,7 @@
       var savedName = sessionStorage.getItem("sk_name") || "";
       if (savedName) hud.nameInput.value = savedName;
     } catch (eName) {}
+    readDisplayName();
     hud.nameInput.addEventListener("change", readDisplayName);
     hud.nameInput.addEventListener("blur", readDisplayName);
   }
