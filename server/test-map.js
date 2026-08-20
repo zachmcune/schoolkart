@@ -278,6 +278,12 @@ function proveWheelSteer(label, x, z, h) {
   sim.applyMotion(right, -1, true, false, false, 1 / 60, true);
   assert(right.heading < h, label + " D/right decreases heading");
   assert(right.mesh.userData.wheels[0].holder.rotation.y > 0, label + " D/right yaws open fronts right");
+  var roll = attachWheels(blankCar(x, z, h, 18));
+  sim.applyMotion(roll, 0, true, false, false, 1 / 60, true);
+  assert(roll.mesh.userData.wheels[0].spinner.rotation.z < 0, label + " forward roll matches travel");
+  var back = attachWheels(blankCar(x, z, h, -8));
+  sim.applyMotion(back, 0, false, false, true, 1 / 60, true);
+  assert(back.mesh.userData.wheels[0].spinner.rotation.z > 0, label + " reverse roll matches travel");
 }
 
 function angDiff(a, b) {
@@ -705,6 +711,11 @@ assert(src.indexOf("hitKeepYaw") !== -1, "hits shove without atan2 yaw snap");
 assert(!/function bashWall\([\s\S]{0,700}heading = Math.atan2/.test(src), "bashWall does not snap heading to velocity");
 assert(!/function bashCars\([\s\S]{0,900}heading = Math.atan2/.test(src), "bashCars does not snap heading to velocity");
 assert(/var turn = -steer \* 0\.42/.test(src), "open wheels yaw with the turn, not against it");
+assert(src.indexOf("function attachNameTag") !== -1 && src.indexOf("function layoutNameTags") !== -1, "halo nametags exist");
+assert(!/function attachNameTag\([\s\S]{0,500}new THREE\.Sprite/.test(src), "nametags are mesh billboards");
+assert(src.indexOf('r.kind !== "player"') !== -1, "own tag stays off; other cars still show");
+assert(src.indexOf('createRacer("cpu", 0xd4a017, "BowieKnife99"') !== -1, "one bot is exactly BowieKnife99");
+assert(src.indexOf("dropNameTag") !== -1, "nametags leave the scene with the car");
 
 sim.lockRacePath("");
 proveWheelSteer("Campus Loop", 0, -80, 0);

@@ -40,7 +40,7 @@ Local: `npm start`, then open `http://localhost:8787` (or whatever `PORT` is). S
 
 **Hits:** cars bash — shove, spin, no ghosting through each other. **Barriers** run both sides, continuous except the **LEFT pit peel** (stays open, no clip-grab). Low grey concrete + dark two-rail steel. Taller only outside the 180 / chicane / sweeper. They collide. Not a go-kart cage.
 
-**Nametags:** billboard labels sit **above the halo** on every car (you, humans, bots). Your tag is the lobby name, or **YOU** if empty. Other humans use their lobby name. One bot is exactly **BowieKnife99**; others are Hall Monitor / Sub Teacher / campus kids. Tags shrink a bit in the pack and fade when far — no flicker, no full-screen plaques.
+**Nametags:** tiny halo billboards on **other** cars (humans + bots). Own tag can stay off. Other humans use their lobby name. One bot is exactly **BowieKnife99**; others are Hall Monitor / Sub Teacher / campus kids. Tags shrink with distance and fade down the racing line — no flicker, no HUD plaques.
 
 **Bots:** same physics as you — no rubber-band, no extra grip. Cheap look-ahead: they wind the longs, lift for tight radii (180 / chicane / sweeper), and peel LEFT for one box on lap 3–4. **BowieKnife99** is the hunter — divebombs, shoves, and sideswipes the nearest rival (you first if close). Same bash physics, no teleport ram. **Hall Monitor** is tidy and boxes on time. The rest are a bit messy. Only Bowie hunts. Locked to the grid until GO; getaways can be sloppy. A clean player can win.
 
@@ -87,7 +87,7 @@ npm test
 
 Repo is also a static site (HTML + CSS + JS + Three.js from CDN). Public Pages currently deploys from this branch (`cursor/campus-loop-playable-f645`). Use Railway as the school link.
 
-`index.html` is marked `no-store`. JS/CSS are versioned (`?v=mp50`) so a **normal reload** picks up the lobby.
+`index.html` is marked `no-store`. JS/CSS are versioned (`?v=mp51`) so a **normal reload** picks up the lobby.
 
 **Install (PWA):** on phone Safari / Chrome, Add to Home Screen. Standalone landscape chrome, dark splash (`#1a120e`). Original teal/cream mark (192 + 512 + apple-touch-icon). The service worker is network-first and does **not** cache the race or the websocket — a new Railway deploy is not a trapped old build. Offline play is not required.
 

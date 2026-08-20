@@ -2965,24 +2965,36 @@
     var tex = new THREE.CanvasTexture(c);
     tex.minFilter = THREE.LinearFilter;
     tex.magFilter = THREE.LinearFilter;
-    var spr = new THREE.Sprite(
-      new THREE.SpriteMaterial({
-        map: tex,
-        transparent: true,
-        depthTest: true,
-        depthWrite: false,
-        sizeAttenuation: true,
-      })
-    );
-    // Sit above the halo (~0.8) so the chase cam can read it.
-    spr.position.set(0, 2.62, 0);
-    spr.scale.set(3.3, 0.82, 1);
-    spr.renderOrder = 4;
-    spr.userData.canvas = c;
-    spr.userData.label = "";
-    r.mesh.add(spr);
-    r.tag = spr;
+    // Mesh plane, not Sprite: the chase cam flips projection X, which
+    // kills Sprite quads (behind cam / zero area / invisible).
+    var mat = new THREE.MeshBasicMaterial({
+      map: tex,
+      transparent: true,
+      depthTest: false,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      fog: false,
+    });
+    var tag = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), mat);
+    tag.scale.set(3.05, 0.68, 1);
+    tag.renderOrder = 12;
+    tag.frustumCulled = false;
+    tag.userData.nametag = true;
+    tag.userData.canvas = c;
+    tag.userData.label = "";
+    scene.add(tag);
+    r.tag = tag;
     paintNameTag(r);
+  }
+
+  function dropNameTag(r) {
+    if (!r || !r.tag) return;
+    scene.remove(r.tag);
+    if (r.tag.material) {
+      if (r.tag.material.map) r.tag.material.map.dispose();
+      r.tag.material.dispose();
+    }
+    r.tag = null;
   }
 
   function paintNameTag(r) {
@@ -2993,9 +3005,13 @@
     var c = r.tag.userData.canvas;
     var ctx = c.getContext("2d");
     ctx.clearRect(0, 0, 384, 80);
-    ctx.fillStyle = r.kind === "player" ? "rgba(20,143,140,0.9)" : "rgba(16,10,8,0.84)";
+    ctx.save();
+    // Pre-mirror like numberDecal so the X-flipped chase cam reads LTR.
+    ctx.translate(384, 0);
+    ctx.scale(-1, 1);
+    ctx.fillStyle = r.kind === "player" ? "rgba(20,143,140,0.92)" : "rgba(16,10,8,0.88)";
     ctx.fillRect(16, 18, 352, 46);
-    ctx.font = "bold 36px Trebuchet MS, Arial, sans-serif";
+    ctx.font = "bold 38px Trebuchet MS, Arial, sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.lineJoin = "round";
@@ -3004,6 +3020,7 @@
     ctx.fillStyle = "#f4efe6";
     ctx.strokeText(t, 192, 42);
     ctx.fillText(t, 192, 42);
+    ctx.restore();
     r.tag.material.map.needsUpdate = true;
   }
 
@@ -3011,33 +3028,40 @@
     var cam = camera.position;
     function one(r) {
       if (!r || !r.tag) return;
-      var on = !!(r.mesh && r.mesh.visible);
+      // Own tag stays off (Designer). Every other visible car must show.
+      var on = r.kind !== "player" && !!(r.mesh && r.mesh.visible);
       r.tag.visible = on;
-      if (!on) return;
-      var dist = Math.hypot(r.x - cam.x, 2.62 - cam.y, r.z - cam.z);
-      var w = 3.25;
-      var h = 0.82;
-      if (dist < 6.2) {
-        var close = (6.2 - dist) / 3.4;
-        if (close > 1) close = 1;
-        w *= 1 - 0.28 * close;
-        h *= 1 - 0.28 * close;
-      } else if (dist > 32) {
-        var far = (dist - 32) / 50;
-        if (far > 1) far = 1;
-        w *= 1 - 0.38 * far;
-        h *= 1 - 0.38 * far;
-        r.tag.material.opacity = 1 - 0.62 * far;
-      } else {
-        r.tag.material.opacity = 1;
+      if (!on) {
+        r.tag.material.opacity = 0;
+        return;
       }
+      paintNameTag(r);
+      var y = rideHeight() + 2.08;
+      r.tag.position.set(r.x, y, r.z);
+      r.tag.quaternion.copy(camera.quaternion);
+      var dist = Math.hypot(r.x - cam.x, y - cam.y, r.z - cam.z);
+      var w = 3.05;
+      var h = 0.68;
+      var op = 1;
+      if (dist < 7) {
+        var close = (7 - dist) / 4;
+        if (close > 1) close = 1;
+        w *= 1 - 0.22 * close;
+        h *= 1 - 0.22 * close;
+      }
+      if (dist > 28) {
+        var far = (dist - 28) / 48;
+        if (far > 1) far = 1;
+        w *= 1 - 0.36 * far;
+        h *= 1 - 0.36 * far;
+        op = 1 - 0.72 * far;
+      }
+      r.tag.material.opacity = op;
       r.tag.scale.set(w, h, 1);
     }
     one(player);
-    if (!mpMode) {
-      one(cpus[0]);
-      one(cpus[1]);
-    }
+    one(cpus[0]);
+    one(cpus[1]);
     Object.keys(remotes).forEach(function (id) {
       one(remotes[id].r);
     });
@@ -4554,6 +4578,7 @@
 
   function clearRemotes() {
     Object.keys(remotes).forEach(function (id) {
+      dropNameTag(remotes[id].r);
       scene.remove(remotes[id].r.mesh);
     });
     remotes = {};
@@ -4561,6 +4586,7 @@
 
   function clearHostBots() {
     Object.keys(hostBots).forEach(function (id) {
+      dropNameTag(hostBots[id]);
       scene.remove(hostBots[id].mesh);
     });
     hostBots = {};
@@ -4591,6 +4617,7 @@
     });
     Object.keys(hostBots).forEach(function (id) {
       if (!keep[id]) {
+        dropNameTag(hostBots[id]);
         scene.remove(hostBots[id].mesh);
         delete hostBots[id];
       }
@@ -4682,6 +4709,7 @@
       rem.ghost = !!c.ghost;
       rem.r.mesh.visible = true;
       rem.r.mesh.traverse(function (ch) {
+        if (ch.userData && ch.userData.nametag) return;
         if (ch.isSprite) return;
         if (ch.material && ch.material.opacity !== undefined) {
           ch.material.transparent = !!c.ghost;
@@ -4697,6 +4725,7 @@
     });
     Object.keys(remotes).forEach(function (id) {
       if (!seen[id]) {
+        dropNameTag(remotes[id].r);
         scene.remove(remotes[id].r.mesh);
         delete remotes[id];
       }
