@@ -112,6 +112,50 @@ waitHealth()
         assert(html.indexOf("body-swatches") !== -1, "garage on origin");
         assert(html.indexOf("btn-track") !== -1, "track editor on origin");
         assert(html.indexOf("Add Bowie knife") !== -1, "Add Bowie knife button");
+        assert(html.indexOf('rel="manifest"') !== -1, "web app manifest link");
+        assert(html.indexOf("apple-mobile-web-app-capable") !== -1, "iOS home screen capable");
+        assert(html.indexOf('apple-mobile-web-app-title" content="SchoolKart"') !== -1, "iOS title");
+        assert(html.indexOf('SK_BUILD = "mp29"') !== -1, "cache bump mp29");
+        return fetch("http://127.0.0.1:" + PORT + "/manifest.json")
+          .then(function (mr) {
+            return mr.json().then(function (man) {
+              assert(mr.status === 200, "manifest 200");
+              assert(man.name === "SchoolKart" && man.short_name === "SchoolKart", "manifest name");
+              assert(man.display === "standalone", "standalone chrome");
+              assert(man.orientation === "landscape", "prefer landscape");
+              assert(man.background_color === "#1a120e" && man.theme_color === "#1a120e", "dark theme");
+              assert(man.start_url === "./", "same-origin start");
+            });
+          })
+          .then(function () {
+            return fetch("http://127.0.0.1:" + PORT + "/sw.js");
+          })
+          .then(function (sr) {
+            return sr.text().then(function (sw) {
+              assert(sr.status === 200, "sw 200");
+              assert(sw.indexOf('BUILD = "mp29"') !== -1, "SW build matches cache");
+              assert(/cache:\s*"no-store"/.test(sw), "network-first no-store");
+              assert(sw.indexOf("websocket") !== -1, "SW leaves websocket alone");
+            });
+          })
+          .then(function () {
+            return Promise.all([
+              fetch("http://127.0.0.1:" + PORT + "/icons/icon-192.png"),
+              fetch("http://127.0.0.1:" + PORT + "/icons/icon-512.png"),
+              fetch("http://127.0.0.1:" + PORT + "/apple-touch-icon.png"),
+            ]);
+          })
+          .then(function (imgs) {
+            return Promise.all(
+              imgs.map(function (r) {
+                assert(r.status === 200, "icon 200");
+                return r.arrayBuffer().then(function (buf) {
+                  var u = new Uint8Array(buf);
+                  assert(u[0] === 137 && u[1] === 80 && u[2] === 78 && u[3] === 71, "PNG magic");
+                });
+              })
+            );
+          });
       });
     });
   })

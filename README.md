@@ -71,7 +71,7 @@ Two browser windows: Create + Join. Same origin — no second static server.
 
 - **Start command:** `npm start` (or `node server/index.js`)
 - **Env:** `PORT` is set by Railway — do not hardcode it
-- Same process serves `index.html` / `js` / `css` and the WebSocket
+- Same process serves `index.html` / `js` / `css` / the PWA manifest + icons and the WebSocket
 - No database. Rooms live in memory (fine for lunch races)
 - Root `package.json` is the server manifest
 
@@ -85,6 +85,8 @@ npm test
 
 Repo is also a static site (HTML + CSS + JS + Three.js from CDN). Public Pages currently deploys from this branch (`cursor/campus-loop-playable-f645`). Use Railway as the school link.
 
-`index.html` is marked `no-store`. JS/CSS are versioned (`?v=mp28`) so a **normal reload** picks up the lobby.
+`index.html` is marked `no-store`. JS/CSS are versioned (`?v=mp29`) so a **normal reload** picks up the lobby.
+
+**Install (PWA):** on phone Safari / Chrome, Add to Home Screen. Standalone landscape chrome, dark splash (`#1a120e`). Original teal/cream mark (192 + 512 + apple-touch-icon). The service worker is network-first and does **not** cache the race or the websocket — a new Railway deploy is not a trapped old build. Offline play is not required.
 
 No bundler. Keyboard on Chromebooks. Phones get tilt + halves. Light enough for school Chrome / integrated graphics.

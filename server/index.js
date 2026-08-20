@@ -12,6 +12,8 @@ var MIME = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
   ".css": "text/css; charset=utf-8",
+  ".json": "application/manifest+json; charset=utf-8",
+  ".png": "image/png",
 };
 
 function safePublicFile(urlPath) {
@@ -22,7 +24,11 @@ function safePublicFile(urlPath) {
     return null;
   }
   if (raw === "/" || raw === "") raw = "/index.html";
-  if (!/^\/(index\.html|js\/[A-Za-z0-9._-]+\.js|css\/[A-Za-z0-9._-]+\.css)$/.test(raw)) {
+  if (
+    !/^\/(index\.html|manifest\.json|sw\.js|apple-touch-icon\.png|icons\/[A-Za-z0-9._-]+\.png|js\/[A-Za-z0-9._-]+\.js|css\/[A-Za-z0-9._-]+\.css)$/.test(
+      raw
+    )
+  ) {
     return null;
   }
   var abs = path.resolve(ROOT, raw.slice(1));
@@ -440,7 +446,7 @@ var httpServer = http.createServer(function (req, res) {
     }
     var ext = path.extname(file);
     var headers = { "Content-Type": MIME[ext] || "application/octet-stream" };
-    if (ext === ".html") {
+    if (ext === ".html" || ext === ".js" || ext === ".css" || ext === ".json") {
       headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0";
     } else {
       headers["Cache-Control"] = "no-cache";
