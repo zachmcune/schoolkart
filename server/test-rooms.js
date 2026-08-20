@@ -115,7 +115,7 @@ waitHealth()
         assert(html.indexOf('rel="manifest"') !== -1, "web app manifest link");
         assert(html.indexOf("apple-mobile-web-app-capable") !== -1, "iOS home screen capable");
         assert(html.indexOf('apple-mobile-web-app-title" content="SchoolKart"') !== -1, "iOS title");
-        assert(html.indexOf('SK_BUILD = "mp56"') !== -1, "cache bump mp56");
+        assert(html.indexOf('SK_BUILD = "mp57"') !== -1, "cache bump mp57");
         assert(html.indexOf('maxlength="240"') !== -1, "share-string fits a full board");
         assert(html.indexOf('id="title-track"') !== -1, "title label matches Solo load");
         assert(html.indexOf('autocapitalize="off"') !== -1, "share-string does not eat W/T via autocapitalize");
@@ -147,7 +147,7 @@ waitHealth()
           .then(function (sr) {
             return sr.text().then(function (sw) {
               assert(sr.status === 200, "sw 200");
-              assert(sw.indexOf('BUILD = "mp56"') !== -1, "SW build matches cache");
+              assert(sw.indexOf('BUILD = "mp57"') !== -1, "SW build matches cache");
               assert(/cache:\s*"no-store"/.test(sw), "network-first no-store");
               assert(sw.indexOf("websocket") !== -1, "SW leaves websocket alone");
             });
@@ -174,8 +174,9 @@ waitHealth()
                   assert(js.indexOf("hitKeepYaw") !== -1 && js.indexOf("hitYawT") !== -1, "wall hits shove without yaw teleport");
                   assert(js.indexOf("wallCutsRibbon") !== -1, "custom corner walls cannot chord the ribbon");
                   assert(js.indexOf("ribbonFitsFootprint") !== -1 && js.indexOf("ribbonsStack") !== -1, "modules fit; chicane S does not stack");
-                  assert(js.indexOf("var ACCEL = 16") !== -1 && js.indexOf("var COAST = 2.4") !== -1, "slow wind-up; lift keeps rolling");
+                  assert(js.indexOf("var ACCEL = 16") !== -1 && js.indexOf("var COAST = 5") !== -1, "slow wind-up; coast bleeds");
                   assert(js.indexOf("var BRAKE_DECEL = 20") !== -1, "Space is a planned squeeze for the 180");
+                  assert(js.indexOf('info.name === "hairpin" || info.name === "chicane"') !== -1, "hold W through 180 or chicane dumps");
                   assert(js.indexOf("env *= env") !== -1, "chicane S is flat at the ports so ribbons meet on the edge");
                   assert(js.indexOf("var amp = MAP_CELL * 0.1") !== -1, "chicane S is shrunk so the ribbon stays in-cell");
                   assert(js.indexOf("pieceSegs(artPiece)") !== -1, "editor preview uses the same segs as the 3D race");

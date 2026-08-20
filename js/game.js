@@ -29,7 +29,7 @@
   var MAX_SPEED = 48;
   var ACCEL = 16;
   var BRAKE_DECEL = 20; // squeeze: weaker at wind-out, full bite when slow (hairpin)
-  var COAST = 2.4;
+  var COAST = 5;
   var REVERSE_ACCEL = 18;
   var REVERSE_MAX = 12;
   var LIMP_SPEED = 13;
@@ -3435,10 +3435,11 @@
     var maxYaw = STEER_RATE * steerScale * tireFeel * surface;
     var latDemand = Math.abs(steer) * Math.abs(r.speed) * 0.155;
     var maxLat = MAX_LAT * tireFeel * surface;
-    if (info.name === "hairpin" && !info.grass) {
-      var hpOk = 17;
+    if (!info.grass && (info.name === "hairpin" || info.name === "chicane")) {
+      var hpOk = info.name === "hairpin" ? 17 : 24;
+      var hpTight = info.name === "hairpin" ? 14 : 12;
       if (r.speed > hpOk) {
-        var over = (r.speed - hpOk) / 14;
+        var over = (r.speed - hpOk) / hpTight;
         maxYaw *= 1 / (1 + over * 5);
         r.slide += (steer !== 0 ? steer : 1) * over * 22 * dt;
         if (over > 0.3) r.tires -= 2.8 * dt * over;

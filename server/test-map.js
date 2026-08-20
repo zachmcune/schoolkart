@@ -45,7 +45,7 @@ var code = [
   "var MAX_SPEED = 48;",
   "var ACCEL = 16;",
   "var BRAKE_DECEL = 20;",
-  "var COAST = 2.4;",
+  "var COAST = 5;",
   "var REVERSE_ACCEL = 18;",
   "var REVERSE_MAX = 12;",
   "var LIMP_SPEED = 13;",
@@ -1081,9 +1081,11 @@ assert(src.indexOf("pieceSegs(artPiece)") !== -1, "editor preview is the same se
 
 sim.lockRacePath("");
 assert(src.indexOf("var ACCEL = 16") !== -1, "wind-up is slow (arcade, not a snap)");
-assert(src.indexOf("var COAST = 2.4") !== -1, "lift keeps rolling");
+assert(src.indexOf("var COAST = 5") !== -1, "coast bleeds speed");
 assert(src.indexOf("var BRAKE_DECEL = 20") !== -1, "Space is a planned squeeze");
 assert(src.indexOf("var MAX_LAT = 28") !== -1, "custom 90s are not glued to hide a spin");
+assert(src.indexOf('info.name === "hairpin" || info.name === "chicane"') !== -1, "hold W through 180 or chicane dumps");
+assert(src.indexOf("ABS") === -1, "no ABS");
 
 function tickFeel(car, steer, gas, brake, seconds) {
   var t;
@@ -1098,18 +1100,18 @@ assert(wind.speed > 40, "still reaches race pace, speed=" + wind.speed.toFixed(1
 
 var roll = blankCar(0, -80, 0, 48);
 tickFeel(roll, 0, false, false, 2);
-assert(roll.speed > 42 && roll.speed < 48, "lifting W keeps you rolling, speed=" + roll.speed.toFixed(1));
-tickFeel(roll, 0, false, false, 1);
-assert(roll.speed > 36, "a 3s lift is not enough to make the 180, speed=" + roll.speed.toFixed(1));
+assert(roll.speed > 35 && roll.speed < 41, "coast bleeds speed, speed=" + roll.speed.toFixed(1));
+tickFeel(roll, 0, false, false, 1.2);
+assert(roll.speed > 26, "lift is not enough for the 180 or chicane, speed=" + roll.speed.toFixed(1));
 
 var tap = blankCar(0, -80, 0, 48);
 tickFeel(tap, 0, false, true, 0.12);
 tickFeel(tap, 0, false, false, 0.5);
-assert(tap.speed > 42, "tap-and-forget Space does not dump, speed=" + tap.speed.toFixed(1));
+assert(tap.speed > 40, "tap-and-forget Space does not dump, speed=" + tap.speed.toFixed(1));
 
 var squeeze = blankCar(0, -80, 0, 48);
 tickFeel(squeeze, 0, false, true, 2.2);
-assert(squeeze.speed < 18, "held Space can make the 180, speed=" + squeeze.speed.toFixed(1));
+assert(squeeze.speed < 18 && squeeze.speed >= 0, "held Space can make the 180 without a stall, speed=" + squeeze.speed.toFixed(1));
 
 var biteHi = blankCar(0, -80, 0, 48);
 biteHi.brakeHold = 1;
@@ -1121,14 +1123,39 @@ sim.applyMotion(biteLo, 0, false, true, false, 1 / 60, true);
 var dropLo = 16 - biteLo.speed;
 assert(dropHi < dropLo, "Space is weaker at high speed and bites when slow");
 
-var hs = 0;
-var sH;
-for (sH = 0; sH < sim.TRACK_LEN; sH += 5) {
-  if (sim.centerlinePoint(sH).name === "hairpin") {
-    hs = sH;
-    break;
+function firstNamedS(name) {
+  var s;
+  for (s = 0; s < sim.TRACK_LEN; s += 4) {
+    if (sim.centerlinePoint(s).name === name) return s;
   }
+  return 0;
 }
+
+function holdWOn(name, spd, seconds) {
+  var p = sim.centerlinePoint(firstNamedS(name) + 6);
+  var car = blankCar(p.x, p.z, p.h, spd);
+  var t;
+  for (t = 0; t < seconds; t += 1 / 60) {
+    var line = sim.projectTrack(car.x, car.z);
+    var look = sim.centerlinePoint(line.s + 12);
+    var err = angDiff(look.h, car.heading);
+    var steer = err * 1.8;
+    if (steer > 1) steer = 1;
+    if (steer < -1) steer = -1;
+    sim.applyMotion(car, steer, true, false, false, 1 / 60, true);
+  }
+  return car;
+}
+
+var hpDump = holdWOn("hairpin", 40, 0.5);
+assert(Math.abs(hpDump.slide) > 2.4, "hold W through the 180 dumps, slide=" + hpDump.slide.toFixed(2));
+var chiDump = holdWOn("chicane", 40, 0.5);
+assert(Math.abs(chiDump.slide) > 2.4, "hold W through the chicane dumps, slide=" + chiDump.slide.toFixed(2));
+var sweepCar = holdWOn("sweeper", 40, 0.7);
+assert(Math.abs(sweepCar.slide) < 2.2, "sweeper carries on fresh tires, slide=" + sweepCar.slide.toFixed(2));
+assert(sim.projectTrack(sweepCar.x, sweepCar.z).onAsphalt, "sweeper carry stays on the ribbon");
+
+var hs = firstNamedS("hairpin");
 var hpPt = sim.centerlinePoint(hs + 6);
 var hpCar = blankCar(hpPt.x, hpPt.z, hpPt.h, 32);
 var hpI;
