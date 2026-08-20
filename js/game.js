@@ -3559,6 +3559,36 @@
     }
   }
 
+  function recoverIfVoid(r, dt) {
+    if (!r || r.finished || r.pitServicing) return false;
+    if (inPitLane(r)) {
+      r.voidT = 0;
+      return false;
+    }
+    var hit = projectTrack(r.x, r.z);
+    var near = ASPHALT + RUNOFF + 6;
+    if (hit.onAsphalt || hit.onRunoff || hit.inPit || hit.dist < near) {
+      r.voidT = 0;
+      return false;
+    }
+    r.voidT = (r.voidT || 0) + (dt > 0 ? dt : 0.016);
+    if (hit.dist < 36 && r.voidT < 0.42) return false;
+    var s = hit.s + 22;
+    if (TRACK_LEN > 1 && s >= TRACK_LEN) s -= TRACK_LEN;
+    var p = centerlinePoint(s);
+    r.x = p.x;
+    r.z = p.z;
+    r.heading = p.h;
+    r.slide = 0;
+    r.speed = r.speed < 28 ? 34 : r.speed;
+    if (r.speed > MAX_SPEED) r.speed = MAX_SPEED;
+    r.voidT = 0;
+    launchCall = "";
+    launchCallT = 0;
+    poseCar(r);
+    return true;
+  }
+
   function steerWheelYaw(steer) {
     // Pit Crew: A (+steer) = fronts POINT LEFT. D (-steer) = POINT RIGHT.
     // Car local +Z is left. Three.js +holder.rotation.y yaws toward -Z (right),
@@ -4247,8 +4277,10 @@
     hud.root.classList.toggle("hidden", which === "title" || which === "lobby" || which === "track");
     hud.revWrap.classList.toggle("hidden", which !== "start");
     if (which === "title" || which === "track") refreshMenuTrackLabel();
-    if (which === "start" || which === "racing") lockLandscape();
-    else unlockOrientation();
+    if (which === "start" || which === "racing") {
+      releaseTypeFocus();
+      lockLandscape();
+    } else unlockOrientation();
     syncMobileUi();
   }
 
@@ -4855,6 +4887,7 @@
         updateLaps(hostBots[ids[i]]);
         bashCars(player, hostBots[ids[i]]);
         bashAllWalls(hostBots[ids[i]]);
+        recoverIfVoid(hostBots[ids[i]], dt);
         emitRacerFx(hostBots[ids[i]], null, dt, false);
       }
       bashAllWalls(player);
@@ -5217,6 +5250,7 @@
       }
       applyMotion(player, input.steer, input.throttle, input.brake, input.reverse, simDt, true);
       bashAllWalls(player);
+      recoverIfVoid(player, simDt);
       emitRacerFx(player, input, simDt, true);
       if (!pitServicing && !pitUsedVisit && inPitGrab(player)) {
         pitServicing = true;
@@ -5247,6 +5281,9 @@
         bashAllWalls(player);
         bashAllWalls(cpus[0]);
         bashAllWalls(cpus[1]);
+        recoverIfVoid(player, simDt);
+        recoverIfVoid(cpus[0], simDt);
+        recoverIfVoid(cpus[1], simDt);
         emitRacerFx(cpus[0], null, simDt, false);
         emitRacerFx(cpus[1], null, simDt, false);
       }
@@ -5581,7 +5618,21 @@
   }
 
   function isTyping() {
+    // Hidden share/name/join fields must not eat W after Solo.
+    if (state === "start" || state === "racing") return false;
     return typingField(document.activeElement);
+  }
+
+  function releaseTypeFocus() {
+    var fields = [hud.trackPaste, hud.nameInput];
+    var join = document.getElementById("join-code");
+    if (join) fields.push(join);
+    var i;
+    for (i = 0; i < fields.length; i++) {
+      if (fields[i] && document.activeElement === fields[i]) fields[i].blur();
+    }
+    var a = document.activeElement;
+    if (a && typingField(a) && a.blur) a.blur();
   }
 
   function syncShareField() {
@@ -5593,6 +5644,22 @@
   function trapTextKeys(el, onEnter) {
     if (!el) return;
     el.addEventListener("keydown", function (e) {
+      if (state === "start" || state === "racing") {
+        if (
+          e.code === "KeyW" ||
+          e.code === "KeyA" ||
+          e.code === "KeyS" ||
+          e.code === "KeyD" ||
+          e.code === "ArrowUp" ||
+          e.code === "ArrowDown" ||
+          e.code === "ArrowLeft" ||
+          e.code === "ArrowRight" ||
+          e.code === "Space"
+        ) {
+          e.preventDefault();
+        }
+        return;
+      }
       e.stopPropagation();
       if (e.code === "Enter" && onEnter) {
         e.preventDefault();
@@ -5600,12 +5667,13 @@
       }
     });
     el.addEventListener("keyup", function (e) {
+      if (state === "start" || state === "racing") return;
       e.stopPropagation();
     });
   }
 
   function onKey(e, down) {
-    if (isTyping() || typingField(e.target)) {
+    if (state !== "start" && state !== "racing" && (isTyping() || typingField(e.target))) {
       if (down && e.code === "Enter") {
         var who = typingField(e.target) ? e.target : document.activeElement;
         if (who && who.id === "join-code") {

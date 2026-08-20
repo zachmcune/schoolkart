@@ -6,7 +6,7 @@
   <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <!-- sk-build mp59: custom turns do not lock the car -->
+  <!-- sk-build mp60: GO moves; 180 DUMP recovers onto the track -->
   <meta name="theme-color" content="#1a120e" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -16,7 +16,7 @@
   <link rel="manifest" href="manifest.json" />
   <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png" />
   <link rel="apple-touch-icon" href="apple-touch-icon.png" />
-  <link rel="stylesheet" href="css/style.css?v=mp59" />
+  <link rel="stylesheet" href="css/style.css?v=mp60" />
 </head>
 <body>
   <div id="game">
@@ -221,7 +221,7 @@
   </div>
 
   <script>
-    window.SK_BUILD = "mp59";
+    window.SK_BUILD = "mp60";
     try {
       if (window.caches) {
         caches.keys().then(function (keys) {
@@ -232,7 +232,7 @@
       }
     } catch (e) {}
     if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.register("sw.js?v=mp59").catch(function () {});
+      navigator.serviceWorker.register("sw.js?v=mp60").catch(function () {});
     }
   </script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.160.1/build/three.min.js"></script>
@@ -241,8 +241,8 @@
       document.write('<script src="https://unpkg.com/three@0.160.1/build/three.min.js"><\/script>');
     }
   </script>
-  <script src="js/config.js?v=mp59"></script>
-  <script src="js/net.js?v=mp59"></script>
-  <script src="js/game.js?v=mp59"></script>
+  <script src="js/config.js?v=mp60"></script>
+  <script src="js/net.js?v=mp60"></script>
+  <script src="js/game.js?v=mp60"></script>
 </body>
 </html>

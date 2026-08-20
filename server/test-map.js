@@ -72,6 +72,8 @@ var code = [
   "var raceTime = 3;",
   "var launchT = 0;",
   "var launchMul = 1;",
+  "var launchCall = '';",
+  "var launchCallT = 0;",
   "var LAPS = 5;",
   "var TRACK_CODE_MAX = 240;",
   "var HIT_RADIUS = 3.45;",
@@ -103,6 +105,7 @@ var code = [
   sliceFn("rideHeight"),
   sliceFn("steerWheelYaw"),
   sliceFn("applyMotion"),
+  sliceFn("recoverIfVoid"),
   sliceFn("updateLaps"),
   sliceFn("inPitLane"),
   sliceFn("inPitGrab"),
@@ -145,6 +148,7 @@ var code = [
   "  chicanePts: chicanePts,",
   "  projectTrack: projectTrack,",
   "  applyMotion: applyMotion,",
+  "  recoverIfVoid: recoverIfVoid,",
   "  updateLaps: updateLaps,",
   "  inPitGrab: inPitGrab,",
   "  cleanTrack: cleanTrack,",
@@ -724,6 +728,7 @@ for (yellT = 0; yellT < 0.45; yellT += 1 / 60) {
 }
 assert(yellOn > 20, "yell 4-piece Solo start is on the custom ribbon, on=" + yellOn);
 assert(Math.hypot(yellCar.x - 0, yellCar.z - -80) > 40, "yell Solo start is not Campus S/F");
+assert(sim.TRACK_LEN > 80, "yell 4-piece PATH is a real loop, len=" + sim.TRACK_LEN);
 sim.lockRacePath(messyCode);
 assert(sim.menuTrackName() === "CAMPUS LOOP", "menu label is CAMPUS LOOP when Solo refuses an open board");
 sim.lockRacePath("");
@@ -1278,6 +1283,89 @@ var hpI;
 for (hpI = 0; hpI < 24; hpI++) sim.applyMotion(hpCar, 0, true, false, false, 1 / 60, true);
 assert(Math.abs(hpCar.slide) > 1.1, "Campus Loop hairpin still punishes late/no brake, slide=" + hpCar.slide);
 
+function driveHoldW(car, seconds) {
+  var t;
+  var dumped = false;
+  var recovered = false;
+  var travelled = 0;
+  var lastS = sim.projectTrack(car.x, car.z).s;
+  for (t = 0; t < seconds; t += 1 / 60) {
+    var line = sim.projectTrack(car.x, car.z);
+    var look = sim.centerlinePoint(line.s + 14);
+    var err = angDiff(look.h, car.heading);
+    if (line.dist > 2.4) {
+      var home = Math.atan2(line.z - car.z, line.x - car.x);
+      err = angDiff(home, car.heading) * 0.55 + err * 0.45;
+    }
+    var steer = err * 1.65;
+    if (steer > 1) steer = 1;
+    if (steer < -1) steer = -1;
+    sim.applyMotion(car, steer, true, false, false, 1 / 60, true);
+    sim.bashAllWalls(car);
+    if (sim.recoverIfVoid(car, 1 / 60)) recovered = true;
+    if (Math.abs(car.slide) > 2.4) dumped = true;
+    var nowS = sim.projectTrack(car.x, car.z).s;
+    var ds = nowS - lastS;
+    if (ds < -sim.TRACK_LEN * 0.5) ds += sim.TRACK_LEN;
+    if (ds > 0 && ds < 22) travelled += ds;
+    lastS = nowS;
+  }
+  return { dumped: dumped, recovered: recovered, travelled: travelled };
+}
+
+sim.lockRacePath("");
+sim.placeWalls();
+var loopDump = blankCar(hpPt.x, hpPt.z, hpPt.h, 40);
+loopDump.fuel = 100;
+loopDump.tires = 100;
+var loopRun = driveHoldW(loopDump, 18);
+assert(loopRun.dumped, "Loop hold W through the 180 dumps");
+assert(
+  sim.projectTrack(loopDump.x, loopDump.z).onAsphalt,
+  "DUMP recovers onto asphalt, dist=" + sim.projectTrack(loopDump.x, loopDump.z).dist.toFixed(1)
+);
+assert(loopDump.speed > 24, "DUMP recover is at pace, not a 13 kph void, speed=" + loopDump.speed.toFixed(1));
+assert(firstNamedS("hairpin") > 0, "the 180 still exists after the dump");
+assert(sim.centerlinePoint(firstNamedS("hairpin") + 6).name === "hairpin", "hairpin arc is still the 180");
+assert(
+  loopRun.travelled > 220,
+  "after DUMP the lap continues, went=" + loopRun.travelled.toFixed(0)
+);
+
+function proveGoHoldW(code, label) {
+  assert(sim.lockRacePath(code), label + " must Solo as a closed custom");
+  assert(sim.isDriveableLoop(), label + " stays a driveable custom");
+  sim.placeWalls();
+  var pose = sim.customGridPose();
+  assert(pose, label + " has a grid");
+  assert(wallClear(pose.x, pose.z) > 5, label + " grid is not inside a wall, d=" + wallClear(pose.x, pose.z));
+  var car = blankCar(pose.x, pose.z, pose.h, 0);
+  car.fuel = 100;
+  car.tires = 100;
+  var t;
+  for (t = 0; t < 2; t += 1 / 60) {
+    var line = sim.projectTrack(car.x, car.z);
+    var look = sim.centerlinePoint(line.s + 12);
+    var err = angDiff(look.h, car.heading);
+    var steer = err * 1.6;
+    if (steer > 1) steer = 1;
+    if (steer < -1) steer = -1;
+    sim.applyMotion(car, steer, true, false, false, 1 / 60, true);
+    sim.bashAllWalls(car);
+    sim.recoverIfVoid(car, 1 / 60);
+  }
+  assert(car.speed > 12, label + " after GO hold W must move, speed=" + car.speed.toFixed(1));
+  assert(Math.hypot(car.x - pose.x, car.z - pose.z) > 10, label + " left the locked grid");
+  var goRun = driveHoldW(car, Math.max(24, sim.TRACK_LEN / 14));
+  assert(
+    goRun.travelled > sim.TRACK_LEN * 0.85,
+    label + " hold W can lap, went=" + goRun.travelled.toFixed(0) + "/" + sim.TRACK_LEN.toFixed(0)
+  );
+  assert(sim.projectTrack(car.x, car.z).onAsphalt || car.speed > 16, label + " is still a race, not a freeze");
+}
+
+proveGoHoldW(yell, "4-piece MR220R321R332R233");
+
 var pitRect = rectPieces();
 pitRect[2] = { t: "P", x: 3, y: 1, r: 0 };
 sim.setTrack(sim.encodeMap(pitRect));
@@ -1302,6 +1390,10 @@ assert(src.indexOf("lockRacePath") !== -1 && src.indexOf("isDriveableLoop") !== 
 assert(src.indexOf("if (code && !MAP_CLOSED) rebuildPath(\"\")") !== -1, "only OPEN/junk bounce to Loop; a closed header must race");
 assert(src.indexOf("function isTyping") !== -1 && src.indexOf("function syncShareField") !== -1, "share/code fields do not fire rotate or Solo");
 assert(src.indexOf("function trapTextKeys") !== -1 && src.indexOf("document.activeElement") !== -1, "Chromebook text fields stop game keys");
+assert(src.indexOf("function releaseTypeFocus") !== -1, "Solo blurs share/name so W can throttle after GO");
+assert(sliceFn("isTyping").indexOf('state === "start" || state === "racing"') !== -1, "hidden share field does not eat W on the grid");
+assert(src.indexOf("function recoverIfVoid") !== -1, "a 180 DUMP recovers onto the ribbon, not a black void");
+assert(src.indexOf("launchCallT = 0") !== -1 && src.indexOf("r.voidT") !== -1, "DUMP banner clears when the car is put back");
 assert(src.indexOf("exitPortAfter") !== -1 && src.indexOf("campusRoot") !== -1, "PATH exits the piece it actually traverses; campus volumes hide on custom");
 assert(src.indexOf("slotOnPath") !== -1 && src.indexOf("rideHeight") !== -1, "custom grid sits on the ribbon, wheels above it");
 sim.lockRacePath(sim.encodeMap(rectPieces()));
