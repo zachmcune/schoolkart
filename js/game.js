@@ -6,9 +6,9 @@
    Pit: peel LEFT, asphalt in / stop / out. Auto-service in the box
    below a walk for 2.5s. Pauses if you creep. Resets if you leave
    or hit W. Space is brake — not pit hold. One service per visit.
-   Start: PRE-START blue flash, W revs with NO creep, five reds at 1s,
-   hold 0.2–3s with all five ON, lights out = GO. Fuel starts then.
-   Jump = rolled early: flash JUMP, dead ~1.5s, still race. */
+   Start: PRE-START blue flash, five reds at 1s, hold 0.2–3s all ON,
+   lights out = GO. Fuel starts then. Space plants the marks. W revs.
+   Dump W without Space and the car can roll = JUMP + 1.5s dead, still race. */
 (function () {
   "use strict";
 
@@ -990,7 +990,6 @@
     if (jumped) {
       launchMul = 1;
       launchT = 0;
-      jumpT = JUMP_DEAD;
       player.speed = 0;
       player.slide = 0;
       return;
@@ -1098,10 +1097,24 @@
     setRevSound(true);
     hud.revFill.style.width = Math.round(revs * 100) + "%";
 
-    // W revs only — no creep. Fuel clock does not run on the grid.
-    pinGrid(player, GRID_P2_X, GRID_P2_Z);
+    // Do NOT hard-pin. Space plants. W revs. W without Space can roll.
+    // Fuel stays off — applyMotion only ticks the clock while racing.
+    if (jumpT > 0) {
+      applyMotion(player, 0, false, true, false, dt, true);
+    } else {
+      applyMotion(player, input.steer, input.throttle && !input.brake, input.brake, input.reverse, dt, true);
+    }
+    if (
+      !jumped &&
+      (Math.abs(player.x - GRID_P2_X) > 0.85 ||
+        Math.abs(player.z - GRID_P2_Z) > 0.85 ||
+        player.speed > 0.75)
+    ) {
+      jumped = true;
+      jumpT = JUMP_DEAD;
+    }
     var wheels = player.mesh.userData.wheels;
-    if (wheels) {
+    if (wheels && Math.abs(player.speed) < 0.4) {
       var spin = revs * dt * 16;
       for (var w = 0; w < wheels.length; w++) wheels[w].spinner.rotation.z -= spin;
     }

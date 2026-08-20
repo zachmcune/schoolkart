@@ -32,7 +32,7 @@ Then visit `http://localhost:8080`.
 
 **Controls:** W / ↑ throttle (also revs on the grid) · **Space = brake** · **S / ↓ reverse** · A D / ← → steer · Enter or Space on the title to grid up.
 
-**Start:** skip formation lap. Blue PRE-START flash, **W revs with no creep**, five reds one-by-one (~1s), random hold (0.2–3s) with all five ON, lights out = GO. Fuel clock starts at lights-out. Hold W — sweet-spot revs dump harder. Roll early = flash **JUMP**, dead ~1.5s, still race (no DNF).
+**Start:** skip formation lap. Blue PRE-START flash, five reds one-by-one (~1s), random hold (0.2–3s) with all five ON, lights out = GO. Fuel clock starts at lights-out. **Space plants** the marks. **W revs** (no creep if Space is held). Dump W without Space and the car can roll = flash **JUMP**, dead ~1.5s, still race (no DNF). Stay on Space for a clean start.
 
 **Hits:** cars bash — shove, spin, no ghosting through each other.
 
