@@ -966,8 +966,8 @@
     return best;
   }
 
-  function placePitFromPiece(p) {
-    var segs = pieceSegs(p);
+  function placePitFromPiece(p, oriented) {
+    var segs = oriented && oriented.length ? oriented : pieceSegs(p);
     if (!segs.length || segs[0].type !== "line") return;
     var s = segs[0];
     var heading = Math.atan2(s.bz - s.az, s.bx - s.ax);
@@ -1029,9 +1029,6 @@
       if (pieces[i].t === "t") {
         var tc = cellCenter(pieces[i].x, pieces[i].y);
         stampTrees.push({ x: tc.x, z: tc.z });
-      } else {
-        var surf = pieceSegs(pieces[i]);
-        for (j = 0; j < surf.length; j++) MAP_SURF.push(surf[j]);
       }
     }
     var track = pieces.filter(function (p) {
@@ -1076,7 +1073,7 @@
       var segs = segsFromEnter(cur, fromPort.dir, fromPort.x, fromPort.y);
       for (j = 0; j < segs.length; j++) emitSeg(segs[j]);
       if (cur.t === "P") {
-        placePitFromPiece(cur);
+        placePitFromPiece(cur, segs);
         hadPit = true;
       }
       var out = exitPortAfter(cur, segs);
@@ -1102,13 +1099,14 @@
     if (!hadPit) {
       for (i = 0; i < track.length; i++) {
         if (track[i].t === "P") {
-          placePitFromPiece(track[i]);
+          placePitFromPiece(track[i], segsFromEnter(track[i], null, 0, 0));
           hadPit = true;
           break;
         }
       }
     }
     if (!hadPit) clearPit();
+    MAP_SURF = PATH.slice();
   }
 
   function rebuildPath(code) {
@@ -1221,14 +1219,10 @@
   }
 
   function projectTrack(px, pz) {
-    var segs = MAP_SURF.length ? MAP_SURF : PATH;
+    var segs = PATH.length ? PATH : MAP_SURF;
     var surf = projectOn(px, pz, segs);
     var best = surf.hit;
     var bestS = surf.s;
-    if (MAP_SURF.length && PATH.length) {
-      var race = projectOn(px, pz, PATH);
-      if (race.hit) bestS = race.s;
-    }
     if (!best) {
       return {
         x: px,
@@ -1309,9 +1303,15 @@
     var used = 0;
     var off = offset || 0;
     var sided = offset != null && offset !== 0;
+    var lastP = null;
+    var strip = 0;
     for (var i = 0; i <= segs; i++) {
       var p = centerlinePoint((i / segs) * TRACK_LEN);
-      if (onlyNames && onlyNames.indexOf(p.name) === -1) continue;
+      if (onlyNames && onlyNames.indexOf(p.name) === -1) {
+        lastP = null;
+        strip = 0;
+        continue;
+      }
       var nx = -Math.sin(p.h);
       var nz = Math.cos(p.h);
       if (sided) {
@@ -1325,10 +1325,15 @@
         uvs.push(used * uvStep, 1);
         uvs.push(used * uvStep, 0);
       }
-      if (used > 0) {
+      var jump = lastP && Math.hypot(p.x - lastP.x, p.z - lastP.z) > 22;
+      if (used > 0 && strip > 0 && !jump) {
         var a = (used - 1) * 2;
         idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
+        strip += 1;
+      } else {
+        strip = 1;
       }
+      lastP = p;
       used += 1;
     }
     if (used < 2) return null;
@@ -1718,12 +1723,14 @@
       var kL = wallKindFor(p, 1);
       var kR = wallKindFor(p, -1);
       if (!skipLeftBarrier(p)) {
-        if (lastL) wallSeg(lastL.x, lastL.z, lx, lz, 0.5, lastL.kind, false);
+        var jumpL = lastL && Math.hypot(lx - lastL.x, lz - lastL.z) > STEP * 2.4;
+        if (lastL && !jumpL) wallSeg(lastL.x, lastL.z, lx, lz, 0.5, lastL.kind, false);
         lastL = { x: lx, z: lz, kind: kL };
       } else {
         lastL = null;
       }
-      if (lastR) wallSeg(lastR.x, lastR.z, rx, rz, 0.5, lastR.kind, false);
+      var jump = lastR && Math.hypot(rx - lastR.x, rz - lastR.z) > STEP * 2.4;
+      if (lastR && !jump) wallSeg(lastR.x, lastR.z, rx, rz, 0.5, lastR.kind, false);
       lastR = { x: rx, z: rz, kind: kR };
     }
     var keep = [];
@@ -1734,6 +1741,7 @@
       var mz = (w.az + w.bz) * 0.5;
       var hit = projectTrack(mx, mz);
       if (hit.dist < ASPHALT + 1.6) continue;
+      if (Math.hypot(w.bx - w.ax, w.bz - w.az) > STEP * 2.4) continue;
       keep.push(w);
     }
     WALLS.length = 0;
@@ -3627,24 +3635,43 @@
     var peeling = false;
     var midHit = hunt.on && hunt.noLift && _prey.d < 8;
     if (r.wantPit && !r.didPit && PIT_META.on && !midHit) {
-      var east = Math.cos(r.heading) > 0.25;
-      var onSf = Math.abs(r.z - SF_Z) < 24 && r.x > -70 && r.x < PIT_GRAB.x1 + 2;
-      if (east && onSf) {
-        peeling = true;
-        tx = clamp(r.x + 28, PIT_LANE.x0 + 4, (PIT_GRAB.x0 + PIT_GRAB.x1) * 0.5);
-        tz = (PIT_LANE.z0 + PIT_LANE.z1) * 0.5;
-        want = Math.min(want, 18);
+      if (isDriveableLoop()) {
+        var gx = (PIT_GRAB.x0 + PIT_GRAB.x1) * 0.5;
+        var gz = (PIT_GRAB.z0 + PIT_GRAB.z1) * 0.5;
+        if (Math.hypot(r.x - gx, r.z - gz) < 56 || onPitPavement(r.x, r.z)) {
+          peeling = true;
+          tx = gx;
+          tz = gz;
+          want = Math.min(want, 18);
+        }
+      } else {
+        var east = Math.cos(r.heading) > 0.25;
+        var onSf = Math.abs(r.z - SF_Z) < 24 && r.x > -70 && r.x < PIT_GRAB.x1 + 2;
+        if (east && onSf) {
+          peeling = true;
+          tx = clamp(r.x + 28, PIT_LANE.x0 + 4, (PIT_GRAB.x0 + PIT_GRAB.x1) * 0.5);
+          tz = (PIT_LANE.z0 + PIT_LANE.z1) * 0.5;
+          want = Math.min(want, 18);
+        }
       }
     }
     if (inPitLane(r) && !r.pitServicing) {
       if (r.wantPit && !r.didPit && !midHit) {
         peeling = true;
-        tx = clamp(r.x + 22, PIT_GRAB.x0 + 2, (PIT_GRAB.x0 + PIT_GRAB.x1) * 0.5);
+        tx = isDriveableLoop()
+          ? (PIT_GRAB.x0 + PIT_GRAB.x1) * 0.5
+          : clamp(r.x + 22, PIT_GRAB.x0 + 2, (PIT_GRAB.x0 + PIT_GRAB.x1) * 0.5);
         tz = (PIT_LANE.z0 + PIT_LANE.z1) * 0.5;
         want = Math.min(want, 16);
       } else if (!midHit) {
-        tx = Math.min(r.x + 28, PIT_LANE.x1 + 24);
-        tz = SF_Z + 2;
+        if (isDriveableLoop()) {
+          var out = centerlinePoint((r.s + 18) % TRACK_LEN);
+          tx = out.x;
+          tz = out.z;
+        } else {
+          tx = Math.min(r.x + 28, PIT_LANE.x1 + 24);
+          tz = SF_Z + 2;
+        }
         want = Math.min(want, 20);
       }
     }

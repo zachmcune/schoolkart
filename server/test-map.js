@@ -744,6 +744,120 @@ var y0Rect = [
 proveGrid(rectPieces(), "closed rectangle");
 proveGrid(y0Rect, "S/F on campus-band row");
 
+function kitPieces() {
+  return [
+    { t: "r", x: 1, y: 1, r: 0 },
+    { t: "F", x: 2, y: 1, r: 0 },
+    { t: "s", x: 3, y: 1, r: 0 },
+    { t: "r", x: 4, y: 1, r: 1 },
+    { t: "w", x: 4, y: 2, r: 3 },
+    { t: "r", x: 6, y: 3, r: 1 },
+    { t: "s", x: 6, y: 4, r: 1 },
+    { t: "r", x: 6, y: 5, r: 2 },
+    { t: "s", x: 5, y: 5, r: 0 },
+    { t: "C", x: 4, y: 5, r: 0 },
+    { t: "s", x: 3, y: 5, r: 0 },
+    { t: "s", x: 2, y: 5, r: 0 },
+    { t: "r", x: 1, y: 5, r: 3 },
+    { t: "s", x: 1, y: 4, r: 1 },
+    { t: "s", x: 1, y: 3, r: 1 },
+    { t: "s", x: 1, y: 2, r: 1 },
+  ];
+}
+
+function proveDrive(pieces, label) {
+  var code = sim.encodeMap(pieces);
+  sim.setTrack(code);
+  assert(sim.lockRacePath(code), label + " locks as a closed loop");
+  sim.placeWalls();
+  assert(!sim.PIT_META.on, label + " without a P piece has no pit grab");
+  var i;
+  var midOff = 0;
+  var midGrass = 0;
+  var wallCut = 0;
+  var headBad = 0;
+  for (i = 0; i < sim.PATH.length; i++) {
+    var mid = sim.centerlinePoint(sim.PATH[i].startS + sim.PATH[i].len * 0.5);
+    var hit = sim.projectTrack(mid.x, mid.z);
+    if (!hit.onAsphalt || hit.dist > 1.2) midOff += 1;
+    if (Math.abs(angDiff(hit.h, mid.h)) > 0.45) headBad += 1;
+    var nx = -Math.sin(mid.h);
+    var nz = Math.cos(mid.h);
+    var side = sim.projectTrack(mid.x + nx * (8.6 + 2.4), mid.z + nz * (8.6 + 2.4));
+    if (side.onAsphalt) midGrass += 1;
+  }
+  for (i = 0; i < sim.WALLS.length; i++) {
+    var w = sim.WALLS[i];
+    var mx = (w.ax + w.bx) * 0.5;
+    var mz = (w.az + w.bz) * 0.5;
+    if (sim.projectTrack(mx, mz).dist < 8.6) wallCut += 1;
+  }
+  assert(midOff === 0, label + " mid-piece stays on asphalt, off=" + midOff);
+  assert(headBad === 0, label + " line heading matches mesh, bad=" + headBad);
+  assert(midGrass === 0, label + " runoff/grass is not on-track, leak=" + midGrass);
+  assert(wallCut === 0, label + " no wall sits on the racing line, cut=" + wallCut);
+  var pose = sim.customGridPose();
+  var racer = blankCar(pose.x, pose.z, pose.h, 16);
+  racer.fuel = 100;
+  racer.tires = 100;
+  racer.s = sim.projectTrack(racer.x, racer.z).s;
+  racer.lastS = racer.s;
+  var on = 0;
+  var frames = 0;
+  var t;
+  for (t = 0; t < 3.4; t += 1 / 60) {
+    var line = sim.projectTrack(racer.x, racer.z);
+    var err = angDiff(line.h, racer.heading);
+    if (line.dist > 1.2) {
+      var home = Math.atan2(line.z - racer.z, line.x - racer.x);
+      err = angDiff(home, racer.heading) * 0.65 + err * 0.35;
+    }
+    var steer = err * 1.8;
+    if (steer > 1) steer = 1;
+    if (steer < -1) steer = -1;
+    sim.applyMotion(racer, steer, line.dist < 8.2, false, false, 1 / 60, true);
+    sim.bashAllWalls(racer);
+    frames += 1;
+    if (sim.projectTrack(racer.x, racer.z).onAsphalt) on += 1;
+  }
+  assert(on / frames > 0.8, label + " stays on ribbon after GO, on=" + on + "/" + frames);
+  var lapper = blankCar(pose.x, pose.z, pose.h, 0);
+  lapper.s = sim.TRACK_LEN - 18;
+  lapper.lastS = lapper.s;
+  lapper.passedHalf = false;
+  lapper.lap = 1;
+  var sWalk;
+  for (sWalk = lapper.s; sWalk < lapper.s + sim.TRACK_LEN + 40; sWalk += 6) {
+    var p = sim.centerlinePoint(sWalk);
+    lapper.x = p.x;
+    lapper.z = p.z;
+    sim.updateLaps(lapper);
+  }
+  assert(lapper.lap >= 2, label + " closed loop must lap after the start, lap=" + lapper.lap);
+  var botA = blankCar(pose.x, pose.z, pose.h, 20);
+  var botB = sim.slotOnPath(sim.TRACK_LEN - 6, 1);
+  botB = blankCar(botB.x, botB.z, botB.h, 20);
+  sim.bashCars(botA, botB);
+  sim.bashCars(botA, botB);
+  assert(Math.hypot(botA.x - botB.x, botA.z - botB.z) >= 3.2, label + " bots do not occupy the player");
+  assert(wallClear(botB.x, botB.z) > 5, label + " pole bot is not in a wall");
+}
+
+proveDrive(rectPieces(), "rectangle race");
+proveDrive(kitPieces(), "90s+sweeper+S/F kit");
+
+var pitRect = rectPieces();
+pitRect[2] = { t: "P", x: 3, y: 1, r: 0 };
+sim.setTrack(sim.encodeMap(pitRect));
+assert(sim.lockRacePath(sim.encodeMap(pitRect)), "P-piece board stays a closed loop");
+assert(sim.PIT_META.on, "P piece turns the pit grab on");
+var pitMid = {
+  x: (sim.PIT_META.ax + sim.PIT_META.bx) * 0.5,
+  z: (sim.PIT_META.az + sim.PIT_META.bz) * 0.5,
+};
+assert(sim.inPitGrab({ x: pitMid.x, z: pitMid.z }), "halfway in the P lane grabs");
+assert(!sim.inPitGrab({ x: 0, z: -80 }), "Campus S/F is not a ghost pit on a custom board");
+
 sim.lockRacePath("");
 sim.placeWalls();
 assert(!sim.customGridPose(), "Campus Loop does not use custom grid");

@@ -115,7 +115,7 @@ waitHealth()
         assert(html.indexOf('rel="manifest"') !== -1, "web app manifest link");
         assert(html.indexOf("apple-mobile-web-app-capable") !== -1, "iOS home screen capable");
         assert(html.indexOf('apple-mobile-web-app-title" content="SchoolKart"') !== -1, "iOS title");
-        assert(html.indexOf('SK_BUILD = "mp47"') !== -1, "cache bump mp47");
+        assert(html.indexOf('SK_BUILD = "mp48"') !== -1, "cache bump mp48");
         assert(html.indexOf('maxlength="240"') !== -1, "share-string fits a full board");
         assert(html.indexOf('id="title-track"') !== -1, "title label matches Solo load");
         assert(html.indexOf('autocapitalize="off"') !== -1, "share-string does not eat W/T via autocapitalize");
@@ -147,7 +147,7 @@ waitHealth()
           .then(function (sr) {
             return sr.text().then(function (sw) {
               assert(sr.status === 200, "sw 200");
-              assert(sw.indexOf('BUILD = "mp47"') !== -1, "SW build matches cache");
+              assert(sw.indexOf('BUILD = "mp48"') !== -1, "SW build matches cache");
               assert(/cache:\s*"no-store"/.test(sw), "network-first no-store");
               assert(sw.indexOf("websocket") !== -1, "SW leaves websocket alone");
             });
@@ -170,6 +170,7 @@ waitHealth()
                   assert(js.indexOf("innerHeight > window.innerWidth") !== -1, "portrait gate is viewport-only");
                   assert(js.indexOf("isChromeOS") !== -1, "Chromebook UA still skips gas/brake overlay");
                   assert(js.indexOf("exitPortAfter") !== -1 && js.indexOf("campusRoot") !== -1, "custom start does not stack piece walls or campus volumes");
+                  assert(js.indexOf("MAP_SURF = PATH.slice()") !== -1, "custom physics uses the raced PATH, not leftover pieces");
                   assert(/function playerInput\(\)[\s\S]{0,180}portraitRaceBlock/.test(js), "portrait zeros input before keyboard path");
                   assert(js.indexOf("#ff2038") !== -1 && js.indexOf("#3a3e46") !== -1, "asphalt + kerb piece art");
                 });
