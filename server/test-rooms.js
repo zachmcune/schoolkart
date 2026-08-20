@@ -115,7 +115,7 @@ waitHealth()
         assert(html.indexOf('rel="manifest"') !== -1, "web app manifest link");
         assert(html.indexOf("apple-mobile-web-app-capable") !== -1, "iOS home screen capable");
         assert(html.indexOf('apple-mobile-web-app-title" content="SchoolKart"') !== -1, "iOS title");
-        assert(html.indexOf('SK_BUILD = "mp62"') !== -1, "cache bump mp62");
+        assert(html.indexOf('SK_BUILD = "mp63"') !== -1, "cache bump mp63");
         assert(html.indexOf('maxlength="240"') !== -1, "share-string fits a full board");
         assert(html.indexOf('id="title-track"') !== -1, "title label matches Solo load");
         assert(html.indexOf('autocapitalize="off"') !== -1, "share-string does not eat W/T via autocapitalize");
@@ -147,7 +147,7 @@ waitHealth()
           .then(function (sr) {
             return sr.text().then(function (sw) {
               assert(sr.status === 200, "sw 200");
-              assert(sw.indexOf('BUILD = "mp62"') !== -1, "SW build matches cache");
+              assert(sw.indexOf('BUILD = "mp63"') !== -1, "SW build matches cache");
               assert(/cache:\s*"no-store"/.test(sw), "network-first no-store");
               assert(sw.indexOf("websocket") !== -1, "SW leaves websocket alone");
             });
@@ -170,6 +170,7 @@ waitHealth()
                   assert(/function startSequence\([\s\S]{0,900}releaseTypeFocus\(\)/.test(js), "lights/GO Solo from a share string blurs the box");
                   assert(js.indexOf("function recoverIfVoid") === -1, "DUMP does not teleport back onto the ribbon");
                   assert(js.indexOf("groundSkirt") !== -1 && js.indexOf("0x3f5c32") !== -1, "green skirt past the dirt so DUMP is not a black void");
+                  assert(js.indexOf("along < 0.42") !== -1, "custom 90 graze slides; A/D stay live");
                   assert(js.indexOf('lock("landscape")') !== -1, "race locks landscape when the browser allows");
                   assert(js.indexOf('lock("portrait")') === -1, "never lock or default to portrait");
                   assert(js.indexOf("portraitRaceBlock") !== -1, "portrait race is gated, not a vertical drive");

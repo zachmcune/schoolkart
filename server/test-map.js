@@ -1401,6 +1401,90 @@ function proveGoHoldW(code, label) {
 
 proveGoHoldW(yell, "4-piece MR220R321R332R233");
 
+function copyCar(c) {
+  var o = blankCar(c.x, c.z, c.heading, c.speed);
+  o.slide = c.slide || 0;
+  o.hitYawT = c.hitYawT || 0;
+  o.fuel = 100;
+  o.tires = 100;
+  return o;
+}
+
+function proveFour90sSteer(code) {
+  assert(sim.cleanTrack(code) === code, "paste share-string stays a clean M-code");
+  assert(sim.lockRacePath(code), "Solo loads the pasted 4-piece");
+  assert(sim.isDriveableLoop() && sim.menuTrackName() === "CUSTOM CIRCUIT", "pasted board races as CUSTOM");
+  sim.placeWalls();
+  var pose = sim.customGridPose();
+  var car = blankCar(pose.x, pose.z, pose.h, 0);
+  car.fuel = 100;
+  car.tires = 100;
+  var t;
+  for (t = 0; t < 1.6; t += 1 / 60) {
+    var line0 = sim.projectTrack(car.x, car.z);
+    var err0 = angDiff(sim.centerlinePoint(line0.s + 12).h, car.heading);
+    var st0 = err0 * 1.6;
+    if (st0 > 1) st0 = 1;
+    if (st0 < -1) st0 = -1;
+    sim.applyMotion(car, st0, true, false, false, 1 / 60, true);
+    sim.bashAllWalls(car);
+  }
+  assert(car.speed > 10, "after GO hold W the car rolls, speed=" + car.speed.toFixed(1));
+  var corners = {};
+  var liveA = 0;
+  var liveD = 0;
+  var spin = 0;
+  var lock = 0;
+  var hadPace = false;
+  var travelled = 0;
+  var lastS = sim.projectTrack(car.x, car.z).s;
+  for (t = 0; t < 36; t += 1 / 60) {
+    var line = sim.projectTrack(car.x, car.z);
+    var look = sim.centerlinePoint(line.s + 14);
+    var err = angDiff(look.h, car.heading);
+    if (line.dist > 2) {
+      var home = Math.atan2(line.z - car.z, line.x - car.x);
+      err = angDiff(home, car.heading);
+    }
+    var steer = err * 1.7;
+    if (steer > 1) steer = 1;
+    if (steer < -1) steer = -1;
+    if (line.name === "the90") corners[Math.floor((line.s / (sim.TRACK_LEN + 0.001)) * 4)] = 1;
+    if (line.name === "the90" && car.speed > 8 && (liveA < 6 || liveD < 6)) {
+      var probeA = copyCar(car);
+      var hA = probeA.heading;
+      sim.applyMotion(probeA, 1, true, false, false, 1 / 60, true);
+      sim.bashAllWalls(probeA);
+      if (Math.abs(angDiff(probeA.heading, hA)) > 0.008) liveA += 1;
+      var probeD = copyCar(car);
+      var hD = probeD.heading;
+      sim.applyMotion(probeD, -1, true, false, false, 1 / 60, true);
+      sim.bashAllWalls(probeD);
+      if (Math.abs(angDiff(probeD.heading, hD)) > 0.008) liveD += 1;
+    }
+    var h0 = car.heading;
+    sim.applyMotion(car, steer, true, false, false, 1 / 60, true);
+    sim.bashAllWalls(car);
+    if (Math.abs(angDiff(car.heading, h0)) > 0.22) spin += 1;
+    if (car.speed > 12) hadPace = true;
+    if (hadPace && car.speed < 4 && !line.grass) lock += 1;
+    var nowS = sim.projectTrack(car.x, car.z).s;
+    var ds = nowS - lastS;
+    if (ds < -sim.TRACK_LEN * 0.5) ds += sim.TRACK_LEN;
+    if (ds > 0 && ds < 18) travelled += ds;
+    lastS = nowS;
+  }
+  assert(travelled > sim.TRACK_LEN * 0.85, "hold W covers the four 90s, went=" + travelled.toFixed(0));
+  assert(Object.keys(corners).length >= 4, "all four 90s were taken, corners=" + Object.keys(corners).join(","));
+  assert(liveA >= 4 && liveD >= 4, "A/D stay live through the 90s, A=" + liveA + " D=" + liveD);
+  assert(spin < 5, "no half-spin / yaw freeze at the 90s, spin=" + spin);
+  assert(lock === 0, "no 0-steer lock, lockFrames=" + lock);
+}
+
+proveFour90sSteer(yell);
+assert(src.indexOf("along < 0.42") !== -1, "90 chord graze is a slide, not a square yaw lock");
+assert(src.indexOf("return -steer * 0.42") !== -1, "A = fronts left, D = fronts right");
+
 function typingAt(stateName, doc) {
   return new Function(
     "state",

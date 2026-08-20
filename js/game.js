@@ -3929,9 +3929,11 @@
     var dir = side >= 0 ? 1 : -1;
     // A 90 graze used to rewrite heading from the bounce and stack a
     // 0.1 rad spin every frame you kissed the rail. That is a half-spin
-    // on every custom corner. Graze: keep heading, lose speed, slide.
-    // Only a real square hit may spin, and only once per contact.
-    var square = into > 0.85 && impact > 12 && !(r.hitYawT > 0);
+    // on every custom corner. Chorded 90 joins look square (into is
+    // high) while the car is still running along the rail — that locked
+    // A/D. Along-the-wall = graze: slide, keep yaw. True head-on only.
+    var along = Math.abs(c * -nz + s * nx);
+    var square = into > 0.9 && impact > 14 && along < 0.42 && !(r.hitYawT > 0);
     if (square) {
       vx *= 0.57;
       vz *= 0.57;
