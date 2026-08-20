@@ -96,6 +96,7 @@
     hintShown: false,
     tiltAsked: false,
     tiltGranted: false,
+    sawKeyboard: false,
   };
   var playerBody = 0xf4f1ea;
   var playerWing = TEAL_DEEP;
@@ -1869,6 +1870,15 @@
     var steer = 0;
     if (left) steer += 1;
     if (right) steer -= 1;
+    // Designer lock: Chromebooks / any keyboard machine stay WASD/Space only.
+    if (!isPhoneLike()) {
+      return {
+        steer: steer,
+        throttle: !!up,
+        reverse: !!down,
+        brake: !!keys.Space,
+      };
+    }
     var keySteer = !!(left || right);
     return {
       steer: keySteer ? steer : touchCtl.steer || 0,
@@ -2771,7 +2781,21 @@
     requestAnimationFrame(tick);
   }
 
+  function isChromeOS() {
+    var ua = navigator.userAgent || "";
+    var plat = "";
+    try {
+      plat = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || "";
+    } catch (e) {
+      plat = navigator.platform || "";
+    }
+    return /CrOS/i.test(ua) || /Chromebook/i.test(ua) || /Chrome OS/i.test(String(plat));
+  }
+
   function isPhoneLike() {
+    // Designer lock: Chromebooks are WASD/Space only — even a touchscreen
+    // lid does not get the phone overlay.
+    if (isChromeOS() || touchCtl.sawKeyboard) return false;
     var touch = navigator.maxTouchPoints > 0 || "ontouchstart" in window;
     if (!touch) return false;
     var fine = false;
@@ -2781,7 +2805,25 @@
       hover = window.matchMedia("(hover: hover)").matches;
     } catch (e) {}
     if (fine && hover) return false;
-    return Math.min(screen.width, screen.height) <= 920;
+    var ua = navigator.userAgent || "";
+    var phoneUA = /iPhone|iPod|Android.+Mobile|Windows Phone|IEMobile/i.test(ua);
+    var tabletUA = /iPad|Android(?!.*Mobile)/i.test(ua);
+    if (phoneUA || tabletUA) return true;
+    var coarse = false;
+    var noHover = false;
+    try {
+      coarse = window.matchMedia("(pointer: coarse)").matches;
+      noHover = window.matchMedia("(hover: none)").matches;
+    } catch (e2) {}
+    return coarse && noHover && Math.min(screen.width, screen.height) <= 920;
+  }
+
+  function clearTouchDrive() {
+    touchCtl.pads = {};
+    touchCtl.gas = false;
+    touchCtl.brake = false;
+    touchCtl.rev = false;
+    touchCtl.steer = 0;
   }
 
   function isLandscape() {
@@ -2816,6 +2858,7 @@
   function syncMobileUi() {
     var phone = isPhoneLike();
     var drive = state === "start" || state === "racing";
+    if (!phone) clearTouchDrive();
     if (hud.touchLayer) hud.touchLayer.classList.toggle("hidden", !(phone && drive));
     if (hud.rotateHint) {
       hud.rotateHint.classList.toggle("hidden", !(phone && drive && !isLandscape()));
@@ -2853,12 +2896,12 @@
     var d = raw - touchCtl.gyroCenter;
     if (d > 180) d -= 360;
     if (d < -180) d += 360;
-    var dead = 6;
+    var dead = 18;
     if (Math.abs(d) < dead) {
       touchCtl.steer = 0;
       return;
     }
-    var mag = clamp((Math.abs(d) - dead) / 28, 0, 1);
+    var mag = clamp((Math.abs(d) - dead) / 34, 0, 1);
     // Match keyboard: A / left = +steer, D / right = -steer.
     touchCtl.steer = (d > 0 ? -1 : 1) * mag;
   }
@@ -2874,6 +2917,7 @@
   }
 
   function askTiltPermission() {
+    if (!isPhoneLike()) return;
     if (touchCtl.tiltAsked && touchCtl.tiltGranted) return;
     touchCtl.tiltAsked = true;
     if (
@@ -2956,7 +3000,7 @@
         askTiltPermission();
       });
     }
-    if (!needsTiltTap()) {
+    if (isPhoneLike() && !needsTiltTap()) {
       window.addEventListener("deviceorientation", onOrient, true);
       touchCtl.tiltGranted = true;
     }
@@ -3014,6 +3058,23 @@
       return;
     }
     keys[e.code] = down;
+    if (down) {
+      if (
+        e.code === "KeyW" ||
+        e.code === "KeyA" ||
+        e.code === "KeyS" ||
+        e.code === "KeyD" ||
+        e.code === "ArrowUp" ||
+        e.code === "ArrowDown" ||
+        e.code === "ArrowLeft" ||
+        e.code === "ArrowRight" ||
+        e.code === "Space"
+      ) {
+        touchCtl.sawKeyboard = true;
+        clearTouchDrive();
+        syncMobileUi();
+      }
+    }
     if (down) ensureAudio();
     if (down && (e.code === "Space" || e.code === "Enter")) {
       if (state === "title") {

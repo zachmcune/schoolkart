@@ -30,7 +30,9 @@ Local: `npm start`, then open `http://localhost:8787` (or whatever `PORT` is). S
 
 **Controls:** W / ↑ throttle (also revs on the grid) · **Space = brake** · **S / ↓ reverse** · A D / ← → steer · Enter or Space on the title to grid up.
 
-**Phones (landscape):** right half = gas · left half = brake · tilt the phone to steer (calibrated to how you hold it). Tiny **R** is reverse for a pit overshoot. iPhone needs a **Tap for tilt steer** the first time. Chromebook keyboards stay the same. First phone load shows: `Right gas · Left brake · Tilt to steer`.
+**Phones (landscape):** right half = gas · left half = brake · tilt to steer with a **fat deadzone** (calibrated to held landscape). Tiny **R** is reverse for a pit overshoot. iPhone needs a **Tap for tilt steer** the first time. First phone load shows: `Right gas · Left brake · Tilt to steer`.
+
+**Chromebooks stay WASD / Space only.** A touchscreen lid does not get the phone overlay. If a keyboard is in play, no touch driving.
 
 **Start:** skip formation lap. Blue PRE-START flash, five reds one-by-one (~1s), random hold (0.2–3s) with all five ON, lights out = GO. Fuel clock starts at lights-out. The car is **locked to the grid** until GO — no creep, no jump-roll. **W** is a timing game: hold it to park the needle in the green sweet-spot. Hit it at lights-out = launch. Miss low = sluggish. Miss high = wheelspin. Space is brake after GO.
 
@@ -77,6 +79,6 @@ npm test
 
 Repo is also a static site (HTML + CSS + JS + Three.js from CDN). Public Pages currently deploys from this branch (`cursor/campus-loop-playable-f645`). Use Railway as the school link.
 
-`index.html` is marked `no-store`. JS/CSS are versioned (`?v=mp19`) so a **normal reload** picks up the lobby.
+`index.html` is marked `no-store`. JS/CSS are versioned (`?v=mp20`) so a **normal reload** picks up the lobby.
 
 No bundler. Keyboard on Chromebooks. Phones get tilt + halves. Light enough for school Chrome / integrated graphics.
