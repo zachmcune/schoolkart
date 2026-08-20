@@ -47,7 +47,10 @@
   var RH = 12;
   var RS = 52;
 
-  var PIT_BOX = { x0: 2, x1: 24, z0: SF_Z + 6, z1: SF_Z + 18 };
+  // Pit lane is pavement, not grass: it overlaps the south-straight ribbon
+  // and continues inward so the teal box is on asphalt the whole way.
+  var PIT_LANE = { x0: -24, x1: 76, z0: SF_Z - 2, z1: SF_Z + 20 };
+  var PIT_BOX = { x0: 4, x1: 28, z0: SF_Z + 4, z1: SF_Z + 17 };
 
   var keys = Object.create(null);
   var state = "title";
@@ -103,6 +106,14 @@
 
   function clamp(v, a, b) {
     return Math.max(a, Math.min(b, v));
+  }
+
+  function inRect(x, z, b) {
+    return x >= b.x0 && x <= b.x1 && z >= b.z0 && z <= b.z1;
+  }
+
+  function onPitPavement(x, z) {
+    return inRect(x, z, PIT_LANE) || inRect(x, z, PIT_BOX);
   }
 
   function formatTime(t) {
@@ -227,9 +238,8 @@
       }
     }
     var dist = Math.sqrt(best.d2);
-    var inPit =
-      px >= PIT_BOX.x0 && px <= PIT_BOX.x1 && pz >= PIT_BOX.z0 && pz <= PIT_BOX.z1;
-    var onAsphalt = dist <= ASPHALT || inPit;
+    var inPit = inRect(px, pz, PIT_BOX);
+    var onAsphalt = dist <= ASPHALT || onPitPavement(px, pz);
     return {
       x: best.x,
       z: best.z,
@@ -314,6 +324,26 @@
     if (kerb90) scene.add(kerb90);
     if (kerbHair) scene.add(kerbHair);
 
+    var pitLane = new THREE.Mesh(
+      new THREE.BoxGeometry(PIT_LANE.x1 - PIT_LANE.x0, 0.1, PIT_LANE.z1 - PIT_LANE.z0),
+      new THREE.MeshLambertMaterial({ color: 0x32302c })
+    );
+    pitLane.position.set(
+      (PIT_LANE.x0 + PIT_LANE.x1) * 0.5,
+      0.055,
+      (PIT_LANE.z0 + PIT_LANE.z1) * 0.5
+    );
+    scene.add(pitLane);
+    addBox(
+      (PIT_LANE.x0 + PIT_LANE.x1) * 0.5,
+      0.07,
+      PIT_LANE.z1 - 0.18,
+      PIT_LANE.x1 - PIT_LANE.x0,
+      0.02,
+      0.35,
+      0xf4efe6
+    );
+
     var pit = new THREE.Mesh(
       new THREE.BoxGeometry(PIT_BOX.x1 - PIT_BOX.x0, 0.12, PIT_BOX.z1 - PIT_BOX.z0),
       new THREE.MeshLambertMaterial({ color: TEAL })
@@ -339,8 +369,12 @@
 
     var pitDecal = labelPlane("PIT", 8, 3.2, "#0a2a28", "#2ec8c3");
     pitDecal.rotation.x = -Math.PI * 0.5;
-    pitDecal.position.set(13, 0.16, (PIT_BOX.z0 + PIT_BOX.z1) * 0.5);
+    pitDecal.position.set(16, 0.16, (PIT_BOX.z0 + PIT_BOX.z1) * 0.5);
     scene.add(pitDecal);
+
+    for (var ch = 0; ch < 3; ch++) {
+      addBox(-10 + ch * 4, 0.1, SF_Z + 3.2, 1.6, 0.04, 0.45, 0x2ec8c3);
+    }
 
     var stripe = new THREE.Mesh(
       new THREE.BoxGeometry(1.5, 0.14, ASPHALT * 2),
@@ -588,7 +622,7 @@
   }
 
   function inPitBox(r) {
-    return r.x > PIT_BOX.x0 && r.x < PIT_BOX.x1 && r.z > PIT_BOX.z0 && r.z < PIT_BOX.z1;
+    return inRect(r.x, r.z, PIT_BOX);
   }
 
   function updateLaps(r) {
@@ -634,10 +668,11 @@
     else r.speed -= COAST * dt;
 
     if (info.grass) {
-      r.speed -= 22 * dt;
+      r.speed -= 16 * dt;
       if (isPlayer && r.speed > 8) r.tires -= 6.2 * dt;
     }
     r.speed = clamp(r.speed, 0, maxV);
+    if (info.grass && throttle && !brake) r.speed = Math.max(r.speed, empty ? 3 : 5);
 
     var speed01 = r.speed / MAX_SPEED;
     var steerScale = 1 - 0.58 * speed01;
