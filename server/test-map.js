@@ -106,6 +106,8 @@ var code = [
   sliceFn("inPitGrab"),
   sliceFn("cleanTrack"),
   sliceFn("cellsInBoard"),
+  sliceFn("isDriveableLoop"),
+  sliceFn("lockRacePath"),
   sliceFn("isCustomCircuit"),
   sliceFn("menuTrackName"),
   sliceFn("speedKph"),
@@ -143,6 +145,8 @@ var code = [
   "  speedKph: speedKph,",
   "  menuTrackName: menuTrackName,",
   "  isCustomCircuit: isCustomCircuit,",
+  "  isDriveableLoop: isDriveableLoop,",
+  "  lockRacePath: lockRacePath,",
   "  MAP_DXY: MAP_DXY,",
   "  MAP_CELL: MAP_CELL,",
   "  get TRACK_LEN() { return TRACK_LEN; },",
@@ -454,8 +458,13 @@ var open = [
 sim.setTrack(sim.encodeMap(open));
 sim.rebuildPath(sim.encodeMap(open));
 assert(!sim.MAP_CLOSED, "open layout is not a closed loop");
-assert(sim.projectTrack(sim.edgeMid(0, 0, 0).x - 1, sim.edgeMid(0, 0, 0).z).onAsphalt, "open layout still driveable");
-assert(sim.RIBBON_SEGS <= 420, "custom ribbon segs stay Chromebook-cheap");
+assert(!sim.lockRacePath(sim.encodeMap(open)), "open layout is refused for race");
+assert(!sim.isDriveableLoop(), "open board is not a race loop");
+assert(Math.abs(sim.TRACK_LEN - 1978.98) < 2, "open/junk bounces the 3D world to Campus Loop");
+assert(sim.projectTrack(0, -80).onAsphalt && !sim.projectTrack(0, -80).grass, "bounced world is Campus S/F, not frozen junk");
+assert(sim.RIBBON_SEGS >= 360, "bounced Loop keeps the Campus ribbon");
+sim.lockRacePath(sim.encodeMap(rectPieces()));
+assert(sim.isDriveableLoop() && sim.RIBBON_SEGS <= 420, "closed custom ribbon stays Chromebook-cheap");
 
 var noPit = sim.encodeMap(rectPieces());
 sim.setTrack(noPit);
@@ -522,7 +531,32 @@ assert(sim.MAP_CLOSED, "4+4 rectangle closes and laps");
 function driveWorld(pieces, seconds, label, closed) {
   var code = sim.encodeMap(pieces);
   sim.setTrack(code);
-  sim.rebuildPath(code);
+  var raced = sim.lockRacePath(code);
+  if (!closed) {
+    assert(!raced && !sim.isDriveableLoop(), label + " must be refused");
+    assert(Math.abs(sim.TRACK_LEN - 1978.98) < 2, label + " bounces to Campus Loop, len=" + sim.TRACK_LEN);
+    sim.placeWalls();
+    var loopPose = { x: 0, z: -80, h: 0 };
+    var racerOpen = blankCar(loopPose.x, loopPose.z, loopPose.h, 12);
+    racerOpen.fuel = 100;
+    racerOpen.tires = 100;
+    var ox0 = racerOpen.x;
+    var oz0 = racerOpen.z;
+    var tOpen;
+    var maxOpen = 0;
+    for (tOpen = 0; tOpen < seconds; tOpen += 1 / 60) {
+      sim.applyMotion(racerOpen, 0, true, false, false, 1 / 60, true);
+      sim.bashAllWalls(racerOpen);
+      var kOpen = sim.speedKph(racerOpen);
+      if (kOpen > maxOpen) maxOpen = kOpen;
+    }
+    var movedOpen = Math.hypot(racerOpen.x - ox0, racerOpen.z - oz0);
+    assert(racerOpen.speed > 16 && maxOpen > 40, label + " Loop after bounce must drive, speed=" + racerOpen.speed + " kph=" + maxOpen);
+    assert(movedOpen > 28, label + " Loop after bounce must move, moved=" + movedOpen);
+    assert(sim.projectTrack(racerOpen.x, racerOpen.z).onAsphalt, label + " stays on Campus Loop asphalt");
+    return { racer: racerOpen, moved: movedOpen, kph: maxOpen, walls: sim.WALLS.length, bounced: true };
+  }
+  assert(raced && sim.isDriveableLoop(), label + " closed board must be accepted");
   sim.placeWalls();
   var pose = sim.customGridPose();
   assert(pose, label + " has a spawn on the placed asphalt");
@@ -605,10 +639,11 @@ assert(
 );
 var messyDrive = driveWorld(messyPieces, 2.2, "messy layout", false);
 
-sim.setTrack(messyCode);
-assert(sim.menuTrackName() === "CUSTOM CIRCUIT", "menu label is CUSTOM when Solo loads custom");
-sim.setTrack("");
-sim.rebuildPath("");
+sim.lockRacePath(sim.encodeMap(rectPieces()));
+assert(sim.menuTrackName() === "CUSTOM CIRCUIT", "menu label is CUSTOM when Solo loads a closed custom");
+sim.lockRacePath(messyCode);
+assert(sim.menuTrackName() === "CAMPUS LOOP", "menu label is CAMPUS LOOP when Solo refuses an open board");
+sim.lockRacePath("");
 assert(sim.menuTrackName() === "CAMPUS LOOP", "menu label is CAMPUS LOOP when Solo loads Loop");
 
 var aCar = blankCar(0, 0, 0, 20);
@@ -621,6 +656,7 @@ assert(Math.hypot(aCar.x - bCar.x, aCar.z - bCar.z) >= 3.2, "bots/player cannot 
 var loopCarSpd = blankCar(0, -80, 0, 30);
 assert(sim.speedKph(loopCarSpd) === Math.round(30 * 3.15), "speedo matches velocity, not a stuck 0");
 
+assert(src.indexOf("lockRacePath") !== -1 && src.indexOf("isDriveableLoop") !== -1, "open/junk boards refuse and bounce to Loop");
 assert(src.indexOf("_rotLock") !== -1, "rotate is debounced so one tap is 90 not 180");
 assert(src.indexOf("rotateSelected();") !== -1 && !/tileRot\.addEventListener\("click"[\s\S]{0,80}rotateSelected/.test(src), "Rotate button does not double-fire");
 assert(src.indexOf("title-track") !== -1, "title menu label is live");

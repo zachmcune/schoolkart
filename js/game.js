@@ -1090,6 +1090,17 @@
     else RIBBON_SEGS = Math.max(180, Math.min(420, Math.round(Math.max(TRACK_LEN, 80) / 2.4)));
   }
 
+  function isDriveableLoop() {
+    return !!(MAP_CLOSED && TRACK_LEN > 80 && MAP_SURF.length && PATH.length);
+  }
+
+  function lockRacePath(code) {
+    code = cleanTrack(code || "");
+    rebuildPath(code);
+    if (code && !isDriveableLoop()) rebuildPath("");
+    return isDriveableLoop();
+  }
+
   function pointOnSeg(seg, u) {
     if (seg.type === "line") {
       return {
@@ -1486,7 +1497,7 @@
       addBox((PIT_LANE.x0 + PIT_LANE.x1) * 0.5, 0.115, PIT_LANE.z0, PIT_LANE.x1 - PIT_LANE.x0, 0.03, 0.34, 0xffe566, trackRoot);
       addBox((PIT_LANE.x0 + PIT_LANE.x1) * 0.5, 0.115, PIT_LANE.z1, PIT_LANE.x1 - PIT_LANE.x0, 0.03, 0.34, 0x7cffd4, trackRoot);
     }
-    if (!trackCode) {
+    if (!isDriveableLoop()) {
       addBox(62, 0.82, -54.2, 70, 1.55, 0.62, 0x2a2018, trackRoot);
       addBox(62, 1.62, -54.2, 70, 0.12, 0.7, TEAL, trackRoot);
       var pitDecal = labelPlane("PIT", 7.2, 2.8, "#0a2a28", "#2ec8c3");
@@ -1516,11 +1527,11 @@
       new THREE.BoxGeometry(1.6, 0.14, ASPHALT * 2),
       new THREE.MeshLambertMaterial({ color: 0xffffff, side: THREE.DoubleSide })
     );
-    stripe.position.set(trackCode ? start.x : 0, 0.1, trackCode ? start.z : SF_Z);
-    stripe.rotation.y = trackCode ? -start.h : 0;
+    stripe.position.set(isDriveableLoop() ? start.x : 0, 0.1, isDriveableLoop() ? start.z : SF_Z);
+    stripe.rotation.y = isDriveableLoop() ? -start.h : 0;
     trackRoot.add(stripe);
 
-    var customMap = !!(trackCode && trackCode.charAt(0) === "M" && MAP_SURF.length);
+    var customMap = isDriveableLoop();
     if (!customMap) {
       var gxs = [-6, -14, -22];
       var gzs = [SF_Z + 2.7, SF_Z - 2.7, SF_Z + 2.7];
@@ -1827,16 +1838,7 @@
   }
 
   function isCustomCircuit() {
-    if (!trackCode) return false;
-    if (trackCode.charAt(0) === "M") {
-      var pcs = parseMap(trackCode);
-      var i;
-      for (i = 0; i < pcs.length; i++) {
-        if (pcs[i].t !== "t") return true;
-      }
-      return false;
-    }
-    return true;
+    return isDriveableLoop();
   }
 
   function menuTrackName() {
@@ -1876,8 +1878,8 @@
     }
     trackCode = code;
     if (persist !== false) persistTrackCode();
-    if (net) net.track = trackCode;
-    rebuildPath(trackCode);
+    lockRacePath(trackCode);
+    if (net) net.track = isDriveableLoop() ? trackCode : "";
     bakeMini();
     addTrackMesh();
     resetGrid();
@@ -1911,8 +1913,8 @@
     var code = cleanTrack(net.track || "");
     if (code === trackCode && trackRoot) return;
     trackCode = code;
-    if (net) net.track = trackCode;
-    rebuildPath(trackCode);
+    lockRacePath(trackCode);
+    if (net) net.track = isDriveableLoop() ? trackCode : "";
     bakeMini();
     addTrackMesh();
     circuitLabel();
@@ -2239,7 +2241,7 @@
     }
     pushTrackUndo();
     applyTrack(next, true);
-    if (net && net.active && net.isHost() && net.setTrack) net.setTrack(trackCode);
+    if (net && net.active && net.isHost() && net.setTrack) net.setTrack(isDriveableLoop() ? trackCode : "");
   }
 
   function pieceAt(x, y, pieces) {
@@ -2993,7 +2995,7 @@
   }
 
   function customGridPose() {
-    if (!trackCode || trackCode.charAt(0) !== "M" || !MAP_SURF.length) return null;
+    if (!isDriveableLoop()) return null;
     var pieces = parseMap(trackCode);
     var pick = null;
     var i;
@@ -3103,7 +3105,7 @@
   }
 
   function inPitLane(r) {
-    if (trackCode) return PIT_META.on && (inRect(r.x, r.z, PIT_LANE) || onPitPavement(r.x, r.z));
+    if (isDriveableLoop()) return PIT_META.on && (inRect(r.x, r.z, PIT_LANE) || onPitPavement(r.x, r.z));
     var leftOfRace = SF_Z + ASPHALT + 1;
     return (
       inRect(r.x, r.z, PIT_LANE) ||
@@ -3115,7 +3117,7 @@
   }
 
   function inPitGrab(r) {
-    if (trackCode) {
+    if (isDriveableLoop()) {
       if (!PIT_META.on || !onPitPavement(r.x, r.z)) return false;
       var dx = PIT_META.bx - PIT_META.ax;
       var dz = PIT_META.bz - PIT_META.az;
@@ -3133,7 +3135,7 @@
     if (r.finished) return;
     var prog = projectTrack(r.x, r.z);
     r.s = prog.s;
-    if (trackCode && MAP_CLOSED && TRACK_LEN > 80) {
+    if (isDriveableLoop()) {
       var prev = r.lastS != null ? r.lastS : r.s;
       if (prev < TRACK_LEN * 0.5 && r.s >= TRACK_LEN * 0.5) r.passedHalf = true;
       if (r.passedHalf && prev > TRACK_LEN * 0.72 && r.s < TRACK_LEN * 0.28 && prog.onAsphalt) {
@@ -4125,7 +4127,11 @@
     applyGameSpeed(1);
     clearMe();
     if (net) net.leave();
+    lockRacePath(trackCode);
+    bakeMini();
+    addTrackMesh();
     resetGrid();
+    circuitLabel();
     touchCtl.gyroNeedCal = true;
     state = "start";
     setScreen("start");
@@ -5751,7 +5757,7 @@
         return;
       }
       applyTrack(trackUndo.pop(), true);
-      if (net && net.active && net.isHost() && net.setTrack) net.setTrack(trackCode);
+      if (net && net.active && net.isHost() && net.setTrack) net.setTrack(isDriveableLoop() ? trackCode : "");
     });
   }
   if (btnTrackCampus) {
@@ -5773,7 +5779,11 @@
   }
   if (btnTrackDone) {
     btnTrackDone.addEventListener("click", function () {
-      if (net && net.active && net.isHost() && net.setTrack) net.setTrack(trackCode);
+      if (net && net.active && net.isHost() && net.setTrack) net.setTrack(isDriveableLoop() ? trackCode : "");
+      lockRacePath(trackCode);
+      bakeMini();
+      addTrackMesh();
+      resetGrid();
       killGhost();
       tilePick = "";
       editorDrag = null;

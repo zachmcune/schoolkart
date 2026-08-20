@@ -115,7 +115,7 @@ waitHealth()
         assert(html.indexOf('rel="manifest"') !== -1, "web app manifest link");
         assert(html.indexOf("apple-mobile-web-app-capable") !== -1, "iOS home screen capable");
         assert(html.indexOf('apple-mobile-web-app-title" content="SchoolKart"') !== -1, "iOS title");
-        assert(html.indexOf('SK_BUILD = "mp43"') !== -1, "cache bump mp43");
+        assert(html.indexOf('SK_BUILD = "mp44"') !== -1, "cache bump mp44");
         assert(html.indexOf('maxlength="240"') !== -1, "share-string fits a full board");
         assert(html.indexOf('id="title-track"') !== -1, "title label matches Solo load");
         assert(html.indexOf('autocapitalize="off"') !== -1, "share-string does not eat W/T via autocapitalize");
@@ -147,7 +147,7 @@ waitHealth()
           .then(function (sr) {
             return sr.text().then(function (sw) {
               assert(sr.status === 200, "sw 200");
-              assert(sw.indexOf('BUILD = "mp43"') !== -1, "SW build matches cache");
+              assert(sw.indexOf('BUILD = "mp44"') !== -1, "SW build matches cache");
               assert(/cache:\s*"no-store"/.test(sw), "network-first no-store");
               assert(sw.indexOf("websocket") !== -1, "SW leaves websocket alone");
             });
@@ -162,6 +162,7 @@ waitHealth()
                   assert(js.indexOf("MAP_CLOSED") !== -1, "closed-loop lap flag");
                   assert(js.indexOf("TRACK_CODE_MAX") !== -1, "full-board share-string");
                   assert(js.indexOf("TYPE_ENC") !== -1 && js.indexOf("_rotLock") !== -1, "share W/T + 90 rotate locks");
+                  assert(js.indexOf("lockRacePath") !== -1, "open boards bounce to Campus Loop");
                   assert(js.indexOf("#ff2038") !== -1 && js.indexOf("#3a3e46") !== -1, "asphalt + kerb piece art");
                 });
               }),

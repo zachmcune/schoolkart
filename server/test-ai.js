@@ -120,6 +120,7 @@ var code = [
   sliceFn("placeWalls"),
   sliceFn("inPitLane"),
   sliceFn("inPitGrab"),
+  sliceFn("isDriveableLoop"),
   sliceFn("updateLaps"),
   sliceFn("applyMotion"),
   sliceAssign("AI_AGGRO"),
