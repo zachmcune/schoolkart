@@ -6,7 +6,7 @@
   <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <!-- sk-build mp39: modular tile-map track editor -->
+  <!-- sk-build mp40: physical modular-piece tile map -->
   <meta name="theme-color" content="#1a120e" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -16,7 +16,7 @@
   <link rel="manifest" href="manifest.json" />
   <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png" />
   <link rel="apple-touch-icon" href="apple-touch-icon.png" />
-  <link rel="stylesheet" href="css/style.css?v=mp39" />
+  <link rel="stylesheet" href="css/style.css?v=mp40" />
 </head>
 <body>
   <div id="game">
@@ -154,21 +154,39 @@
     </div>
 
     <div id="track-screen" class="screen hidden">
-      <p class="eyebrow">Modular pieces</p>
+      <p class="eyebrow">Slot-car pieces</p>
       <h1>TRACK</h1>
       <p class="sub" id="track-code-view">Campus Loop</p>
-      <p class="editor-help">Drag a piece onto the map. Drag to move. Tap a piece, then Rotate (or tap it again) to turn 90°. Trash or off-board deletes. Empty = Campus Loop.</p>
-      <div id="tile-palette" class="tile-palette" aria-label="Tile palette">
-        <div class="palette-tile" data-tile="s" role="button" tabindex="0" aria-label="straight"></div>
-        <div class="palette-tile" data-tile="r" role="button" tabindex="0" aria-label="90"></div>
-        <div class="palette-tile" data-tile="H" role="button" tabindex="0" aria-label="hairpin"></div>
-        <div class="palette-tile" data-tile="C" role="button" tabindex="0" aria-label="chicane"></div>
-        <div class="palette-tile" data-tile="P" role="button" tabindex="0" aria-label="pit"></div>
-        <div class="palette-tile" data-tile="t" role="button" tabindex="0" aria-label="tree"></div>
+      <p class="editor-help">Drag a module onto the map. Drag to move. Tap a placed piece or hit Rotate to turn 90°. Trash or drag off deletes. Empty = Campus Loop.</p>
+      <div id="tile-palette" class="tile-palette" aria-label="Track pieces">
+        <div class="palette-slot" data-tile="s">
+          <div class="palette-tile" data-tile="s" role="button" tabindex="0" aria-label="straight"></div>
+          <span class="palette-name">straight</span>
+        </div>
+        <div class="palette-slot" data-tile="r">
+          <div class="palette-tile" data-tile="r" role="button" tabindex="0" aria-label="90"></div>
+          <span class="palette-name">90</span>
+        </div>
+        <div class="palette-slot" data-tile="H">
+          <div class="palette-tile" data-tile="H" role="button" tabindex="0" aria-label="hairpin"></div>
+          <span class="palette-name">hairpin</span>
+        </div>
+        <div class="palette-slot" data-tile="C">
+          <div class="palette-tile" data-tile="C" role="button" tabindex="0" aria-label="chicane"></div>
+          <span class="palette-name">chicane</span>
+        </div>
+        <div class="palette-slot" data-tile="P">
+          <div class="palette-tile" data-tile="P" role="button" tabindex="0" aria-label="pit"></div>
+          <span class="palette-name">pit</span>
+        </div>
+        <div class="palette-slot" data-tile="t">
+          <div class="palette-tile" data-tile="t" role="button" tabindex="0" aria-label="tree"></div>
+          <span class="palette-name">tree</span>
+        </div>
       </div>
       <div id="tile-board" class="tile-map" aria-label="Tile map"></div>
       <div class="editor-dock">
-        <button type="button" class="tile-rot" id="btn-tile-rot">Rotate</button>
+        <button type="button" class="tile-rot" id="btn-tile-rot" aria-label="Rotate selected piece 90 degrees">↻ Rotate</button>
         <button type="button" class="tile-trash" id="tile-trash">Trash</button>
         <input id="track-paste" class="lobby-input name-input track-share" maxlength="120" placeholder="SHARE STRING" autocomplete="off" spellcheck="false" autocapitalize="characters" />
       </div>
@@ -191,7 +209,7 @@
   </div>
 
   <script>
-    window.SK_BUILD = "mp39";
+    window.SK_BUILD = "mp40";
     try {
       if (window.caches) {
         caches.keys().then(function (keys) {
@@ -202,7 +220,7 @@
       }
     } catch (e) {}
     if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.register("sw.js?v=mp39").catch(function () {});
+      navigator.serviceWorker.register("sw.js?v=mp40").catch(function () {});
     }
   </script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.160.1/build/three.min.js"></script>
@@ -211,8 +229,8 @@
       document.write('<script src="https://unpkg.com/three@0.160.1/build/three.min.js"><\/script>');
     }
   </script>
-  <script src="js/config.js?v=mp39"></script>
-  <script src="js/net.js?v=mp39"></script>
-  <script src="js/game.js?v=mp39"></script>
+  <script src="js/config.js?v=mp40"></script>
+  <script src="js/net.js?v=mp40"></script>
+  <script src="js/game.js?v=mp40"></script>
 </body>
 </html>

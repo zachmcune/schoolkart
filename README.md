@@ -48,7 +48,7 @@ Local: `npm start`, then open `http://localhost:8787` (or whatever `PORT` is). S
 
 Car **#7** is white/teal by default. Title-screen garage picks body + wing colors (saved on the device). Friends see your paint in the room. Campus is golden-hour brick with **one** clock tower. Original IP only.
 
-**Track editor:** title **Track** button. Modular tile map: drag visual pieces (straight / 90 / hairpin / chicane / pit / tree) onto the grid. Drag to move. Tap a piece then **Rotate** (or tap it again) for 90° snaps. Trash or off-board deletes. Mouse and finger. Share-string encodes type + cell + rotation. **Default · Campus Loop** restores the real ~2km loop and clears the save / room code. Empty code is Campus Loop. Host’s code rides with the room.
+**Track editor:** title **Track** button. Real modular tile map: the palette is a tray of asphalt modules (straight / 90 / hairpin / chicane / pit / tree) with kerbs and connection ports — not word stamps. Drag a piece onto the grid. Drag a placed piece to move. Rotate 90° with the fat **Rotate** control, the on-piece handle, or a second tap on the selected piece (mouse and finger). Trash or off-board deletes. Share-string encodes type + cell + rotation. **Default · Campus Loop** restores the real ~2km loop and clears the save / room code. Empty code is Campus Loop. Host’s code rides with the room.
 
 ## Multiplayer (Chromebook lunch)
 
@@ -87,7 +87,7 @@ npm test
 
 Repo is also a static site (HTML + CSS + JS + Three.js from CDN). Public Pages currently deploys from this branch (`cursor/campus-loop-playable-f645`). Use Railway as the school link.
 
-`index.html` is marked `no-store`. JS/CSS are versioned (`?v=mp39`) so a **normal reload** picks up the lobby.
+`index.html` is marked `no-store`. JS/CSS are versioned (`?v=mp40`) so a **normal reload** picks up the lobby.
 
 **Install (PWA):** on phone Safari / Chrome, Add to Home Screen. Standalone landscape chrome, dark splash (`#1a120e`). Original teal/cream mark (192 + 512 + apple-touch-icon). The service worker is network-first and does **not** cache the race or the websocket — a new Railway deploy is not a trapped old build. Offline play is not required.
 

@@ -1455,65 +1455,125 @@
   function tileArt(type, rot, size) {
     var key = type + rot + ":" + size;
     if (_tileArt[key]) return _tileArt[key];
+    var s = size || 160;
     var c = document.createElement("canvas");
-    c.width = c.height = size;
+    c.width = c.height = s;
     var ctx = c.getContext("2d");
-    ctx.fillStyle = "#5a564e";
-    ctx.fillRect(0, 0, size, size);
+    ctx.fillStyle = "#6a655c";
+    ctx.fillRect(0, 0, s, s);
+    var bevel = ctx.createLinearGradient(0, 0, s, s);
+    bevel.addColorStop(0, "rgba(255,255,255,0.14)");
+    bevel.addColorStop(0.42, "rgba(255,255,255,0)");
+    bevel.addColorStop(1, "rgba(0,0,0,0.22)");
+    ctx.fillStyle = bevel;
+    ctx.fillRect(0, 0, s, s);
+    ctx.strokeStyle = "rgba(26,18,14,0.35)";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(1, 1, s - 2, s - 2);
     ctx.save();
-    ctx.translate(size * 0.5, size * 0.5);
+    ctx.translate(s * 0.5, s * 0.5);
     ctx.rotate((rot || 0) * Math.PI * 0.5);
-    ctx.translate(-size * 0.5, -size * 0.5);
-    function asphaltBand(x, y, w, h) {
-      ctx.fillStyle = "#8d97a6";
-      ctx.fillRect(x - 3, y - 3, w + 6, h + 6);
-      ctx.fillStyle = "#3a3e46";
-      ctx.fillRect(x, y, w, h);
-      ctx.fillStyle = "#ff2038";
-      ctx.fillRect(x, y, w, 3);
-      ctx.fillStyle = "#fff6ee";
-      ctx.fillRect(x, y + h - 3, w, 3);
+    ctx.translate(-s * 0.5, -s * 0.5);
+    function trackPath() {
+      ctx.beginPath();
+      if (type === "r") {
+        ctx.moveTo(s, s * 0.5);
+        ctx.arc(s, s, s * 0.5, -Math.PI * 0.5, Math.PI, false);
+      } else if (type === "H") {
+        ctx.moveTo(s, s * 0.5);
+        ctx.lineTo(s * 0.62, s * 0.5);
+        ctx.arc(s * 0.42, s * 0.5, s * 0.2, 0, Math.PI, true);
+        ctx.quadraticCurveTo(s * 0.28, s * 0.78, s * 0.5, s);
+      } else if (type === "C") {
+        ctx.moveTo(0, s * 0.5);
+        ctx.bezierCurveTo(s * 0.26, s * 0.14, s * 0.3, s * 0.16, s * 0.5, s * 0.5);
+        ctx.bezierCurveTo(s * 0.7, s * 0.84, s * 0.74, s * 0.86, s, s * 0.5);
+      } else {
+        ctx.moveTo(0, s * 0.5);
+        ctx.lineTo(s, s * 0.5);
+      }
+    }
+    function strokeTrack() {
+      ctx.lineCap = "butt";
+      ctx.lineJoin = "round";
+      ctx.setLineDash([]);
+      ctx.strokeStyle = "#8d97a6";
+      ctx.lineWidth = s * 0.42;
+      trackPath();
+      ctx.stroke();
+      ctx.strokeStyle = "#ff2038";
+      ctx.lineWidth = s * 0.34;
+      trackPath();
+      ctx.stroke();
+      ctx.strokeStyle = "#fff6ee";
+      ctx.lineWidth = s * 0.34;
+      ctx.setLineDash([s * 0.07, s * 0.07]);
+      trackPath();
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.strokeStyle = "#3a3e46";
+      ctx.lineWidth = s * 0.24;
+      trackPath();
+      ctx.stroke();
+      ctx.strokeStyle = "#15171b";
+      ctx.lineWidth = Math.max(2, s * 0.03);
+      trackPath();
+      ctx.stroke();
+      ctx.strokeStyle = "#d8d0b8";
+      ctx.lineWidth = Math.max(1, s * 0.012);
+      ctx.setLineDash([s * 0.055, s * 0.04]);
+      trackPath();
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    function drawPorts(dirs) {
+      var i;
+      for (i = 0; i < dirs.length; i++) {
+        ctx.save();
+        ctx.translate(s * 0.5, s * 0.5);
+        ctx.rotate(dirs[i] * Math.PI * 0.5);
+        ctx.fillStyle = "#2b2e34";
+        ctx.fillRect(s * 0.5 - 8, -10, 8, 20);
+        ctx.fillStyle = "#3a3e46";
+        ctx.fillRect(s * 0.5 - 7, -7, 7, 14);
+        ctx.fillStyle = "#111318";
+        ctx.fillRect(s * 0.5 - 7, -1.5, 7, 3);
+        ctx.restore();
+      }
     }
     if (type === "t") {
+      ctx.fillStyle = "#5a4030";
+      ctx.beginPath();
+      ctx.arc(s * 0.5, s * 0.72, s * 0.16, 0, Math.PI * 2);
+      ctx.fill();
       ctx.fillStyle = "#6a4020";
-      ctx.fillRect(size * 0.44, size * 0.48, size * 0.12, size * 0.28);
+      ctx.fillRect(s * 0.45, s * 0.5, s * 0.1, s * 0.24);
+      ctx.fillStyle = "#3f8a32";
+      ctx.beginPath();
+      ctx.arc(s * 0.5, s * 0.4, s * 0.2, 0, Math.PI * 2);
+      ctx.fill();
       ctx.fillStyle = "#4ea03c";
       ctx.beginPath();
-      ctx.arc(size * 0.5, size * 0.4, size * 0.22, 0, Math.PI * 2);
+      ctx.arc(s * 0.4, s * 0.36, s * 0.14, 0, Math.PI * 2);
+      ctx.arc(s * 0.6, s * 0.34, s * 0.13, 0, Math.PI * 2);
       ctx.fill();
-    } else if (type === "r") {
-      asphaltBand(size * 0.5, size * 0.36, size * 0.5, size * 0.28);
-      asphaltBand(size * 0.36, size * 0.5, size * 0.28, size * 0.5);
-    } else if (type === "H") {
-      ctx.strokeStyle = "#8d97a6";
-      ctx.lineWidth = size * 0.36;
-      ctx.beginPath();
-      ctx.arc(size * 0.5, size * 0.58, size * 0.28, Math.PI, 0);
-      ctx.stroke();
-      ctx.strokeStyle = "#3a3e46";
-      ctx.lineWidth = size * 0.22;
-      ctx.beginPath();
-      ctx.arc(size * 0.5, size * 0.58, size * 0.28, Math.PI, 0);
-      ctx.stroke();
-    } else if (type === "C") {
-      ctx.strokeStyle = "#8d97a6";
-      ctx.lineWidth = size * 0.34;
-      ctx.beginPath();
-      ctx.moveTo(0, size * 0.38);
-      ctx.bezierCurveTo(size * 0.35, size * 0.1, size * 0.65, size * 0.9, size, size * 0.62);
-      ctx.stroke();
-      ctx.strokeStyle = "#3a3e46";
-      ctx.lineWidth = size * 0.2;
-      ctx.beginPath();
-      ctx.moveTo(0, size * 0.38);
-      ctx.bezierCurveTo(size * 0.35, size * 0.1, size * 0.65, size * 0.9, size, size * 0.62);
-      ctx.stroke();
     } else {
-      asphaltBand(0, size * 0.36, size, size * 0.28);
+      strokeTrack();
       if (type === "P") {
         ctx.fillStyle = "#2ec8c3";
-        ctx.fillRect(size * 0.28, size * 0.12, size * 0.44, size * 0.2);
+        ctx.fillRect(s * 0.22, s * 0.08, s * 0.56, s * 0.2);
+        ctx.fillStyle = "#148f8c";
+        ctx.fillRect(s * 0.22, s * 0.26, s * 0.56, 3);
+        ctx.strokeStyle = "#2ec8c3";
+        ctx.lineWidth = 3;
+        ctx.setLineDash([5, 4]);
+        ctx.beginPath();
+        ctx.moveTo(s * 0.5, s * 0.28);
+        ctx.lineTo(s * 0.5, s * 0.4);
+        ctx.stroke();
+        ctx.setLineDash([]);
       }
+      drawPorts(MAP_TYPES[type] && MAP_TYPES[type].ports ? MAP_TYPES[type].ports : []);
     }
     ctx.restore();
     _tileArt[key] = c.toDataURL();
@@ -1527,12 +1587,12 @@
       hud.trackPaste.value = trackCode;
     }
     if (hud.tilePalette) {
-      var pal = hud.tilePalette.querySelectorAll("[data-tile]");
+      var pal = hud.tilePalette.querySelectorAll(".palette-tile[data-tile]");
       var pi;
       for (pi = 0; pi < pal.length; pi++) {
         var pt = pal[pi].getAttribute("data-tile");
         pal[pi].classList.toggle("picked", pt === tilePick);
-        pal[pi].style.backgroundImage = "url(" + tileArt(pt, 0, 72) + ")";
+        pal[pi].style.backgroundImage = "url(" + tileArt(pt, 0, 160) + ")";
         pal[pi].textContent = "";
         pal[pi].setAttribute("aria-label", TILE_LABEL[pt] || pt);
       }
@@ -1563,8 +1623,12 @@
             '" data-rot="' +
             p.r +
             '" role="button" tabindex="0" style="background-image:url(' +
-            tileArt(p.t, p.r, 72) +
-            ')"></div>';
+            tileArt(p.t, p.r, 160) +
+            ')">';
+          if (sel) {
+            html += '<button type="button" class="tile-rot-handle" data-rot-handle="1" aria-label="Rotate 90 degrees">↻</button>';
+          }
+          html += "</div>";
         } else {
           html +=
             '<div class="tile-cell empty" data-x="' +
@@ -4718,7 +4782,9 @@
     while (el && el !== document.body) {
       if (el.getAttribute) {
         if (el.id === "tile-trash") return { kind: "trash", el: el };
-        if (el.id === "btn-tile-rot") return { kind: "rot", el: el };
+        if (el.id === "btn-tile-rot" || el.hasAttribute("data-rot-handle") || el.classList.contains("tile-rot-handle")) {
+          return { kind: "rot", el: el };
+        }
         if (el.hasAttribute("data-x") && el.hasAttribute("data-y")) {
           return {
             kind: "cell",
@@ -4729,7 +4795,7 @@
             rot: +(el.getAttribute("data-rot") || 0),
           };
         }
-        if (el.hasAttribute("data-tile") && el.classList.contains("palette-tile")) {
+        if (el.hasAttribute("data-tile") && (el.classList.contains("palette-tile") || el.classList.contains("palette-slot"))) {
           return { kind: "palette", el: el, ch: el.getAttribute("data-tile") };
         }
       }
@@ -4757,7 +4823,15 @@
   function isEditorChrome(el) {
     while (el && el !== document.body) {
       if (el.id === "track-paste" || el.id === "btn-tile-rot") return true;
-      if (el.classList && (el.classList.contains("lobby-btn") || el.classList.contains("lobby-row") || el.classList.contains("tile-rot"))) return true;
+      if (
+        el.classList &&
+        (el.classList.contains("lobby-btn") ||
+          el.classList.contains("lobby-row") ||
+          el.classList.contains("tile-rot") ||
+          el.classList.contains("tile-rot-handle"))
+      ) {
+        return true;
+      }
       el = el.parentNode;
     }
     return false;
@@ -4768,7 +4842,7 @@
     if (hit.kind === "cell" && !hit.ch) return;
     var ghost = document.createElement("div");
     ghost.className = "tile-ghost";
-    ghost.style.backgroundImage = "url(" + tileArt(hit.ch, hit.rot || 0, 72) + ")";
+    ghost.style.backgroundImage = "url(" + tileArt(hit.ch, hit.rot || 0, 160) + ")";
     document.body.appendChild(ghost);
     ghost.style.left = e.clientX + "px";
     ghost.style.top = e.clientY + "px";
