@@ -579,6 +579,7 @@
         z: seg.az + (seg.bz - seg.az) * u,
         h: Math.atan2(seg.bz - seg.az, seg.bx - seg.ax),
         name: seg.name,
+        r: 999,
       };
     }
     var a = seg.a0 + (seg.a1 - seg.a0) * u;
@@ -587,6 +588,7 @@
       z: seg.cz + Math.sin(a) * seg.r,
       h: seg.a1 >= seg.a0 ? a + Math.PI * 0.5 : a - Math.PI * 0.5,
       name: seg.name,
+      r: seg.r,
     };
   }
 
@@ -1959,48 +1961,58 @@
   }
 
   var AI_AGGRO = {
-    pace: 0.93,
-    look: 0.9,
-    brake: 0.78,
-    hairpin: 18.4,
-    chicane: 34,
-    the90: 28,
-    sweeper: 40,
-    lineOff: -0.35,
-    pitFuel: 26,
-    pitTires: 28,
+    pace: 0.95,
+    look: 0.88,
+    brake: 0.8,
+    hairpin: 16.7,
+    chicane: 23,
+    the90: 27,
+    sweeper: 39,
+    tight: 0.92,
+    lineOff: -0.2,
+    pitLap: 3,
+    pitFuel: 18,
+    pitTires: 26,
     launch: 0.74,
-    wobble: 0.07,
+    wobble: 0.08,
+    overshoot: 1,
   };
   var AI_TIDY = {
-    pace: 0.84,
-    look: 1.22,
-    brake: 1.2,
-    hairpin: 15.8,
-    chicane: 28,
+    pace: 0.91,
+    look: 1.02,
+    brake: 1.08,
+    hairpin: 15.4,
+    chicane: 19,
     the90: 24,
-    sweeper: 32,
-    lineOff: 0,
-    pitFuel: 44,
-    pitTires: 40,
+    sweeper: 35,
+    tight: 0.82,
+    lineOff: 0.1,
+    pitLap: 3,
+    pitFuel: 22,
+    pitTires: 38,
     launch: 1.02,
     wobble: 0,
+    overshoot: 0,
   };
   var AI_MESSY = {
-    pace: 0.78,
-    look: 1.02,
+    pace: 0.89,
+    look: 0.96,
     brake: 0.9,
-    hairpin: 17.6,
-    chicane: 31,
-    the90: 26,
-    sweeper: 36,
-    lineOff: 1.35,
-    pitFuel: 20,
-    pitTires: 34,
+    hairpin: 16.5,
+    chicane: 24,
+    the90: 27,
+    sweeper: 37,
+    tight: 0.88,
+    lineOff: 0.85,
+    pitLap: 4,
+    pitFuel: 16,
+    pitTires: 30,
     launch: 0.56,
-    wobble: 0.2,
+    wobble: 0.18,
+    overshoot: 0,
+    wideEntry: 1,
   };
-  var _scan = { dHair: 999, dChi: 999, dSweep: 999, d90: 999, dKink: 999 };
+  var _scan = { dHair: 999, dChi: 999, dSweep: 999, d90: 999, dKink: 999, dTight: 999, tightR: 99 };
 
   function aiOf(r) {
     if (r && r.name === "BowieKnife99") return AI_AGGRO;
@@ -2014,6 +2026,8 @@
     _scan.dSweep = 999;
     _scan.d90 = 999;
     _scan.dKink = 999;
+    _scan.dTight = 999;
+    _scan.tightR = 99;
     var d;
     for (d = 0; d <= meters; d += 8) {
       var p = centerlinePoint(s + d);
@@ -2022,6 +2036,10 @@
       else if (p.name === "sweeper" && d < _scan.dSweep) _scan.dSweep = d;
       else if (p.name === "the90" && d < _scan.d90) _scan.d90 = d;
       else if (p.name === "kink" && d < _scan.dKink) _scan.dKink = d;
+      if (p.r < 22 && d < _scan.dTight) {
+        _scan.dTight = d;
+        _scan.tightR = p.r;
+      }
     }
     return _scan;
   }
@@ -2103,39 +2121,61 @@
       return;
     }
     if (!r.didPit && !r.wantPit) {
-      if (r.fuel < p.pitFuel || r.tires < p.pitTires || r.lap >= 4) r.wantPit = true;
+      if (r.lap >= p.pitLap || r.fuel < p.pitFuel || r.tires < p.pitTires) r.wantPit = true;
     }
 
-    var look = (15 + r.speed * 0.4) * p.look;
-    var scan = scanAhead(r.s, 130 * p.brake);
+    var scan = scanAhead(r.s, 140 * p.brake);
+    var look = (12 + r.speed * 0.3) * p.look;
+    if (scan.dTight < 64) look = Math.min(look, 8 + scan.dTight * 0.22);
+    if (scan.dChi < 36) look = Math.min(look, 13);
     var want = MAX_SPEED * p.pace;
-    want = Math.min(want, approachWant(want, scan.dHair, 118 * p.brake, p.hairpin));
-    want = Math.min(want, approachWant(want, scan.dChi, 58 * p.brake, p.chicane));
+    var hpApex = p.hairpin;
+    var hotHair = p.overshoot && (r.lap % 2) === 0;
+    if (hotHair) hpApex = 18.8;
+    want = Math.min(want, approachWant(want, scan.dHair, 130 * p.brake, hpApex));
+    if (scan.tightR < 22) {
+      var cap = Math.sqrt(MAX_LAT * scan.tightR) * p.tight;
+      if (hotHair && scan.dHair < 90) cap = Math.max(cap, 18.5);
+      if (cap < 12) cap = 12;
+      want = Math.min(want, approachWant(want, scan.dTight, (42 + scan.tightR * 4) * p.brake, cap));
+    }
+    if (scan.dChi > 0 && scan.dChi < 900) {
+      want = Math.min(want, approachWant(want, scan.dChi, 52 * p.brake, p.chicane));
+    }
     want = Math.min(want, approachWant(want, scan.d90, 62 * p.brake, p.the90));
-    want = Math.min(want, approachWant(want, scan.dSweep, 72 * p.brake, p.sweeper));
-    want = Math.min(want, approachWant(want, scan.dKink, 42 * p.brake, 30));
+    want = Math.min(want, approachWant(want, scan.dSweep, 80 * p.brake, p.sweeper));
+    want = Math.min(want, approachWant(want, scan.dKink, 50 * p.brake, 24));
     if (r.fuel <= 0) want = Math.min(want, LIMP_SPEED);
 
     var target = centerlinePoint(r.s + look);
     var nx = -Math.sin(target.h);
     var nz = Math.cos(target.h);
-    var tx = target.x + nx * p.lineOff;
-    var tz = target.z + nz * p.lineOff;
+    var off = p.lineOff;
+    if (p.wideEntry && scan.dTight > 14 && scan.dTight < 52) off -= 1.45;
+    var tx = target.x + nx * off;
+    var tz = target.z + nz * off;
     var peeling = false;
     if (r.wantPit && !r.didPit && PIT_META.on) {
       var east = Math.cos(r.heading) > 0.25;
-      var onSf = Math.abs(r.z - SF_Z) < 20 && r.x > -50 && r.x < PIT_LANE.x1 + 6;
+      var onSf = Math.abs(r.z - SF_Z) < 24 && r.x > -70 && r.x < PIT_GRAB.x1 + 2;
       if (east && onSf) {
         peeling = true;
-        tx = clamp(r.x + 24, PIT_LANE.x0 + 6, (PIT_GRAB.x0 + PIT_GRAB.x1) * 0.5);
+        tx = clamp(r.x + 28, PIT_LANE.x0 + 4, (PIT_GRAB.x0 + PIT_GRAB.x1) * 0.5);
         tz = (PIT_LANE.z0 + PIT_LANE.z1) * 0.5;
-        want = Math.min(want, 21);
+        want = Math.min(want, 18);
       }
     }
     if (inPitLane(r) && !r.pitServicing) {
-      tx = Math.min(r.x + 28, PIT_LANE.x1 + 24);
-      tz = SF_Z + 2;
-      want = Math.min(want, 20);
+      if (r.wantPit && !r.didPit) {
+        peeling = true;
+        tx = clamp(r.x + 22, PIT_GRAB.x0 + 2, (PIT_GRAB.x0 + PIT_GRAB.x1) * 0.5);
+        tz = (PIT_LANE.z0 + PIT_LANE.z1) * 0.5;
+        want = Math.min(want, 16);
+      } else {
+        tx = Math.min(r.x + 28, PIT_LANE.x1 + 24);
+        tz = SF_Z + 2;
+        want = Math.min(want, 20);
+      }
     }
 
     var desiredH = Math.atan2(tz - r.z, tx - r.x);
@@ -2145,8 +2185,9 @@
     if (recover && !peeling) {
       var home = Math.atan2(proj.z - r.z, proj.x - r.x);
       var herr = Math.atan2(Math.sin(home - r.heading), Math.cos(home - r.heading));
-      steer = clamp(steer * 0.22 + herr * 1.4, -1, 1);
-      want = Math.min(want, proj.grass ? 11 : 16);
+      steer = clamp(steer * 0.18 + herr * 1.55, -1, 1);
+      want = Math.min(want, proj.grass ? 9 : 14);
+      if (proj.dist > 8) want = Math.min(want, 7);
     }
     r.aiT = (r.aiT || 0) + dt;
     if (p.wobble && (r.aiT % 3.6) < 0.28) {

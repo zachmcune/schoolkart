@@ -1,0 +1,257 @@
+/* Headless Campus Loop bot-AI smoke: same path + motion + updateCpu as js/game.js. */
+"use strict";
+
+var fs = require("fs");
+var path = require("path");
+var src = fs.readFileSync(path.join(__dirname, "..", "js", "game.js"), "utf8");
+
+function sliceFn(name) {
+  var needle = "function " + name + "(";
+  var idx = src.indexOf(needle);
+  if (idx < 0) throw new Error("missing " + name);
+  var i = src.indexOf("{", idx);
+  var depth = 0;
+  for (var j = i; j < src.length; j++) {
+    var c = src[j];
+    if (c === "{") depth += 1;
+    else if (c === "}") {
+      depth -= 1;
+      if (depth === 0) return src.slice(idx, j + 1);
+    }
+  }
+  throw new Error("unclosed " + name);
+}
+
+function sliceAssign(name) {
+  var needle = "var " + name + " = {";
+  var idx = src.indexOf(needle);
+  if (idx < 0) throw new Error("missing " + name);
+  var i = src.indexOf("{", idx);
+  var depth = 0;
+  for (var j = i; j < src.length; j++) {
+    if (src[j] === "{") depth += 1;
+    else if (src[j] === "}") {
+      depth -= 1;
+      if (depth === 0) return src.slice(idx, j + 1) + ";";
+    }
+  }
+  throw new Error("unclosed " + name);
+}
+
+var code = [
+  "var LAPS = 5;",
+  "var MAX_SPEED = 48;",
+  "var ACCEL = 26;",
+  "var BRAKE_DECEL = 26;",
+  "var COAST = 8;",
+  "var REVERSE_ACCEL = 18;",
+  "var REVERSE_MAX = 12;",
+  "var LIMP_SPEED = 13;",
+  "var LIMP_ACCEL = 6;",
+  "var STEER_RATE = 2.35;",
+  "var MAX_LAT = 28;",
+  "var IDLE_FUEL = 0.46;",
+  "var THROTTLE_FUEL = 0.12;",
+  "var PIT_HOLD = 2.5;",
+  "var GETAWAY_T = 1.5;",
+  "var ASPHALT = 8.6;",
+  "var GRASS_MAX = 8.5;",
+  "var GRASS_ROLL = 4;",
+  "var GRASS_DUMP = 40;",
+  "var TIRE_FLOOR = 22;",
+  "var SF_Z = -80;",
+  "var PIT_LANE = { x0: 8, x1: 118, z0: -67.4, z1: -56.6 };",
+  "var PIT_GRAB = { x0: 58, x1: 90, z0: -67.4, z1: -56.6 };",
+  "var PIT_PAVE = [",
+  "  { x0: -90, x1: 36, z0: -74.0, z1: -58.0 },",
+  "  { x0: -20, x1: 50, z0: -71.6, z1: -56.0 },",
+  "  { x0: 8, x1: 118, z0: -71.6, z1: -56.0 },",
+  "  PIT_LANE, PIT_GRAB,",
+  "  { x0: 96, x1: 160, z0: -71.6, z1: -56.0 },",
+  "  { x0: 124, x1: 185, z0: -74.0, z1: -62.0 }",
+  "];",
+  "var PIT_META = { ax: 8, az: -62, bx: 118, bz: -62, on: true };",
+  "var PATH = [];",
+  "var TRACK_LEN = 0;",
+  "var _x = -200;",
+  "var _z = SF_Z;",
+  "var _h = 0;",
+  "var stampTrees = [];",
+  "var RIBBON_SEGS = 360;",
+  "var trackCode = '';",
+  "var state = 'racing';",
+  "var raceTime = 0;",
+  "var launchT = 0;",
+  "var launchMul = 1;",
+  "var mpMode = false;",
+  "var remotes = {};",
+  "var hostBots = {};",
+  "var player = { x: -9999, z: -9999, heading: 0, mesh: { visible: false }, finished: false };",
+  "var cpus = [];",
+  sliceFn("clamp"),
+  sliceFn("inRect"),
+  sliceFn("onPitPavement"),
+  sliceFn("closestOnSeg"),
+  sliceFn("closestOnArc"),
+  sliceFn("addLine"),
+  sliceFn("addArc"),
+  sliceFn("pathLine"),
+  sliceFn("pathArc"),
+  sliceFn("pathSnap"),
+  sliceFn("resetPathCursor"),
+  sliceFn("setDefaultPit"),
+  sliceFn("buildCampusPath"),
+  sliceFn("pointOnSeg"),
+  sliceFn("centerlinePoint"),
+  sliceFn("projectTrack"),
+  sliceFn("inPitLane"),
+  sliceFn("inPitGrab"),
+  sliceFn("updateLaps"),
+  sliceFn("applyMotion"),
+  sliceAssign("AI_AGGRO"),
+  sliceAssign("AI_TIDY"),
+  sliceAssign("AI_MESSY"),
+  "var _scan = { dHair: 999, dChi: 999, dSweep: 999, d90: 999, dKink: 999 };",
+  sliceFn("aiOf"),
+  sliceFn("scanAhead"),
+  sliceFn("approachWant"),
+  sliceFn("avoidRams"),
+  sliceFn("updateCpu"),
+  "function poseCar(r) { if (r.mesh) { r.mesh.position.x = r.x; r.mesh.position.z = r.z; } }",
+  "setDefaultPit();",
+  "buildCampusPath();",
+  "return {",
+  "  TRACK_LEN: TRACK_LEN,",
+  "  PATH: PATH,",
+  "  runBot: runBot,",
+  "  centerlinePoint: centerlinePoint,",
+  "  projectTrack: projectTrack,",
+  "  AI_AGGRO: AI_AGGRO,",
+  "  AI_TIDY: AI_TIDY,",
+  "  AI_MESSY: AI_MESSY",
+  "};",
+  "function runBot(name, gridX, gridZ, s0, seconds) {",
+  "  var r = {",
+  "    kind: 'cpu', name: name,",
+  "    x: gridX, z: gridZ, heading: 0, speed: 0, slide: 0,",
+  "    fuel: 100, tires: 100, lap: 1, passedHalf: false, lastX: gridX, s: s0, lastS: s0,",
+  "    brakeHold: 0, finished: false, finishTime: 0,",
+  "    wantPit: false, didPit: false, pitServicing: false, pitTimer: 0, pitUsedVisit: false,",
+  "    launchMul: 1, launchT: 0, launchArmed: false, aiT: 0,",
+  "    mesh: { visible: true, position: { x: gridX, y: 0, z: gridZ, set: function(x,y,z){ this.x=x; this.y=y; this.z=z; } }, rotation: { set: function(){}, x:0, y:0, z:0 }, userData: {} }",
+  "  };",
+  "  var dt = 1/30;",
+  "  var grass = 0, asphalt = 0, emptyT = 0, pitStops = 0, maxOff = 0;",
+  "  var hairFast = 0, reverseT = 0, boxT = 0;",
+  "  var wasBox = false;",
+  "  var grassBy = {};",
+  "  var pitAt = null;",
+  "  raceTime = 0;",
+  "  for (var t = 0; t < seconds; t += dt) {",
+  "    raceTime = t;",
+  "    updateCpu(r, dt);",
+  "    if (r.pitServicing) boxT += dt;",
+  "    if (r.pitServicing && !wasBox) { pitStops += 1; pitAt = { t: t, lap: r.lap, fuel: r.fuel }; }",
+  "    wasBox = r.pitServicing;",
+  "    var info = projectTrack(r.x, r.z);",
+  "    if (info.grass) { grass += dt; grassBy[info.name] = (grassBy[info.name] || 0) + dt; }",
+  "    else asphalt += dt;",
+  "    if (info.dist > maxOff) maxOff = info.dist;",
+  "    if (info.name === 'hairpin' && !info.grass && r.speed > 17) hairFast += dt;",
+  "    if (r.fuel <= 0) emptyT += dt;",
+  "    if (r.speed < 0) reverseT += dt;",
+  "    if (r.finished) break;",
+  "  }",
+  "  return {",
+  "    name: name, finished: r.finished, finishTime: r.finishTime || raceTime,",
+  "    lap: r.lap, fuel: r.fuel, tires: r.tires, didPit: r.didPit, pitStops: pitStops, pitAt: pitAt,",
+  "    grass: grass, asphalt: asphalt, maxOff: maxOff, emptyT: emptyT, grassBy: grassBy,",
+  "    hairFast: hairFast, reverseT: reverseT, boxT: boxT, x: r.x, z: r.z, speed: r.speed",
+  "  };",
+  "}",
+].join("\n");
+
+var sim;
+try {
+  sim = new Function(code)();
+} catch (e) {
+  console.error(code.split("\n").slice(0, 40).join("\n"));
+  throw e;
+}
+
+function assert(cond, msg) {
+  if (!cond) throw new Error(msg);
+}
+
+assert(Math.abs(sim.TRACK_LEN - 1978.98) < 2, "Campus Loop length " + sim.TRACK_LEN);
+var hp = 0;
+var longs = 0;
+for (var d = 0; d < sim.TRACK_LEN; d += 4) {
+  var p = sim.centerlinePoint(d);
+  if (p.name === "hairpin") hp += 4;
+  if (p.name === "start" || p.name === "north") longs += 4;
+}
+assert(hp > 20, "hairpin present");
+assert(longs > 700, "long straights present");
+
+var bowie = sim.runBot("BowieKnife99", -6, -80 + 2.7, sim.TRACK_LEN - 6, 420);
+var tidy = sim.runBot("Hall Monitor", -22, -80 + 2.7, sim.TRACK_LEN - 22, 420);
+var messy = sim.runBot("Sub Teacher", -30, -80 - 2.7, sim.TRACK_LEN - 30, 420);
+
+function report(r) {
+  console.log(
+    r.name +
+      " fin=" +
+      r.finished +
+      " t=" +
+      r.finishTime.toFixed(1) +
+      " lap=" +
+      r.lap +
+      " pit=" +
+      r.didPit +
+      "/" +
+      r.pitStops +
+      (r.pitAt ? " @lap" + r.pitAt.lap + "/" + r.pitAt.t.toFixed(0) + "s" : "") +
+      " grass=" +
+      r.grass.toFixed(1) +
+      "s empty=" +
+      r.emptyT.toFixed(1) +
+      "s hairFast=" +
+      r.hairFast.toFixed(1) +
+      "s maxOff=" +
+      r.maxOff.toFixed(1) +
+      " fuel=" +
+      r.fuel.toFixed(0) +
+      " tires=" +
+      r.tires.toFixed(0)
+  );
+  console.log("  grassBy", r.grassBy);
+}
+report(bowie);
+report(tidy);
+report(messy);
+
+assert(bowie.finished, "BowieKnife99 should finish 5 laps");
+assert(tidy.finished, "Hall Monitor should finish 5 laps");
+assert(messy.finished, "messy bot should finish 5 laps");
+assert(bowie.didPit && tidy.didPit && messy.didPit, "every personality boxes once");
+assert(bowie.pitStops === 1 && tidy.pitStops === 1 && messy.pitStops === 1, "one stop, not forever");
+assert(tidy.grass <= bowie.grass + 4, "tidy should not be sloppier than Bowie");
+assert(bowie.grass < 12, "Bowie should recover, not beach (" + bowie.grass.toFixed(1) + "s grass)");
+assert(tidy.grass < 8, "Hall Monitor stays on asphalt");
+assert(messy.grass < 16, "messy recovers from wide entries");
+assert(bowie.emptyT < 1, "Bowie should not run dry on the straight");
+assert(tidy.emptyT < 1, "tidy should not run dry");
+assert(messy.emptyT < 4, "messy may limp briefly but not sit empty forever");
+assert(bowie.finishTime < tidy.finishTime, "Bowie beats the tidy bot");
+assert(tidy.finishTime < messy.finishTime, "messy is slower, pack stays alive");
+assert(bowie.hairFast > 0.2, "Bowie commits late into the 180");
+assert(tidy.hairFast < bowie.hairFast, "Hall Monitor brakes earlier than Bowie");
+assert(bowie.finishTime > 270, "beatable — not 1st-every-lap robots (" + bowie.finishTime.toFixed(1) + ")");
+assert(bowie.pitAt && tidy.pitAt && bowie.pitAt.t < messy.pitAt.t, "tidy/Bowie box before the messy late stop");
+assert(sim.AI_AGGRO.brake < sim.AI_TIDY.brake, "Bowie brakes later");
+assert(sim.AI_AGGRO.pitFuel < sim.AI_TIDY.pitFuel, "Bowie pits later");
+assert(sim.AI_MESSY.lineOff > 0.8, "messy runs wide");
+assert(sim.AI_AGGRO.overshoot === 1, "Bowie can overshoot the 180");
+
+console.log("OK bot AI Campus Loop", sim.TRACK_LEN.toFixed(1));
