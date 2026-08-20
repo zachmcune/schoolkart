@@ -38,7 +38,7 @@ Car **#7** is white/teal. Campus is golden-hour brick with **one** clock tower. 
 
 ## Multiplayer (Chromebook lunch)
 
-Friends open the Railway URL. One **Create room**, others type the 4–6 character code and **Join**. Host hits **Grid up** (or Enter). Max 8 cars. Same handling / fuel / tires as solo — no extra grip, no rubber-band speed.
+Friends open the Railway URL. Type a **display name**, then one **Create room** and others **Join** with the 4–6 character code. The lobby lists everyone by name. Host-only: **kick**, **add/remove CPU bots**, and **game speed** (0.75 / 1 / 1.25 — the whole room runs that pace). Host hits **Grid up** (or Enter). Max 8 cars including CPUs. Same handling / fuel / tires as solo — no extra grip, no rubber-band.
 
 Late join after lights-out drops them into the live race and **says so** (no silent fail). Refresh **rejoins the same room and the same race** — same clock, fuel, tires, lap, and the other cars. It does not spawn a fresh 0:00 / full-tank solo. A dropped car goes **ghost**; they can come back. Tab blur does not wipe the room. If the server is down, **Solo** still works.
 
@@ -73,6 +73,6 @@ npm test
 
 Repo is also a static site (HTML + CSS + JS + Three.js from CDN). Public Pages currently deploys from this branch (`cursor/campus-loop-playable-f645`). Use Railway as the school link.
 
-`index.html` is marked `no-store`. JS/CSS are versioned (`?v=mp14`) so a **normal reload** picks up the lobby.
+`index.html` is marked `no-store`. JS/CSS are versioned (`?v=mp15`) so a **normal reload** picks up the lobby.
 
 No bundler. Keyboard only. Light enough for school Chrome / integrated graphics.

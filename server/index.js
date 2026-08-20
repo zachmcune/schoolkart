@@ -35,6 +35,30 @@ var MAX = 8;
 var GHOST_MS = 120000;
 var ALPHA = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 var HIT = 2.55;
+var BOT_NAMES = [
+  "Hall Monitor",
+  "Sub Teacher",
+  "Library Kid",
+  "Band Kid",
+  "Lab Partner",
+  "Detention",
+  "Yearbook",
+];
+
+function cleanName(raw) {
+  var s = String(raw || "")
+    .replace(/[<>]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (s.length > 14) s = s.slice(0, 14);
+  return s || "House 7";
+}
+
+function clampSpeed(n) {
+  n = +n;
+  if (n === 0.75 || n === 1.25) return n;
+  return 1;
+}
 
 var rooms = new Map();
 
@@ -56,6 +80,7 @@ function roster(room) {
       slot: p.slot,
       connected: p.connected,
       ghost: p.ghost,
+      bot: !!p.bot,
     };
   });
 }
@@ -78,6 +103,7 @@ function roomMsg(room) {
     redsOn: room.redsOn,
     holdDelay: room.holdDelay,
     raceTime: room.raceTime || 0,
+    speed: room.speed || 1,
     players: roster(room),
   };
 }
@@ -104,17 +130,33 @@ function nextSlot(room) {
 
 function promoteHost(room) {
   var live = room.players.filter(function (p) {
-    return p.connected;
+    return p.connected && !p.bot;
   });
-  room.hostId = live.length ? live[0].id : room.players[0] ? room.players[0].id : null;
+  room.hostId = live.length ? live[0].id : null;
 }
 
 function pruneGhosts(room) {
   var now = Date.now();
   room.players = room.players.filter(function (p) {
+    if (p.bot) return true;
     if (p.connected) return true;
     return now - p.leftAt < GHOST_MS;
   });
+  var liveHuman = room.players.some(function (p) {
+    return !p.bot && p.connected;
+  });
+  var ghostHuman = room.players.some(function (p) {
+    return !p.bot && !p.connected && now - p.leftAt < GHOST_MS;
+  });
+  if (!liveHuman && !ghostHuman) {
+    rooms.delete(room.code);
+    return;
+  }
+  if (!liveHuman) {
+    room.players = room.players.filter(function (p) {
+      return !p.bot;
+    });
+  }
   if (!room.players.length) rooms.delete(room.code);
   else promoteHost(room);
 }
@@ -157,6 +199,7 @@ function makeRoom() {
     holdDelay: 1,
     players: [],
     raceTime: 0,
+    speed: 1,
   };
   rooms.set(code, room);
   return room;
@@ -186,7 +229,22 @@ function blankCar(id, name, slot, ws) {
     tires: 100,
     pit: 0,
     finished: 0,
+    bot: false,
   };
+}
+
+function addBot(room) {
+  if (room.players.length >= MAX) return null;
+  var ns = nextSlot(room);
+  if (ns < 0) return null;
+  var nBots = room.players.filter(function (p) {
+    return p.bot;
+  }).length;
+  var car = blankCar("bot-" + Math.random().toString(36).slice(2, 10), BOT_NAMES[nBots % BOT_NAMES.length], ns, null);
+  car.bot = true;
+  car.connected = true;
+  room.players.push(car);
+  return car;
 }
 
 function youState(p) {
@@ -209,6 +267,8 @@ function carList(room) {
   return room.players.map(function (p) {
     return {
       id: p.id,
+      name: p.name,
+      bot: !!p.bot,
       slot: p.slot,
       x: p.x,
       z: p.z,
@@ -239,6 +299,7 @@ function sendEnter(ws, room, p, flags) {
     cars: carList(room),
     late: !!flags.late,
     rejoin: !!flags.rejoin,
+    speed: room.speed || 1,
   });
   if (room.phase === "start") {
     send(ws, {
@@ -257,6 +318,19 @@ function startLights(room) {
   room.startT = 2;
   room.raceTime = 0;
   room.holdDelay = 0.2 + Math.random() * 2.8;
+  room.players.forEach(function (p) {
+    var g = slotPose(p.slot);
+    p.x = g.x;
+    p.z = g.z;
+    p.h = 0;
+    p.spd = 0;
+    p.slide = 0;
+    p.lap = 1;
+    p.fuel = 100;
+    p.tires = 100;
+    p.pit = 0;
+    p.finished = 0;
+  });
   broadcast(room, roomMsg(room));
   broadcast(room, {
     t: "lights",
@@ -372,7 +446,7 @@ wss.on("connection", function (ws) {
       var slot = 0;
       created.hostId = self.id;
       created.players.push(
-        blankCar(self.id, String(msg.name || "House 7").slice(0, 18), slot, ws)
+        blankCar(self.id, cleanName(msg.name), slot, ws)
       );
       self.room = created;
       send(ws, roomMsg(created));
@@ -393,7 +467,7 @@ wss.on("connection", function (ws) {
         existing.connected = true;
         existing.ghost = false;
         existing.leftAt = 0;
-        if (msg.name) existing.name = String(msg.name).slice(0, 18);
+        if (msg.name) existing.name = cleanName(msg.name);
         self.room = room;
         broadcast(room, roomMsg(room));
         sendEnter(ws, room, existing, { rejoin: true });
@@ -408,7 +482,7 @@ wss.on("connection", function (ws) {
         send(ws, { t: "err", msg: "Room is full (8)" });
         return;
       }
-      var newbie = blankCar(self.id, String(msg.name || "Car").slice(0, 18), ns, ws);
+      var newbie = blankCar(self.id, cleanName(msg.name), ns, ws);
       room.players.push(newbie);
       self.room = room;
       broadcast(room, roomMsg(room));
@@ -418,6 +492,78 @@ wss.on("connection", function (ws) {
 
     var room = self.room;
     if (!room) return;
+
+    if (msg.t === "kick") {
+      if (self.id !== room.hostId) {
+        send(ws, { t: "err", msg: "Only the host can kick" });
+        return;
+      }
+      var kid = String(msg.id || "");
+      if (!kid || kid === room.hostId) {
+        send(ws, { t: "err", msg: "Can't kick the host" });
+        return;
+      }
+      var victim = playerById(room, kid);
+      if (!victim) return;
+      if (victim.ws) send(victim.ws, { t: "kicked" });
+      room.players = room.players.filter(function (p) {
+        return p.id !== kid;
+      });
+      broadcast(room, roomMsg(room));
+      return;
+    }
+
+    if (msg.t === "bot") {
+      if (self.id !== room.hostId) {
+        send(ws, { t: "err", msg: "Only the host can change CPUs" });
+        return;
+      }
+      if (room.phase !== "lobby" && room.phase !== "finish") {
+        send(ws, { t: "err", msg: "Add CPUs in the lobby" });
+        return;
+      }
+      if (msg.op === "add") {
+        if (!addBot(room)) {
+          send(ws, { t: "err", msg: "Room is full (8)" });
+          return;
+        }
+      } else if (msg.op === "remove") {
+        var bid = String(msg.id || "");
+        room.players = room.players.filter(function (p) {
+          return !(p.bot && p.id === bid);
+        });
+      }
+      broadcast(room, roomMsg(room));
+      return;
+    }
+
+    if (msg.t === "speed") {
+      if (self.id !== room.hostId) {
+        send(ws, { t: "err", msg: "Only the host can set speed" });
+        return;
+      }
+      room.speed = clampSpeed(msg.n);
+      broadcast(room, roomMsg(room));
+      return;
+    }
+
+    if (msg.t === "bots" && self.id === room.hostId) {
+      (msg.cars || []).forEach(function (c) {
+        if (!c || !c.id) return;
+        var bp = playerById(room, c.id);
+        if (!bp || !bp.bot) return;
+        bp.x = +c.x || 0;
+        bp.z = +c.z || 0;
+        bp.h = +c.h || 0;
+        bp.spd = +c.spd || 0;
+        bp.slide = +c.slide || 0;
+        bp.lap = +c.lap || 1;
+        if (c.fuel != null && isFinite(+c.fuel)) bp.fuel = +c.fuel;
+        if (c.tires != null && isFinite(+c.tires)) bp.tires = +c.tires;
+        bp.finished = c.finished ? 1 : 0;
+      });
+      return;
+    }
 
     if (msg.t === "start") {
       if (self.id !== room.hostId) {
@@ -470,8 +616,9 @@ setInterval(function () {
   lastTick = now;
   rooms.forEach(function (room) {
     pruneGhosts(room);
-    tickLights(room, dt);
-    if (room.phase === "racing") room.raceTime += dt;
+    var pace = clampSpeed(room.speed);
+    tickLights(room, dt * pace);
+    if (room.phase === "racing") room.raceTime += dt * pace;
     if (room.phase === "start" || room.phase === "racing") {
       var cars = carList(room);
       unstack(cars);

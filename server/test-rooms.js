@@ -107,6 +107,7 @@ waitHealth()
         assert(/SchoolKart/i.test(html), "origin serves SchoolKart HTML");
         assert(html.indexOf("Point Pages at this host") === -1, "no Pages stub");
         assert(html.indexOf("btn-create") !== -1, "lobby on origin");
+        assert(html.indexOf("display-name") !== -1, "name field on origin");
       });
     });
   })
@@ -230,15 +231,96 @@ waitHealth()
                     console.log("OK rooms", room.code, "late+rejoin");
                     c.close();
                     a2.close();
-                    kid.kill();
-                    process.exit(0);
+                    return lobbyExtras();
                   });
               });
           });
       });
+  })
+  .then(function () {
+    kid.kill();
+    process.exit(0);
   })
   .catch(function (err) {
     console.error("FAIL", err);
     kid.kill();
     process.exit(1);
   });
+
+function lobbyExtras() {
+  return Promise.all([client("hostD"), client("joinE")]).then(function (pair) {
+    var h = pair[0];
+    var g = pair[1];
+    var code;
+    h.send({ t: "create", name: "Zachary" });
+    return h
+      .waitFor(function (m) {
+        return m.t === "room";
+      })
+      .then(function (roomMsg) {
+        code = roomMsg.code;
+        assert(roomMsg.players[0].name === "Zachary", "host display name");
+        assert(roomMsg.speed === 1, "default speed 1");
+        g.send({ t: "join", code: code, name: "Maya" });
+        return g.waitFor(function (m) {
+          return m.t === "room" && m.players && m.players.length === 2;
+        });
+      })
+      .then(function (joined) {
+        var names = joined.players.map(function (p) {
+          return p.name;
+        });
+        assert(names.indexOf("Zachary") !== -1 && names.indexOf("Maya") !== -1, "both names in roster");
+        g.send({ t: "kick", id: "hostD" });
+        return g.waitFor(function (m) {
+          return m.t === "err";
+        });
+      })
+      .then(function (err) {
+        assert(/host/i.test(err.msg), "guest cannot kick");
+        h.send({ t: "speed", n: 1.25 });
+        return h.waitFor(function (m) {
+          return m.t === "room" && m.speed === 1.25;
+        });
+      })
+      .then(function () {
+        return g.waitFor(function (m) {
+          return m.t === "room" && m.speed === 1.25;
+        });
+      })
+      .then(function () {
+        h.send({ t: "bot", op: "add" });
+        return h.waitFor(function (m) {
+          return m.t === "room" && m.players.some(function (p) {
+            return p.bot;
+          });
+        });
+      })
+      .then(function (withBot) {
+        assert(withBot.players.length === 3, "host + guest + cpu");
+        var bot = withBot.players.filter(function (p) {
+          return p.bot;
+        })[0];
+        h.send({ t: "kick", id: "joinE" });
+        return g
+          .waitFor(function (m) {
+            return m.t === "kicked";
+          })
+          .then(function () {
+            h.send({ t: "bot", op: "remove", id: bot.id });
+            return h.waitFor(function (m) {
+              return (
+                m.t === "room" &&
+                m.players.length === 1 &&
+                m.players[0].id === "hostD"
+              );
+            });
+          });
+      })
+      .then(function () {
+        console.log("OK lobby names/kick/bot/speed", code);
+        h.close();
+        g.close();
+      });
+  });
+}

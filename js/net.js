@@ -40,6 +40,7 @@
     players: [],
     snap: [],
     lastSnapAt: 0,
+    speed: 1,
     err: "",
     status: "",
     handlers: {},
@@ -81,6 +82,26 @@
     send({ t: "start" });
   };
 
+  net.kick = function (id) {
+    send({ t: "kick", id: id });
+  };
+
+  net.addBot = function () {
+    send({ t: "bot", op: "add" });
+  };
+
+  net.removeBot = function (id) {
+    send({ t: "bot", op: "remove", id: id });
+  };
+
+  net.setSpeed = function (n) {
+    send({ t: "speed", n: n });
+  };
+
+  net.sendBots = function (cars) {
+    send({ t: "bots", cars: cars });
+  };
+
   function applyRoom(msg) {
     net.room = msg.code;
     net.hostId = msg.hostId;
@@ -89,6 +110,7 @@
     net.redsOn = msg.redsOn || 0;
     net.holdDelay = msg.holdDelay || net.holdDelay;
     net.players = msg.players || [];
+    net.speed = msg.speed == null ? net.speed : msg.speed;
     try {
       sessionStorage.setItem("sk_room", net.room);
     } catch (e) {}
@@ -127,7 +149,7 @@
       net.ws = ws;
       net.connected = true;
       net.status = "online";
-      send({ t: "hello", id: net.id, name: net.name });
+      send({ t: "hello", id: net.id, name: net.name || "House 7" });
       if (cb) cb(null);
     };
     ws.onerror = function () {
@@ -167,12 +189,18 @@
         net.redsOn = msg.redsOn || 0;
         net.holdDelay = msg.holdDelay || net.holdDelay;
         net.snap = msg.cars || [];
+        if (msg.speed != null) net.speed = msg.speed;
         emit("enter", msg);
       }
       if (msg.t === "snap") {
         net.snap = msg.cars || [];
         net.lastSnapAt = performance.now();
         emit("snap", msg);
+      }
+      if (msg.t === "kicked") {
+        emit("kicked");
+        net.active = false;
+        net.room = null;
       }
       if (msg.t === "err") {
         net.err = msg.msg;

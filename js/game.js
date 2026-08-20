@@ -105,6 +105,8 @@
   var gantryBlues = [];
   var mpMode = false;
   var remotes = {};
+  var hostBots = {};
+  var gameSpeed = 1;
   var lastNetSend = 0;
   var playerGridX = GRID_P2_X;
   var playerGridZ = GRID_P2_Z;
@@ -167,8 +169,12 @@
     roster: document.getElementById("roster"),
     lobbyStatus: document.getElementById("lobby-status"),
     lobbyErr: document.getElementById("lobby-err"),
+    gridBtn: document.getElementById("btn-grid"),
     bootStatus: document.getElementById("boot-status"),
     mini: document.getElementById("minimap"),
+    raceNames: document.getElementById("race-names"),
+    hostTools: document.getElementById("host-tools"),
+    nameInput: document.getElementById("display-name"),
     lights: [
       document.getElementById("rl0"),
       document.getElementById("rl1"),
@@ -180,6 +186,37 @@
 
   function clamp(v, a, b) {
     return Math.max(a, Math.min(b, v));
+  }
+
+  function cleanName(raw) {
+    var s = String(raw == null ? "" : raw)
+      .replace(/[<>]/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (s.length > 14) s = s.slice(0, 14);
+    return s || "House 7";
+  }
+
+  function readDisplayName() {
+    var n = cleanName(hud.nameInput && hud.nameInput.value);
+    if (hud.nameInput) hud.nameInput.value = n;
+    try {
+      sessionStorage.setItem("sk_name", n);
+    } catch (e) {}
+    if (net) net.name = n;
+    player.name = n;
+    return n;
+  }
+
+  function applyGameSpeed(n) {
+    n = +n;
+    if (n !== 0.75 && n !== 1.25) n = 1;
+    gameSpeed = n;
+    if (net) net.speed = n;
+    var btns = document.querySelectorAll("[data-speed]");
+    for (var i = 0; i < btns.length; i++) {
+      btns[i].classList.toggle("on", +btns[i].getAttribute("data-speed") === gameSpeed);
+    }
   }
 
   function inRect(x, z, b) {
@@ -1561,6 +1598,8 @@
     playerGridX = GRID_P2_X;
     playerGridZ = GRID_P2_Z;
     clearRemotes();
+    clearHostBots();
+    applyGameSpeed(1);
     clearMe();
     if (net) net.leave();
     resetGrid();
@@ -1584,6 +1623,10 @@
     if (mpMode) {
       Object.keys(remotes).forEach(function (id) {
         var r = remotes[id].r;
+        if (r.finished && r.finishTime && r.finishTime < player.finishTime) place += 1;
+      });
+      Object.keys(hostBots).forEach(function (id) {
+        var r = hostBots[id];
         if (r.finished && r.finishTime && r.finishTime < player.finishTime) place += 1;
       });
       hud.finishPlace.textContent = place + " · room " + (net && net.room ? net.room : "");
@@ -1628,6 +1671,7 @@
     hud.warn.classList.toggle("hidden", !warn);
     hud.warn.classList.toggle("late", lateJoinT > 0);
     paintMini();
+    paintRaceNames();
   }
 
   function miniXY(x, z, w, h, pad) {
@@ -1687,6 +1731,10 @@
         var hex = (SKINS[slot % SKINS.length].color | 0).toString(16);
         while (hex.length < 6) hex = "0" + hex;
         paintMiniDot(ctx, r.x, r.z, "#" + hex, 3);
+      });
+      Object.keys(hostBots).forEach(function (id) {
+        var br = hostBots[id];
+        paintMiniDot(ctx, br.x, br.z, "#d4a017", 3);
       });
     }
     var you = miniXY(player.x, player.z, w, h, 10);
@@ -1834,10 +1882,98 @@
     remotes = {};
   }
 
-  function ensureRemote(id, slot) {
-    if (remotes[id]) return remotes[id];
+  function clearHostBots() {
+    Object.keys(hostBots).forEach(function (id) {
+      scene.remove(hostBots[id].mesh);
+    });
+    hostBots = {};
+  }
+
+  function adoptHostBots() {
+    if (!mpMode || !net || !net.isHost()) {
+      clearHostBots();
+      return;
+    }
+    var keep = {};
+    (net.players || []).forEach(function (p) {
+      if (!p.bot) return;
+      keep[p.id] = true;
+      if (!hostBots[p.id]) {
+        var skin = SKINS[p.slot % SKINS.length];
+        var g = gridSlot(p.slot);
+        var r = createRacer("cpu", skin.color, p.name || skin.name, skin.num);
+        resetRacer(r, g.x, g.z, 0, TRACK_LEN - 6 - p.slot * 8);
+        hostBots[p.id] = r;
+      }
+      hostBots[p.id].name = p.name || hostBots[p.id].name;
+    });
+    Object.keys(hostBots).forEach(function (id) {
+      if (!keep[id]) {
+        scene.remove(hostBots[id].mesh);
+        delete hostBots[id];
+      }
+    });
+  }
+
+  function sendBotStates() {
+    if (!net || !net.sendBots) return;
+    var cars = [];
+    Object.keys(hostBots).forEach(function (id) {
+      var r = hostBots[id];
+      cars.push({
+        id: id,
+        x: r.x,
+        z: r.z,
+        h: r.heading,
+        spd: r.speed,
+        slide: r.slide,
+        lap: r.lap,
+        fuel: r.fuel,
+        tires: r.tires,
+        finished: r.finished ? 1 : 0,
+      });
+    });
+    net.sendBots(cars);
+  }
+
+  function tickHostBots(dt) {
+    if (!mpMode || !net || !net.isHost()) return;
+    adoptHostBots();
+    var ids = Object.keys(hostBots);
+    var i;
+    var j;
+    if (state === "start") {
+      for (i = 0; i < ids.length; i++) {
+        var meta = null;
+        for (j = 0; j < (net.players || []).length; j++) {
+          if (net.players[j].id === ids[i]) meta = net.players[j];
+        }
+        var g = gridSlot(meta ? meta.slot : 0);
+        pinGrid(hostBots[ids[i]], g.x, g.z);
+      }
+    } else if (state === "racing") {
+      for (i = 0; i < ids.length; i++) {
+        updateCpu(hostBots[ids[i]], dt);
+        updateLaps(hostBots[ids[i]]);
+        bashCars(player, hostBots[ids[i]]);
+      }
+      for (i = 0; i < ids.length; i++) {
+        for (j = i + 1; j < ids.length; j++) bashCars(hostBots[ids[i]], hostBots[ids[j]]);
+        Object.keys(remotes).forEach(function (rid) {
+          bashCars(hostBots[ids[i]], remotes[rid].r);
+        });
+      }
+    }
+    sendBotStates();
+  }
+
+  function ensureRemote(id, slot, name) {
+    if (remotes[id]) {
+      if (name) remotes[id].r.name = name;
+      return remotes[id];
+    }
     var skin = SKINS[slot % SKINS.length];
-    var r = createRacer("net", skin.color, skin.name, skin.num);
+    var r = createRacer("net", skin.color, name || skin.name, skin.num);
     remotes[id] = { r: r, from: null, to: null, at: 0, ghost: false };
     return remotes[id];
   }
@@ -1847,8 +1983,9 @@
     var now = performance.now();
     (cars || []).forEach(function (c) {
       if (c.id === (net && net.id)) return;
+      if (hostBots[c.id]) return;
       seen[c.id] = true;
-      var rem = ensureRemote(c.id, c.slot || 0);
+      var rem = ensureRemote(c.id, c.slot || 0, c.name);
       rem.ghost = !!c.ghost;
       rem.r.mesh.visible = true;
       rem.r.mesh.traverse(function (ch) {
@@ -1927,24 +2064,60 @@
 
   function paintRoster() {
     if (!hud.roster || !net) return;
+    if (net.speed != null) applyGameSpeed(net.speed);
     hud.roomCode.textContent = net.room || "-----";
     hud.lobbyStatus.textContent = net.isHost()
       ? "You are host · Enter to grid up"
       : "Waiting for host to grid up";
     hud.lobbyErr.textContent = net.err || "";
+    if (hud.hostTools) hud.hostTools.classList.toggle("hidden", !net.isHost());
+    if (hud.gridBtn) hud.gridBtn.classList.toggle("hidden", !net.isHost());
     hud.roster.innerHTML = "";
     (net.players || []).forEach(function (p) {
       var li = document.createElement("li");
       var skin = SKINS[p.slot % SKINS.length];
-      li.textContent =
-        (p.id === net.id ? "YOU · " : "") +
+      var who = document.createElement("span");
+      who.className = "who";
+      who.textContent =
+        (p.id === net.id ? "YOU · " : p.bot ? "CPU · " : "") +
         (p.name || skin.name) +
         "  #" +
         skin.num +
         (p.id === net.hostId ? " · host" : "") +
-        (p.ghost || !p.connected ? " · ghost" : "");
-      if (p.ghost || !p.connected) li.className = "ghost";
+        (p.ghost || (!p.connected && !p.bot) ? " · ghost" : "");
+      li.appendChild(who);
+      if (p.ghost || (!p.connected && !p.bot)) li.className = "ghost";
+      if (p.bot) li.classList.add("bot");
+      if (net.isHost() && p.id !== net.id) {
+        var btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "lobby-btn tiny";
+        btn.setAttribute("data-id", p.id);
+        if (p.bot) {
+          btn.setAttribute("data-act", "unbot");
+          btn.textContent = "Remove";
+        } else {
+          btn.setAttribute("data-act", "kick");
+          btn.textContent = "Kick";
+        }
+        li.appendChild(btn);
+      }
       hud.roster.appendChild(li);
+    });
+    paintRaceNames();
+  }
+
+  function paintRaceNames() {
+    if (!hud.raceNames) return;
+    hud.raceNames.innerHTML = "";
+    if (!mpMode || !net) return;
+    (net.players || []).forEach(function (p) {
+      var li = document.createElement("li");
+      var skin = SKINS[p.slot % SKINS.length];
+      li.textContent = (p.name || skin.name) + " #" + skin.num;
+      if (p.id === net.id) li.className = "me";
+      else if (p.bot) li.className = "bot";
+      hud.raceNames.appendChild(li);
     });
   }
 
@@ -2018,6 +2191,8 @@
       hud.bootStatus.classList.remove("err");
     }
     if (!msg) return;
+    if (msg.speed != null) applyGameSpeed(msg.speed);
+    else if (net && net.speed != null) applyGameSpeed(net.speed);
     if (state === "racing" && mpMode && msg.phase === "racing") {
       if (msg.rejoin || beenRacing(msg.you)) applyYou(msg.you);
       if (msg.raceTime != null && isFinite(+msg.raceTime) && +msg.raceTime > 0) {
@@ -2060,6 +2235,8 @@
     var dt = lastTs ? (ts - lastTs) / 1000 : 0.016;
     lastTs = ts;
     dt = clamp(dt, 0, 0.05);
+    var simDt = dt;
+    if ((state === "start" || state === "racing") && mpMode) simDt = dt * gameSpeed;
     if (pitFlash > 0) pitFlash -= dt;
     if (launchT > 0) launchT -= dt;
     if (launchCallT > 0) launchCallT -= dt;
@@ -2069,13 +2246,14 @@
       titleCamera(dt);
       setRevSound(false);
     } else if (state === "start") {
-      tickStart(dt);
+      tickStart(simDt);
       if (mpMode) {
         poseRemotes();
+        tickHostBots(simDt);
         sendNetState();
       }
     } else if (state === "racing") {
-      raceTime += dt;
+      raceTime += simDt;
       revs = 0;
       var input = playerInput();
       if (!inPitLane(player) && !pitServicing) {
@@ -2086,7 +2264,7 @@
         input = { steer: 0, throttle: false, reverse: false, brake: true };
         player.speed = 0;
         player.slide = 0;
-        pitTimer += dt;
+        pitTimer += simDt;
         if (pitTimer >= PIT_HOLD) {
           player.fuel = 100;
           player.tires = 100;
@@ -2097,7 +2275,7 @@
           pitFlash = 1.2;
         }
       }
-      applyMotion(player, input.steer, input.throttle, input.brake, input.reverse, dt, true);
+      applyMotion(player, input.steer, input.throttle, input.brake, input.reverse, simDt, true);
       if (!pitServicing && !pitUsedVisit && inPitGrab(player)) {
         pitServicing = true;
         pitTimer = 0;
@@ -2108,12 +2286,13 @@
       updateLaps(player);
       if (mpMode) {
         poseRemotes();
+        tickHostBots(simDt);
         bashRemotes();
         bashRemotes();
         sendNetState();
       } else {
-        updateCpu(cpus[0], dt);
-        updateCpu(cpus[1], dt);
+        updateCpu(cpus[0], simDt);
+        updateCpu(cpus[1], simDt);
         bashCars(player, cpus[0]);
         bashCars(player, cpus[1]);
         bashCars(cpus[0], cpus[1]);
@@ -2200,6 +2379,7 @@
       return;
     }
     joining = true;
+    readDisplayName();
     showBoot(action === "create" ? "Creating room…" : "Joining " + String(code || "").toUpperCase() + "…", false);
     if (hud.lobbyErr) hud.lobbyErr.textContent = "";
     net.connect(function (err) {
@@ -2209,8 +2389,8 @@
         if (hud.lobbyErr) hud.lobbyErr.textContent = "Server offline — play solo";
         return;
       }
-      if (action === "create") net.create(net.name);
-      else net.join(code, net.name);
+      if (action === "create") net.create(readDisplayName());
+      else net.join(code, readDisplayName());
     });
   }
 
@@ -2260,6 +2440,24 @@
         raceTime = +msg.raceTime;
       }
     });
+    net.on("kicked", function () {
+      mpMode = false;
+      joining = false;
+      lateJoinT = 0;
+      clearMe();
+      clearRemotes();
+      clearHostBots();
+      applyGameSpeed(1);
+      if (net) {
+        try {
+          sessionStorage.removeItem("sk_room");
+        } catch (e) {}
+        net.leave();
+      }
+      state = "title";
+      setScreen("title");
+      showBoot("Host kicked you", true);
+    });
     net.on("err", function (text) {
       joining = false;
       showBoot(text || net.err || "Could not join", true);
@@ -2269,7 +2467,7 @@
       persistMe();
       if (!mpMode || !net.room) return;
       net.connect(function (err) {
-        if (!err) net.join(net.room, net.name);
+        if (!err) net.join(net.room, readDisplayName());
       });
     });
   }
@@ -2279,7 +2477,39 @@
   var btnJoin = document.getElementById("btn-join");
   var btnGrid = document.getElementById("btn-grid");
   var btnLeave = document.getElementById("btn-leave");
+  var btnAddBot = document.getElementById("btn-add-bot");
   var joinCode = document.getElementById("join-code");
+  if (hud.roster) {
+    hud.roster.addEventListener("click", function (e) {
+      var t = e.target;
+      while (t && t !== hud.roster && (!t.getAttribute || !t.getAttribute("data-act"))) t = t.parentNode;
+      if (!t || t === hud.roster || !net || !net.isHost()) return;
+      var act = t.getAttribute("data-act");
+      var id = t.getAttribute("data-id");
+      if (act === "kick") net.kick(id);
+      if (act === "unbot") net.removeBot(id);
+    });
+  }
+  if (btnAddBot) {
+    btnAddBot.addEventListener("click", function () {
+      if (net && net.isHost()) net.addBot();
+    });
+  }
+  var speedBtns = document.querySelectorAll("[data-speed]");
+  for (var sb = 0; sb < speedBtns.length; sb++) {
+    speedBtns[sb].addEventListener("click", function (ev) {
+      if (!net || !net.isHost()) return;
+      net.setSpeed(+ev.currentTarget.getAttribute("data-speed"));
+    });
+  }
+  if (hud.nameInput) {
+    try {
+      var savedName = sessionStorage.getItem("sk_name") || "";
+      if (savedName) hud.nameInput.value = savedName;
+    } catch (eName) {}
+    hud.nameInput.addEventListener("change", readDisplayName);
+    hud.nameInput.addEventListener("blur", readDisplayName);
+  }
   if (joinCode) {
     function keepJoinFocus() {
       joinCode.focus();
@@ -2333,6 +2563,8 @@
       clearMe();
       if (net) net.leave();
       clearRemotes();
+      clearHostBots();
+      applyGameSpeed(1);
       state = "title";
       setScreen("title");
       showBoot("");

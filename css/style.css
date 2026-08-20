@@ -445,6 +445,13 @@ kbd {
   text-align: center;
 }
 
+.lobby-input.name-input {
+  width: min(280px, 80vw);
+  text-align: left;
+  letter-spacing: 0.06em;
+  text-transform: none;
+}
+
 #room-code {
   font-size: 42px;
   letter-spacing: 0.28em;
@@ -462,6 +469,10 @@ kbd {
 }
 
 #roster li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
   margin: 6px 0;
   padding: 6px 10px;
   border-left: 3px solid var(--teal);
@@ -470,6 +481,78 @@ kbd {
 
 #roster li.ghost {
   opacity: 0.5;
+}
+
+#roster li.bot {
+  border-left-color: var(--gold);
+}
+
+#roster .who {
+  min-width: 0;
+}
+
+#roster .tiny {
+  flex: 0 0 auto;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  padding: 4px 8px;
+}
+
+.host-tools {
+  width: min(420px, 92vw);
+}
+
+.host-tools.hidden {
+  display: none;
+}
+
+.speed-row {
+  align-items: center;
+}
+
+.speed-label {
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.speed-btn.on {
+  background: var(--teal);
+  color: var(--ink);
+}
+
+.race-names {
+  position: absolute;
+  left: 14px;
+  top: 248px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  pointer-events: none;
+  max-width: 160px;
+}
+
+.race-names li {
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: var(--text);
+  background: var(--panel);
+  border-left: 3px solid var(--teal);
+  padding: 3px 7px;
+  margin: 3px 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.race-names li.me {
+  border-left-color: #2ec8c3;
+  color: #2ec8c3;
+}
+
+.race-names li.bot {
+  border-left-color: var(--gold);
 }
 
 #lobby-status,

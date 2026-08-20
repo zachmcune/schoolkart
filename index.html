@@ -6,11 +6,11 @@
   <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <!-- sk-build mp14: F1 pit bypass + locked grid launch -->
+  <!-- sk-build mp15: lobby names, kick, CPUs, speed -->
   <meta name="theme-color" content="#1a120e" />
   <title>SchoolKart — Campus Loop</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect fill='%231a120e' width='64' height='64'/><rect fill='%232ec8c3' x='8' y='28' width='48' height='10'/><rect fill='%23f4efe6' x='22' y='16' width='20' height='8'/></svg>" />
-  <link rel="stylesheet" href="css/style.css?v=mp14" />
+  <link rel="stylesheet" href="css/style.css?v=mp15" />
 </head>
 <body>
   <div id="game">
@@ -54,6 +54,7 @@
         <div class="hint">W gas · Space brake · S reverse · peel LEFT into the pits — halfway grabs you</div>
       </div>
       <canvas id="minimap" class="minimap" width="168" height="168"></canvas>
+      <ul id="race-names" class="race-names"></ul>
     </div>
 
     <div id="rev-wrap" class="hidden">
@@ -82,6 +83,9 @@
         <li><strong>Lights start:</strong> the car is locked until GO. Hold <strong>W</strong> to park the needle in the green — hit it at lights-out for a launch. Miss low = sluggish. Miss high = wheelspin. Space is brake after GO, not a plant.</li>
       </ul>
       <div class="lobby-row">
+        <input id="display-name" class="lobby-input name-input" maxlength="14" placeholder="YOUR NAME" autocomplete="nickname" spellcheck="false" autocapitalize="words" />
+      </div>
+      <div class="lobby-row">
         <button type="button" class="lobby-btn solo" id="btn-solo">Solo</button>
         <button type="button" class="lobby-btn" id="btn-create">Create room</button>
       </div>
@@ -99,12 +103,23 @@
       <h1 id="room-code">-----</h1>
       <p id="lobby-status" class="sub">Waiting…</p>
       <ul id="roster"></ul>
+      <div id="host-tools" class="host-tools hidden">
+        <div class="lobby-row">
+          <button type="button" class="lobby-btn" id="btn-add-bot">Add CPU</button>
+        </div>
+        <div class="lobby-row speed-row">
+          <span class="speed-label">Speed</span>
+          <button type="button" class="lobby-btn speed-btn" data-speed="0.75">0.75</button>
+          <button type="button" class="lobby-btn speed-btn" data-speed="1">1</button>
+          <button type="button" class="lobby-btn speed-btn" data-speed="1.25">1.25</button>
+        </div>
+      </div>
       <p id="lobby-err"></p>
       <div class="lobby-row">
         <button type="button" class="lobby-btn" id="btn-grid">Grid up</button>
         <button type="button" class="lobby-btn" id="btn-leave">Leave</button>
       </div>
-      <p class="go">Host presses <kbd>Enter</kbd> to start the lights. Same handling as solo.</p>
+      <p class="go">Host grids up, kicks, adds CPUs, and sets speed. Same handling as solo.</p>
     </div>
 
     <div id="countdown" class="screen hidden">
@@ -129,7 +144,7 @@
   </div>
 
   <script>
-    window.SK_BUILD = "mp14";
+    window.SK_BUILD = "mp15";
     try {
       if (window.caches) {
         caches.keys().then(function (keys) {
@@ -146,8 +161,8 @@
       document.write('<script src="https://unpkg.com/three@0.160.1/build/three.min.js"><\/script>');
     }
   </script>
-  <script src="js/config.js?v=mp14"></script>
-  <script src="js/net.js?v=mp14"></script>
-  <script src="js/game.js?v=mp14"></script>
+  <script src="js/config.js?v=mp15"></script>
+  <script src="js/net.js?v=mp15"></script>
+  <script src="js/game.js?v=mp15"></script>
 </body>
 </html>
