@@ -8,7 +8,7 @@ Creative lead: **Zachary McUne**. Feel spec: Pit Crew Designer.
 
 **One URL (Railway — use this at school):**
 
-**https://server-production-d6c9.up.railway.app/**
+**https://zachf1.up.railway.app/**
 
 Same host serves the game and the rooms. No GitHub Pages, no `?server=` required.
 

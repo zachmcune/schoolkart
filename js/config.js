@@ -3,7 +3,7 @@
    GitHub Pages: fall back to the live Railway host.
    ?server= still overrides. Solo still works if the socket is down. */
 (function () {
-  var railway = "wss://server-production-d6c9.up.railway.app";
+  var railway = "wss://zachf1.up.railway.app";
   function sameOrigin() {
     try {
       var proto = location.protocol === "https:" ? "wss://" : "ws://";
