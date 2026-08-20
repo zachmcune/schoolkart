@@ -2263,9 +2263,11 @@
     ctx.fillRect(0, 0, w, h);
     function iconGeom() {
       var m = Math.min(w, h);
-      var ribbon = m * 0.13;
-      var fat = ribbon * 1.55;
-      var pad = fat * 0.5 + m * 0.08;
+      var ribbon = type === "C" ? m * 0.15 : m * 0.11;
+      var fat = ribbon * 1.45;
+      // Half the fat stroke plus a dirt margin so the quarter
+      // sits INSIDE the square, not kissing the clip edge.
+      var pad = fat * 0.5 + m * 0.18;
       return { m: m, ribbon: ribbon, pad: pad };
     }
     function iconPath() {

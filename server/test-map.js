@@ -1633,7 +1633,7 @@ function proveTurnIcons() {
   assert(art.indexOf("ctx.arc(x1, y1, qr, Math.PI, Math.PI * 1.5, false)") !== -1, "90/sweeper is a quarter-circle inside the square");
   assert(art.indexOf("bezierCurveTo") !== -1, "chicane silhouette is an S that fits the square");
   assert(art.indexOf("ctx.arc(w * 0.5, y1, uR, Math.PI, 0, false)") !== -1, "hairpin silhouette is a U that fits");
-  assert(art.indexOf("fat * 0.5 + m * 0.08") !== -1, "pad includes half the fat stroke so ink stays on-tile");
+  assert(art.indexOf("fat * 0.5 + m * 0.18") !== -1, "quarter-circle sits inside the square with a dirt margin");
   assert(src.indexOf("function tileArt") !== -1, "palette and board paint from tileArt");
   assert(src.indexOf('pal[pi].style.backgroundImage = "url(" + tileArt(pt, 0, 160) + ")"') !== -1, "palette chips get the preview");
   assert(src.indexOf("background-image:url(") !== -1 && src.indexOf("tileArt(p.t, p.r, 160)") !== -1, "placed pieces get the same preview");
