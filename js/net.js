@@ -160,6 +160,15 @@
         emit("lights", msg);
       }
       if (msg.t === "go") emit("go");
+      if (msg.t === "enter") {
+        net.active = true;
+        net.phase = msg.phase;
+        net.startPhase = msg.startPhase || net.startPhase;
+        net.redsOn = msg.redsOn || 0;
+        net.holdDelay = msg.holdDelay || net.holdDelay;
+        net.snap = msg.cars || [];
+        emit("enter", msg);
+      }
       if (msg.t === "snap") {
         net.snap = msg.cars || [];
         net.lastSnapAt = performance.now();
@@ -186,6 +195,9 @@
   net.leave = function () {
     net.active = false;
     net.room = null;
+    try {
+      sessionStorage.removeItem("sk_room");
+    } catch (e) {}
     if (net.ws) {
       try {
         net.ws.close();

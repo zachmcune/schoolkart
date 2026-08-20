@@ -101,6 +101,8 @@
   var lastNetSend = 0;
   var playerGridX = GRID_P2_X;
   var playerGridZ = GRID_P2_Z;
+  var joining = false;
+  var lateJoinT = 0;
   var net = window.SchoolKartNet;
 
   var canvas = document.getElementById("view");
@@ -156,6 +158,7 @@
     roster: document.getElementById("roster"),
     lobbyStatus: document.getElementById("lobby-status"),
     lobbyErr: document.getElementById("lobby-err"),
+    bootStatus: document.getElementById("boot-status"),
     lights: [
       document.getElementById("rl0"),
       document.getElementById("rl1"),
@@ -1050,11 +1053,84 @@
     }
   }
 
+  function persistMe() {
+    if (!mpMode || !net || !net.room) return;
+    if (state !== "racing" && state !== "start") return;
+    try {
+      sessionStorage.setItem(
+        "sk_me",
+        JSON.stringify({
+          room: String(net.room).toUpperCase(),
+          slot: player.slot,
+          x: player.x,
+          z: player.z,
+          h: player.heading,
+          spd: player.speed,
+          slide: player.slide,
+          lap: player.lap,
+          fuel: player.fuel,
+          tires: player.tires,
+          pit: pitServicing ? 1 : 0,
+          finished: player.finished ? 1 : 0,
+          raceTime: raceTime,
+        })
+      );
+    } catch (e) {}
+  }
+
+  function loadMe(code) {
+    try {
+      var me = JSON.parse(sessionStorage.getItem("sk_me") || "null");
+      if (me && code && me.room === String(code).toUpperCase()) return me;
+    } catch (e) {}
+    return null;
+  }
+
+  function clearMe() {
+    try {
+      sessionStorage.removeItem("sk_me");
+    } catch (e) {}
+  }
+
+  function applyYou(you) {
+    if (!you) return;
+    if (you.x != null && isFinite(+you.x)) player.x = +you.x;
+    if (you.z != null && isFinite(+you.z)) player.z = +you.z;
+    if (you.h != null && isFinite(+you.h)) player.heading = +you.h;
+    if (you.spd != null && isFinite(+you.spd)) player.speed = +you.spd;
+    if (you.slide != null && isFinite(+you.slide)) player.slide = +you.slide;
+    if (you.lap != null && isFinite(+you.lap)) player.lap = +you.lap;
+    if (you.fuel != null && isFinite(+you.fuel)) player.fuel = +you.fuel;
+    if (you.tires != null && isFinite(+you.tires)) player.tires = +you.tires;
+    player.finished = !!you.finished;
+    poseCar(player);
+  }
+
+  function beenRacing(you) {
+    if (!you) return false;
+    var slot = you.slot != null ? you.slot : 1;
+    var g = gridSlot(slot);
+    var dx = (+you.x || 0) - g.x;
+    var dz = (+you.z || 0) - g.z;
+    return (
+      you.lap > 1 ||
+      (you.fuel != null && +you.fuel < 99) ||
+      (you.tires != null && +you.tires < 99) ||
+      (you.raceTime != null && +you.raceTime > 1) ||
+      Math.hypot(dx, dz) > 6
+    );
+  }
+
   function startSequence() {
+    if (joining) return;
+    if (net && net.active && mpMode) return;
     mpMode = false;
+    lateJoinT = 0;
     playerGridX = GRID_P2_X;
     playerGridZ = GRID_P2_Z;
     clearRemotes();
+    clearMe();
+    if (net) net.leave();
     resetGrid();
     state = "start";
     setScreen("start");
@@ -1111,12 +1187,14 @@
     else if (inPitLane(player)) hud.pitting.textContent = "PIT LANE";
 
     var warn = "";
-    if (jumpT > 0 || (state === "start" && jumped)) warn = "JUMP";
+    if (lateJoinT > 0) warn = "RACE ALREADY GOING — you dropped in mid-race";
+    else if (jumpT > 0 || (state === "start" && jumped)) warn = "JUMP";
     else if (state === "racing" && player.fuel <= 0) warn = "EMPTY — LIMP HOME";
     else if (state === "racing" && player.tires < 40) warn = "TIRES LOOSE — don't carry the sweeper";
     else if (state === "racing" && player.fuel < 38) warn = "PIT WINDOW — peel LEFT off the straight";
     hud.warn.textContent = warn;
     hud.warn.classList.toggle("hidden", !warn);
+    hud.warn.classList.toggle("late", lateJoinT > 0);
   }
 
   function chaseCamera(dt) {
@@ -1326,6 +1404,7 @@
     var now = performance.now();
     if (now - lastNetSend < 80) return;
     lastNetSend = now;
+    persistMe();
     net.sendState({
       x: player.x,
       z: player.z,
@@ -1394,6 +1473,83 @@
     }
   }
 
+  function enterOnlineRace(msg) {
+    joining = false;
+    mpMode = true;
+    var you = (msg && msg.you) || {};
+    var localMe = loadMe(net && net.room);
+    var slot = you.slot != null ? you.slot : localMe && localMe.slot != null ? localMe.slot : 1;
+    var g = gridSlot(slot);
+    playerGridX = g.x;
+    playerGridZ = g.z;
+    resetGrid();
+    var restore = null;
+    if (msg && msg.rejoin && beenRacing(you)) restore = you;
+    else if (beenRacing(you)) restore = you;
+    else if (beenRacing(localMe)) restore = localMe;
+    else if (msg && msg.rejoin && you && (you.x != null || you.fuel != null)) restore = you;
+    else if (localMe) restore = localMe;
+    if (restore) applyYou(restore);
+    if (msg && msg.raceTime != null && isFinite(+msg.raceTime) && +msg.raceTime > 0) {
+      raceTime = +msg.raceTime;
+    } else if (restore && restore.raceTime != null && isFinite(+restore.raceTime)) {
+      raceTime = +restore.raceTime;
+    }
+    ingestSnap((msg && msg.cars) || (net && net.snap) || []);
+    var isLate = !!(msg && msg.late) || (!restore && (!msg || msg.phase === "racing"));
+    if (isLate) lateJoinT = 8;
+    state = "racing";
+    setScreen("racing");
+    setRevSound(false);
+    persistMe();
+    sendNetState();
+  }
+
+  function handleEnter(msg) {
+    joining = false;
+    if (hud.bootStatus) {
+      hud.bootStatus.textContent = "";
+      hud.bootStatus.classList.remove("err");
+    }
+    if (!msg) return;
+    if (state === "racing" && mpMode && msg.phase === "racing") {
+      if (msg.rejoin || beenRacing(msg.you)) applyYou(msg.you);
+      if (msg.raceTime != null && isFinite(+msg.raceTime) && +msg.raceTime > 0) {
+        raceTime = +msg.raceTime;
+      }
+      if (msg.late && !msg.rejoin && !beenRacing(msg.you)) lateJoinT = 8;
+      ingestSnap(msg.cars || (net && net.snap) || []);
+      persistMe();
+      return;
+    }
+    if (state === "start" && mpMode && msg.phase === "start") {
+      ingestSnap(msg.cars || (net && net.snap) || []);
+      return;
+    }
+    if (msg.phase === "lobby" || msg.phase === "finish") {
+      state = "lobby";
+      setScreen("lobby");
+      paintRoster();
+      if (msg.phase === "finish" && hud.lobbyStatus) {
+        hud.lobbyStatus.textContent = "That race is over — host can grid up again";
+      }
+      return;
+    }
+    if (msg.phase === "start") {
+      beginOnlineStart();
+      ingestSnap(msg.cars || (net && net.snap) || []);
+      return;
+    }
+    if (msg.phase === "racing") {
+      enterOnlineRace(msg);
+      return;
+    }
+    state = "lobby";
+    setScreen("lobby");
+    paintRoster();
+    if (hud.lobbyErr) hud.lobbyErr.textContent = "Race already going — wait for the host";
+  }
+
   function tick(ts) {
     var dt = lastTs ? (ts - lastTs) / 1000 : 0.016;
     lastTs = ts;
@@ -1401,6 +1557,7 @@
     if (pitFlash > 0) pitFlash -= dt;
     if (launchT > 0) launchT -= dt;
     if (jumpT > 0) jumpT -= dt;
+    if (lateJoinT > 0) lateJoinT -= dt;
 
     if (state === "title" || state === "lobby") {
       titleCamera(dt);
@@ -1479,7 +1636,9 @@
     keys[e.code] = down;
     if (down) ensureAudio();
     if (down && (e.code === "Space" || e.code === "Enter")) {
-      if (state === "title") startSequence();
+      if (state === "title") {
+        if (!joining) startSequence();
+      }
       else if (state === "lobby" && e.code === "Enter" && net && net.isHost()) net.start();
       else if (state === "finished" && !mpMode) startSequence();
       else if (state === "finished" && mpMode) {
@@ -1515,13 +1674,25 @@
     layoutCamera();
   });
 
+  function showBoot(text, isErr) {
+    if (!hud.bootStatus) return;
+    hud.bootStatus.textContent = text || "";
+    hud.bootStatus.classList.toggle("err", !!isErr);
+  }
+
   function openFriends(action, code) {
     if (!net) {
+      showBoot("Net script missing — solo still works", true);
       if (hud.lobbyErr) hud.lobbyErr.textContent = "Net script missing — solo still works";
       return;
     }
+    joining = true;
+    showBoot(action === "create" ? "Creating room…" : "Joining " + String(code || "").toUpperCase() + "…", false);
+    if (hud.lobbyErr) hud.lobbyErr.textContent = "";
     net.connect(function (err) {
       if (err) {
+        joining = false;
+        showBoot("Server offline — play solo", true);
         if (hud.lobbyErr) hud.lobbyErr.textContent = "Server offline — play solo";
         return;
       }
@@ -1531,12 +1702,32 @@
   }
 
   if (net) {
-    net.on("room", function () {
+    net.on("enter", handleEnter);
+    net.on("room", function (msg) {
       if (net.phase === "lobby" || net.phase === "finish") {
+        joining = false;
         if (state === "title" || state === "lobby" || state === "finished") {
           state = "lobby";
           setScreen("lobby");
         }
+        if (net.phase === "finish" && hud.lobbyStatus) {
+          hud.lobbyStatus.textContent = "That race is over — host can grid up again";
+        }
+      } else if (
+        (net.phase === "start" || net.phase === "racing") &&
+        (state === "title" || state === "lobby")
+      ) {
+        handleEnter({
+          phase: net.phase,
+          startPhase: net.startPhase,
+          redsOn: net.redsOn,
+          holdDelay: net.holdDelay,
+          raceTime: (msg && msg.raceTime) || 0,
+          you: loadMe(net.room) || {},
+          cars: net.snap || [],
+          late: net.phase === "racing" && !beenRacing(loadMe(net.room)),
+          rejoin: beenRacing(loadMe(net.room)),
+        });
       }
       paintRoster();
     });
@@ -1546,9 +1737,23 @@
     net.on("go", goOnline);
     net.on("snap", function (msg) {
       ingestSnap(msg.cars);
+      if (
+        mpMode &&
+        state === "racing" &&
+        msg.raceTime != null &&
+        isFinite(+msg.raceTime) &&
+        Math.abs(raceTime - msg.raceTime) > 1
+      ) {
+        raceTime = +msg.raceTime;
+      }
     });
-    net.on("err", paintRoster);
+    net.on("err", function (text) {
+      joining = false;
+      showBoot(text || net.err || "Could not join", true);
+      paintRoster();
+    });
     net.on("drop", function () {
+      persistMe();
       if (!mpMode || !net.room) return;
       net.connect(function (err) {
         if (!err) net.join(net.room, net.name);
@@ -1564,6 +1769,10 @@
   var joinCode = document.getElementById("join-code");
   if (btnSolo) {
     btnSolo.addEventListener("click", function () {
+      joining = false;
+      lateJoinT = 0;
+      clearMe();
+      if (net) net.leave();
       startSequence();
     });
   }
@@ -1585,15 +1794,33 @@
   if (btnLeave) {
     btnLeave.addEventListener("click", function () {
       mpMode = false;
+      joining = false;
+      lateJoinT = 0;
+      clearMe();
       if (net) net.leave();
       clearRemotes();
       state = "title";
       setScreen("title");
+      showBoot("");
     });
   }
 
   addWorld();
   resetGrid();
   setScreen("title");
+
+  var savedRoom = "";
+  try {
+    savedRoom = sessionStorage.getItem("sk_room") || "";
+  } catch (e) {}
+  if (savedRoom && net) {
+    if (joinCode) joinCode.value = savedRoom;
+    showBoot("Rejoining " + savedRoom + "…", false);
+    openFriends("join", savedRoom);
+  }
+
+  window.addEventListener("pagehide", persistMe);
+  window.addEventListener("beforeunload", persistMe);
+
   requestAnimationFrame(tick);
 })();

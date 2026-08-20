@@ -3,10 +3,14 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+  <!-- sk-build mp3: late-join banner + refresh restores the same race -->
   <meta name="theme-color" content="#1a120e" />
   <title>SchoolKart — Campus Loop</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect fill='%231a120e' width='64' height='64'/><rect fill='%232ec8c3' x='8' y='28' width='48' height='10'/><rect fill='%23f4efe6' x='22' y='16' width='20' height='8'/></svg>" />
-  <link rel="stylesheet" href="css/style.css" />
+  <link rel="stylesheet" href="css/style.css?v=mp3" />
 </head>
 <body>
   <div id="game">
@@ -83,6 +87,7 @@
         <input id="join-code" class="lobby-input" maxlength="6" placeholder="CODE" autocomplete="off" />
         <button type="button" class="lobby-btn" id="btn-join">Join</button>
       </div>
+      <p id="boot-status" class="sub"></p>
       <p class="go">Press <kbd>Enter</kbd> or <kbd>Space</kbd> for solo · or race friends</p>
       <p class="credit">Creative lead: Zachary McUne · Feel: Pit Crew Designer</p>
     </div>
@@ -121,14 +126,26 @@
     </div>
   </div>
 
+  <script>
+    window.SK_BUILD = "mp3";
+    try {
+      if (window.caches) {
+        caches.keys().then(function (keys) {
+          keys.forEach(function (k) {
+            caches.delete(k);
+          });
+        });
+      }
+    } catch (e) {}
+  </script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.160.1/build/three.min.js"></script>
   <script>
     if (!window.THREE) {
       document.write('<script src="https://unpkg.com/three@0.160.1/build/three.min.js"><\/script>');
     }
   </script>
-  <script src="js/config.js?v=rail1"></script>
-  <script src="js/net.js?v=mp1"></script>
-  <script src="js/game.js?v=mp1"></script>
+  <script src="js/config.js?v=mp3"></script>
+  <script src="js/net.js?v=mp3"></script>
+  <script src="js/game.js?v=mp3"></script>
 </body>
 </html>

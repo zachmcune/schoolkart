@@ -200,6 +200,15 @@ body {
   letter-spacing: 0.12em;
 }
 
+.banner.warn.late {
+  background: rgba(122, 16, 16, 0.94);
+  color: #fff4d8;
+  font-size: 26px;
+  letter-spacing: 0.08em;
+  max-width: 92%;
+  text-align: center;
+}
+
 .screen {
   position: absolute;
   inset: 0;
@@ -228,6 +237,15 @@ body {
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--muted);
+}
+
+#boot-status {
+  min-height: 1.3em;
+  color: var(--teal);
+}
+
+#boot-status.err {
+  color: var(--warn);
 }
 
 .tips {

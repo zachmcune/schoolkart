@@ -42,7 +42,7 @@ Car **#7** is white/teal. Campus is golden-hour brick with **one** clock tower. 
 
 Friends open the Pages URL. One **Create room**, others type the 4–6 character code and **Join**. Host hits **Grid up** (or Enter). Max 8 cars. Same handling / fuel / tires as solo — no extra grip, no rubber-band speed.
 
-Late join and refresh rejoin the same code. A dropped car goes **ghost**; they can come back. Tab blur does not wipe the room. If the server is down, **Solo** still works.
+Late join after lights-out drops them into the live race and **says so** (no silent fail). Refresh **rejoins the same room and the same race** — same clock, fuel, tires, lap, and the other cars. It does not spawn a fresh 0:00 / full-tank solo. A dropped car goes **ghost**; they can come back. Tab blur does not wipe the room. If the server is down, **Solo** still works.
 
 ### Point Pages at Railway
 
@@ -83,6 +83,10 @@ npm test
 
 ## GitHub Pages
 
-Repo is a static site (HTML + CSS + JS + Three.js from CDN). Public Pages currently deploys from this branch (`cursor/campus-loop-playable-f645`). Hard-refresh after a push.
+Repo is a static site (HTML + CSS + JS + Three.js from CDN). Public Pages currently deploys from this branch (`cursor/campus-loop-playable-f645`).
+
+`index.html` is marked `no-store`. JS/CSS are versioned (`?v=mp3`) so a **normal reload** picks up the lobby — Chromebooks should not need a hard-refresh.
+
+After a server change, **redeploy the same Railway service** (`server-production-d6c9`) so late join / refresh get `enter` + `raceTime`. Pages-only cannot restore another machine’s fuel.
 
 No bundler. Keyboard only. Light enough for school Chrome / integrated graphics.

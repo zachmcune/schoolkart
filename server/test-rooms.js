@@ -80,6 +80,25 @@ function assert(cond, msg) {
   if (!cond) throw new Error(msg);
 }
 
+function driveState(extra) {
+  return Object.assign(
+    {
+      t: "state",
+      x: 40,
+      z: -80,
+      h: 0,
+      spd: 12,
+      slide: 0,
+      lap: 2,
+      fuel: 10,
+      tires: 22,
+      pit: 0,
+      finished: 0,
+    },
+    extra || {}
+  );
+}
+
 waitHealth()
   .then(function () {
     return Promise.all([client("hostA"), client("joinB")]);
@@ -87,91 +106,126 @@ waitHealth()
   .then(function (pair) {
     var a = pair[0];
     var b = pair[1];
+    var room;
     a.send({ t: "create", name: "Host" });
-    return a.waitFor(function (m) {
-      return m.t === "room";
-    }).then(function (room) {
-      assert(room.code && room.code.length >= 4 && room.code.length <= 6, "code 4-6");
-      assert(room.players.length === 1, "host alone");
-      b.send({ t: "join", code: room.code, name: "Guest" });
-      return b.waitFor(function (m) {
-        return m.t === "room" && m.players && m.players.length === 2;
-      }).then(function () {
+    return a
+      .waitFor(function (m) {
+        return m.t === "room";
+      })
+      .then(function (roomMsg) {
+        room = roomMsg;
+        assert(room.code && room.code.length >= 4 && room.code.length <= 6, "code 4-6");
+        assert(room.players.length === 1, "host alone");
+        b.send({ t: "join", code: room.code, name: "Guest" });
+        return b.waitFor(function (m) {
+          return m.t === "room" && m.players && m.players.length === 2;
+        });
+      })
+      .then(function () {
         return a.waitFor(function (m) {
           return m.t === "room" && m.players.length === 2;
         });
-      }).then(function () {
+      })
+      .then(function () {
         a.send({ t: "start" });
         return a.waitFor(function (m) {
           return m.t === "lights" && m.phase === "prestart";
-        }).then(function (lights) {
-          assert(lights.holdDelay >= 0.2 && lights.holdDelay <= 3.01, "hold delay");
-          return b.waitFor(function (m) {
-            return m.t === "lights";
-          });
-        }).then(function () {
-          a.send({
-            t: "state",
-            x: 10,
-            z: -80,
-            h: 0,
-            spd: 12,
-            slide: 0,
-            lap: 1,
-            fuel: 90,
-            tires: 80,
-            pit: 0,
-            finished: 0,
-          });
-          return b.waitFor(function (m) {
-            return m.t === "snap" && m.cars && m.cars.length >= 2;
-          });
-        }).then(function (snap) {
-          var hostCar = snap.cars.filter(function (c) {
-            return c.id === "hostA";
-          })[0];
-          assert(hostCar && hostCar.x === 10, "host pose relayed");
-          return client("lateC");
-        }).then(function (c) {
-          c.send({ t: "join", code: room.code, name: "Late" });
-          return c.waitFor(function (m) {
-            return m.t === "room" && m.players.length === 3;
-          }).then(function () {
+        });
+      })
+      .then(function (lights) {
+        assert(lights.holdDelay >= 0.2 && lights.holdDelay <= 3.01, "hold delay");
+        return b.waitFor(function (m) {
+          return m.t === "lights";
+        });
+      })
+      .then(function () {
+        return a.waitFor(function (m) {
+          return m.t === "go";
+        }, 16000);
+      })
+      .then(function () {
+        a.send(driveState());
+        return a.waitFor(function (m) {
+          return (
+            m.t === "snap" &&
+            m.raceTime > 0 &&
+            m.cars &&
+            m.cars.some(function (c) {
+              return c.id === "hostA" && c.fuel === 10 && c.lap === 2;
+            })
+          );
+        }, 4000);
+      })
+      .then(function () {
+        return client("lateC");
+      })
+      .then(function (c) {
+        c.send({ t: "join", code: room.code, name: "Late" });
+        return c
+          .waitFor(function (m) {
+            return m.t === "enter" && m.phase === "racing";
+          })
+          .then(function (enter) {
+            assert(enter.late === true, "late join is marked");
+            assert(enter.rejoin === false, "new car is not a rejoin");
+            assert(enter.raceTime > 0, "late join gets the live clock");
+            assert(enter.you && enter.you.fuel === 100, "late drop-in starts full");
+            assert(
+              enter.cars.some(function (car) {
+                return car.id === "hostA" && car.fuel === 10;
+              }),
+              "late join sees the host car"
+            );
             b.close();
-            return a.waitFor(function (m) {
-              return (
-                m.t === "room" &&
-                m.players.some(function (p) {
-                  return p.id === "joinB" && p.ghost;
-                })
-              );
-            }).then(function () {
-              return client("joinB");
-            }).then(function (b2) {
-              b2.send({ t: "join", code: room.code, name: "Guest" });
-              return b2.waitFor(function (m) {
+            return a
+              .waitFor(function (m) {
                 return (
                   m.t === "room" &&
                   m.players.some(function (p) {
-                    return p.id === "joinB" && p.connected && !p.ghost;
+                    return p.id === "joinB" && p.ghost;
                   })
                 );
-              }).then(function (rejoined) {
-                assert(rejoined.players.length === 3, "same room after drop");
-                var mid = (14 + 72) * 0.5;
-                assert(10 < mid, "entry x does not grab");
-                console.log("OK rooms", room.code, "players", rejoined.players.length);
-                c.close();
-                b2.close();
+              })
+              .then(function () {
                 a.close();
-                kid.kill();
-                process.exit(0);
+                return new Promise(function (res) {
+                  setTimeout(res, 80);
+                });
+              })
+              .then(function () {
+                return client("hostA");
+              })
+              .then(function (a2) {
+                a2.send({ t: "join", code: room.code, name: "Host" });
+                return a2
+                  .waitFor(function (m) {
+                    return m.t === "enter" && m.rejoin === true;
+                  })
+                  .then(function (re) {
+                    assert(re.phase === "racing", "refresh re-enters the live race");
+                    assert(re.late === false, "refresh is not a late drop-in");
+                    assert(re.you && re.you.fuel === 10, "refresh keeps fuel");
+                    assert(re.you.tires === 22, "refresh keeps tires");
+                    assert(re.you.lap === 2, "refresh keeps lap");
+                    assert(re.you.x === 40, "refresh keeps pose");
+                    assert(re.raceTime > 0, "refresh keeps the room clock");
+                    assert(
+                      re.cars.some(function (car) {
+                        return car.id === "lateC";
+                      }),
+                      "refresh sees the other cars"
+                    );
+                    var mid = (14 + 72) * 0.5;
+                    assert(10 < mid, "entry x does not grab");
+                    console.log("OK rooms", room.code, "late+rejoin");
+                    c.close();
+                    a2.close();
+                    kid.kill();
+                    process.exit(0);
+                  });
               });
-            });
           });
-        });
       });
-    });
   })
   .catch(function (err) {
     console.error("FAIL", err);

@@ -52,6 +52,7 @@ function roomMsg(room) {
     startPhase: room.startPhase,
     redsOn: room.redsOn,
     holdDelay: room.holdDelay,
+    raceTime: room.raceTime || 0,
     players: roster(room),
   };
 }
@@ -130,9 +131,98 @@ function makeRoom() {
     startT: 0,
     holdDelay: 1,
     players: [],
+    raceTime: 0,
   };
   rooms.set(code, room);
   return room;
+}
+
+function slotPose(slot) {
+  return { x: -6 - slot * 8, z: -80 + (slot % 2 ? -2.7 : 2.7) };
+}
+
+function blankCar(id, name, slot, ws) {
+  var g = slotPose(slot);
+  return {
+    id: id,
+    name: name,
+    slot: slot,
+    ws: ws,
+    connected: true,
+    ghost: false,
+    leftAt: 0,
+    x: g.x,
+    z: g.z,
+    h: 0,
+    spd: 0,
+    slide: 0,
+    lap: 1,
+    fuel: 100,
+    tires: 100,
+    pit: 0,
+    finished: 0,
+  };
+}
+
+function youState(p) {
+  return {
+    slot: p.slot,
+    x: p.x,
+    z: p.z,
+    h: p.h,
+    spd: p.spd,
+    slide: p.slide,
+    lap: p.lap,
+    fuel: p.fuel,
+    tires: p.tires,
+    pit: p.pit,
+    finished: p.finished,
+  };
+}
+
+function carList(room) {
+  return room.players.map(function (p) {
+    return {
+      id: p.id,
+      slot: p.slot,
+      x: p.x,
+      z: p.z,
+      h: p.h,
+      spd: p.spd,
+      slide: p.slide,
+      lap: p.lap,
+      fuel: p.fuel,
+      tires: p.tires,
+      pit: p.pit,
+      finished: p.finished,
+      ghost: p.ghost,
+      connected: p.connected,
+    };
+  });
+}
+
+function sendEnter(ws, room, p, flags) {
+  flags = flags || {};
+  send(ws, {
+    t: "enter",
+    phase: room.phase,
+    startPhase: room.startPhase,
+    redsOn: room.redsOn,
+    holdDelay: room.holdDelay,
+    raceTime: room.raceTime || 0,
+    you: youState(p),
+    cars: carList(room),
+    late: !!flags.late,
+    rejoin: !!flags.rejoin,
+  });
+  if (room.phase === "start") {
+    send(ws, {
+      t: "lights",
+      phase: room.startPhase,
+      redsOn: room.redsOn,
+      holdDelay: room.holdDelay,
+    });
+  }
 }
 
 function startLights(room) {
@@ -140,6 +230,7 @@ function startLights(room) {
   room.startPhase = "prestart";
   room.redsOn = 0;
   room.startT = 2;
+  room.raceTime = 0;
   room.holdDelay = 0.2 + Math.random() * 2.8;
   broadcast(room, roomMsg(room));
   broadcast(room, {
@@ -233,27 +324,12 @@ wss.on("connection", function (ws) {
       var created = makeRoom();
       var slot = 0;
       created.hostId = self.id;
-      created.players.push({
-        id: self.id,
-        name: String(msg.name || "House 7").slice(0, 18),
-        slot: slot,
-        ws: ws,
-        connected: true,
-        ghost: false,
-        leftAt: 0,
-        x: 0,
-        z: 0,
-        h: 0,
-        spd: 0,
-        slide: 0,
-        lap: 1,
-        fuel: 100,
-        tires: 100,
-        pit: 0,
-        finished: 0,
-      });
+      created.players.push(
+        blankCar(self.id, String(msg.name || "House 7").slice(0, 18), slot, ws)
+      );
       self.room = created;
       send(ws, roomMsg(created));
+      sendEnter(ws, created, created.players[0]);
       return;
     }
 
@@ -273,6 +349,7 @@ wss.on("connection", function (ws) {
         if (msg.name) existing.name = String(msg.name).slice(0, 18);
         self.room = room;
         broadcast(room, roomMsg(room));
+        sendEnter(ws, room, existing, { rejoin: true });
         return;
       }
       if (room.players.filter(function (p) { return p.connected || p.ghost; }).length >= MAX) {
@@ -284,27 +361,11 @@ wss.on("connection", function (ws) {
         send(ws, { t: "err", msg: "Room is full (8)" });
         return;
       }
-      room.players.push({
-        id: self.id,
-        name: String(msg.name || "Car").slice(0, 18),
-        slot: ns,
-        ws: ws,
-        connected: true,
-        ghost: false,
-        leftAt: 0,
-        x: 0,
-        z: 0,
-        h: 0,
-        spd: 0,
-        slide: 0,
-        lap: 1,
-        fuel: 100,
-        tires: 100,
-        pit: 0,
-        finished: 0,
-      });
+      var newbie = blankCar(self.id, String(msg.name || "Car").slice(0, 18), ns, ws);
+      room.players.push(newbie);
       self.room = room;
       broadcast(room, roomMsg(room));
+      sendEnter(ws, room, newbie, { late: room.phase === "racing" });
       return;
     }
 
@@ -333,8 +394,8 @@ wss.on("connection", function (ws) {
       p.spd = +msg.spd || 0;
       p.slide = +msg.slide || 0;
       p.lap = +msg.lap || 1;
-      p.fuel = +msg.fuel || 0;
-      p.tires = +msg.tires || 0;
+      if (msg.fuel != null && isFinite(+msg.fuel)) p.fuel = +msg.fuel;
+      if (msg.tires != null && isFinite(+msg.tires)) p.tires = +msg.tires;
       p.pit = msg.pit ? 1 : 0;
       p.finished = msg.finished ? 1 : 0;
       return;
@@ -363,25 +424,9 @@ setInterval(function () {
   rooms.forEach(function (room) {
     pruneGhosts(room);
     tickLights(room, dt);
+    if (room.phase === "racing") room.raceTime += dt;
     if (room.phase === "start" || room.phase === "racing") {
-      var cars = room.players.map(function (p) {
-        return {
-          id: p.id,
-          slot: p.slot,
-          x: p.x,
-          z: p.z,
-          h: p.h,
-          spd: p.spd,
-          slide: p.slide,
-          lap: p.lap,
-          fuel: p.fuel,
-          tires: p.tires,
-          pit: p.pit,
-          finished: p.finished,
-          ghost: p.ghost,
-          connected: p.connected,
-        };
-      });
+      var cars = carList(room);
       unstack(cars);
       for (var i = 0; i < cars.length; i++) {
         var src = playerById(room, cars[i].id);
@@ -390,7 +435,7 @@ setInterval(function () {
           src.z = cars[i].z;
         }
       }
-      broadcast(room, { t: "snap", now: now, cars: cars });
+      broadcast(room, { t: "snap", now: now, raceTime: room.raceTime || 0, cars: cars });
     }
   });
 }, 80);
