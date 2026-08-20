@@ -561,7 +561,7 @@
     pathArc(13, 42, "the90");
     pathLine(320, "short");
     pathArc(12, 88, "chicane");
-    pathLine(150, "chicane");
+    pathLine(150, "short");
     pathArc(9, -100, "chicane");
     pathLine(18, "chicane");
     pathArc(13, 60, "chicane");
@@ -2261,79 +2261,102 @@
     bevel.addColorStop(1, "rgba(0,0,0,0.2)");
     ctx.fillStyle = bevel;
     ctx.fillRect(0, 0, w, h);
-    function trackPath() {
+    function iconGeom() {
+      var m = Math.min(w, h);
+      var ribbon = m * 0.13;
+      var fat = ribbon * 1.55;
+      var pad = fat * 0.5 + m * 0.08;
+      return { m: m, ribbon: ribbon, pad: pad };
+    }
+    function iconPath() {
+      // Curves live INSIDE the square. A 90 is a quarter-circle
+      // in the tile — not a world-scale ribbon and not an L that clips.
       ctx.beginPath();
       if (type === "t") return;
-      var artPiece = { t: type, x: 0, y: 0, r: rot || 0 };
-      var segs = pieceSegs(artPiece);
-      if (!segs.length) return;
-      var box = footprintBox(artPiece);
-      var scale = unit / MAP_CELL;
-      var si;
-      var started = false;
-      for (si = 0; si < segs.length; si++) {
-        var seg = segs[si];
-        if (seg.type === "line") {
-          var ax = (seg.ax - box.x0) * scale;
-          var az = (seg.az - box.z0) * scale;
-          var bx = (seg.bx - box.x0) * scale;
-          var bz = (seg.bz - box.z0) * scale;
-          if (!started) {
-            ctx.moveTo(ax, az);
-            started = true;
-          } else {
-            ctx.lineTo(ax, az);
-          }
-          ctx.lineTo(bx, bz);
+      var g = iconGeom();
+      var pad = g.pad;
+      var x0 = pad;
+      var y0 = pad;
+      var x1 = w - pad;
+      var y1 = h - pad;
+      var r0 = rot || 0;
+      var qr = Math.min(w, h) - pad * 2;
+      if (type === "r" || type === "w") {
+        ctx.translate(w * 0.5, h * 0.5);
+        ctx.rotate(r0 * Math.PI * 0.5);
+        ctx.translate(-w * 0.5, -h * 0.5);
+        // π → 3π/2 is the interior 90° (west to north). Never the 270°.
+        ctx.arc(x1, y1, qr, Math.PI, Math.PI * 1.5, false);
+      } else if (type === "H") {
+        var uR = Math.min(Math.max(w, h) * 0.5 - pad, Math.min(w, h) - pad * 2);
+        if (r0 === 0) {
+          ctx.arc(w * 0.5, y1, uR, Math.PI, 0, false);
+        } else if (r0 === 1) {
+          ctx.arc(x0, h * 0.5, uR, -Math.PI * 0.5, Math.PI * 0.5, false);
+        } else if (r0 === 2) {
+          ctx.arc(w * 0.5, y0, uR, Math.PI, 0, true);
         } else {
-          var ccx = (seg.cx - box.x0) * scale;
-          var ccz = (seg.cz - box.z0) * scale;
-          var rr = seg.r * scale;
-          var sx = ccx + Math.cos(seg.a0) * rr;
-          var sy = ccz + Math.sin(seg.a0) * rr;
-          if (!started) {
-            ctx.moveTo(sx, sy);
-            started = true;
-          } else {
-            ctx.lineTo(sx, sy);
-          }
-          ctx.arc(ccx, ccz, rr, seg.a0, seg.a1, seg.a1 >= seg.a0);
+          ctx.arc(x1, h * 0.5, uR, Math.PI * 0.5, -Math.PI * 0.5, false);
+        }
+      } else if (type === "C") {
+        ctx.translate(w * 0.5, h * 0.5);
+        ctx.rotate(r0 * Math.PI * 0.5);
+        ctx.translate(-w * 0.5, -h * 0.5);
+        ctx.moveTo(x0, h * 0.5);
+        ctx.bezierCurveTo(x0, y0, w * 0.62, y0, w * 0.5, h * 0.5);
+        ctx.bezierCurveTo(w * 0.38, y1, x1, y1, x1, h * 0.5);
+      } else {
+        ctx.translate(w * 0.5, h * 0.5);
+        ctx.rotate(r0 * Math.PI * 0.5);
+        ctx.translate(-w * 0.5, -h * 0.5);
+        if (w >= h) {
+          ctx.moveTo(x0, h * 0.5);
+          ctx.lineTo(x1, h * 0.5);
+        } else {
+          ctx.moveTo(w * 0.5, y0);
+          ctx.lineTo(w * 0.5, y1);
         }
       }
     }
     function strokeTrack() {
-      ctx.lineCap = "butt";
+      ctx.lineCap = "round";
       ctx.lineJoin = "round";
       ctx.setLineDash([]);
-      var ribbon = unit * ((ASPHALT * 2) / MAP_CELL);
+      var g = iconGeom();
+      var ribbon = g.ribbon;
+      var m = g.m;
+      ctx.save();
       ctx.strokeStyle = "#8d97a6";
-      ctx.lineWidth = ribbon * 1.75;
-      trackPath();
+      ctx.lineWidth = ribbon * 1.55;
+      iconPath();
       ctx.stroke();
+      ctx.restore();
+      ctx.save();
       ctx.strokeStyle = "#ff2038";
-      ctx.lineWidth = ribbon * 1.42;
-      trackPath();
+      ctx.lineWidth = ribbon * 1.18;
+      iconPath();
       ctx.stroke();
+      ctx.restore();
+      ctx.save();
       ctx.strokeStyle = "#fff6ee";
-      ctx.lineWidth = ribbon * 1.42;
-      ctx.setLineDash([unit * 0.07, unit * 0.07]);
-      trackPath();
+      ctx.lineWidth = ribbon * 1.18;
+      ctx.setLineDash([m * 0.07, m * 0.07]);
+      iconPath();
       ctx.stroke();
-      ctx.setLineDash([]);
+      ctx.restore();
+      ctx.save();
       ctx.strokeStyle = "#3a3e46";
       ctx.lineWidth = ribbon;
-      trackPath();
+      iconPath();
       ctx.stroke();
-      ctx.strokeStyle = "#15171b";
-      ctx.lineWidth = Math.max(2, unit * 0.025);
-      trackPath();
-      ctx.stroke();
+      ctx.restore();
+      ctx.save();
       ctx.strokeStyle = "#d8d0b8";
-      ctx.lineWidth = Math.max(1, unit * 0.01);
-      ctx.setLineDash([unit * 0.05, unit * 0.04]);
-      trackPath();
+      ctx.lineWidth = Math.max(2, m * 0.03);
+      ctx.setLineDash([m * 0.05, m * 0.04]);
+      iconPath();
       ctx.stroke();
-      ctx.setLineDash([]);
+      ctx.restore();
     }
     if (type === "t") {
       ctx.fillStyle = "#5a4030";
@@ -2355,13 +2378,13 @@
       strokeTrack();
       if (type !== "t") {
         ctx.save();
-        ctx.translate(unit * 0.5, unit * 0.5);
+        ctx.translate(w * 0.5, h * 0.5);
         ctx.rotate((rot || 0) * Math.PI * 0.5);
         ctx.fillStyle = "#ffe566";
         ctx.beginPath();
-        ctx.moveTo(unit * 0.34, -unit * 0.04);
-        ctx.lineTo(unit * 0.46, 0);
-        ctx.lineTo(unit * 0.34, unit * 0.04);
+        ctx.moveTo(Math.min(w, h) * 0.18, -Math.min(w, h) * 0.035);
+        ctx.lineTo(Math.min(w, h) * 0.28, 0);
+        ctx.lineTo(Math.min(w, h) * 0.18, Math.min(w, h) * 0.035);
         ctx.closePath();
         ctx.fill();
         ctx.restore();
@@ -3440,6 +3463,18 @@
     r.lastX = r.x;
   }
 
+  function onLongStraight(s) {
+    var i;
+    for (i = 0; i < PATH.length; i++) {
+      var seg = PATH[i];
+      if (!seg || seg.startS == null) continue;
+      if (s >= seg.startS - 0.2 && s <= seg.startS + seg.len + 0.2) {
+        return seg.type === "line" && seg.len > 40;
+      }
+    }
+    return false;
+  }
+
   function applyMotion(r, steer, throttle, brake, reverse, dt, isPlayer) {
     var info = projectTrack(r.x, r.z);
     var surface = info.grass ? 0.5 : 1;
@@ -3521,9 +3556,11 @@
     if (!info.grass && (info.name === "hairpin" || info.name === "chicane")) {
       var hpOk = info.name === "hairpin" ? 17 : 24;
       var hpTight = info.name === "hairpin" ? 14 : 12;
-      if (r.speed > hpOk) {
+      // Name alone is not a yaw kill. The Loop approach slab used
+      // to be named chicane — dump only the tight bends, not a straight.
+      var turning = info.name === "hairpin" || !onLongStraight(info.s);
+      if (turning && r.speed > hpOk) {
         var over = (r.speed - hpOk) / hpTight;
-        maxYaw *= 1 / (1 + over * 5);
         r.slide += (steer !== 0 ? steer : 1) * over * 22 * dt;
         if (over > 0.3) r.tires -= 2.8 * dt * over;
       }

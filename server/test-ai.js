@@ -127,6 +127,7 @@ var code = [
   sliceFn("updateLaps"),
   sliceFn("rideHeight"),
   sliceFn("steerWheelYaw"),
+  sliceFn("onLongStraight"),
   sliceFn("applyMotion"),
   sliceAssign("AI_AGGRO"),
   sliceAssign("AI_TIDY"),
