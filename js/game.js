@@ -134,6 +134,9 @@
   var pitFlash = 0;
   var pitUsedVisit = false;
   var pitServicing = false;
+  var pitVisit = false;
+  var pitAwayT = 0;
+  var pitBanner = "";
   var lastTs = 0;
   var lastDt = 0.016;
   var camYaw = 0.6;
@@ -2239,6 +2242,96 @@
   var editorDrag = null;
   var _tileArt = {};
 
+  function tileIconPts(type, rot, w, h) {
+    // Cheap in-square silhouettes. World pieceSegs + ctx.arc drew the
+    // long way around and clipped 90/sweeper/hairpin to a blank grey square.
+    var m = Math.min(w, h);
+    var pad = m * 0.2;
+    var x0 = pad;
+    var y0 = pad;
+    var x1 = w - pad;
+    var y1 = h - pad;
+    var r0 = (rot || 0) & 3;
+    var pts = [];
+    function add(x, y) {
+      pts.push({ x: x, y: y });
+    }
+    function arcPoly(cx, cy, r, a0, a1) {
+      var steps = 18;
+      var i;
+      for (i = 0; i <= steps; i++) {
+        var a = a0 + (a1 - a0) * (i / steps);
+        add(cx + Math.cos(a) * r, cy + Math.sin(a) * r);
+      }
+    }
+    function bez(ax, ay, c1x, c1y, c2x, c2y, bx, by) {
+      var t;
+      for (t = 0; t <= 1.001; t += 0.08) {
+        var u = 1 - t;
+        add(
+          u * u * u * ax + 3 * u * u * t * c1x + 3 * u * t * t * c2x + t * t * t * bx,
+          u * u * u * ay + 3 * u * u * t * c1y + 3 * u * t * t * c2y + t * t * t * by
+        );
+      }
+    }
+    function spin() {
+      if (!r0) return pts;
+      var cx = w * 0.5;
+      var cy = h * 0.5;
+      var a = r0 * Math.PI * 0.5;
+      var c = Math.cos(a);
+      var s = Math.sin(a);
+      var out = [];
+      var i;
+      for (i = 0; i < pts.length; i++) {
+        var x = pts[i].x - cx;
+        var y = pts[i].y - cy;
+        out.push({ x: cx + x * c - y * s, y: cy + x * s + y * c });
+      }
+      return out;
+    }
+    if (type === "r") {
+      arcPoly(x1, y1, m - pad * 2, Math.PI, Math.PI * 1.5);
+      return spin();
+    }
+    if (type === "w") {
+      var t;
+      var ax = x0;
+      var ay = y1 - (y1 - y0) * 0.18;
+      var cx = x0 + m * 0.1;
+      var cy = y0 + m * 0.1;
+      var bx = x1 - (x1 - x0) * 0.18;
+      var by = y0;
+      for (t = 0; t <= 1.001; t += 1 / 18) {
+        var u = 1 - t;
+        add(u * u * ax + 2 * u * t * cx + t * t * bx, u * u * ay + 2 * u * t * cy + t * t * by);
+      }
+      return spin();
+    }
+    if (type === "H") {
+      var uR = Math.min(Math.max(w, h) * 0.48 - pad * 0.15, m * 0.58);
+      if (uR < m * 0.3) uR = m * 0.3;
+      if (r0 === 0) arcPoly(w * 0.5, y1, uR, Math.PI, Math.PI * 2);
+      else if (r0 === 1) arcPoly(x0, h * 0.5, uR, -Math.PI * 0.5, Math.PI * 0.5);
+      else if (r0 === 2) arcPoly(w * 0.5, y0, uR, Math.PI, 0);
+      else arcPoly(x1, h * 0.5, uR, Math.PI * 0.5, Math.PI * 1.5);
+      return pts;
+    }
+    if (type === "C") {
+      bez(x0, h * 0.5, x0, y0, w * 0.62, y0, w * 0.5, h * 0.5);
+      bez(w * 0.5, h * 0.5, w * 0.38, y1, x1, y1, x1, h * 0.5);
+      return spin();
+    }
+    if (w >= h) {
+      add(x0, h * 0.5);
+      add(x1, h * 0.5);
+    } else {
+      add(w * 0.5, y0);
+      add(w * 0.5, y1);
+    }
+    return spin();
+  }
+
   function tileArt(type, rot, size) {
     var key = type + rot + ":" + size;
     if (_tileArt[key]) return _tileArt[key];
@@ -2262,79 +2355,45 @@
     bevel.addColorStop(1, "rgba(0,0,0,0.2)");
     ctx.fillStyle = bevel;
     ctx.fillRect(0, 0, w, h);
-    function trackPath() {
+    function iconPath() {
+      var pts = tileIconPts(type, rot || 0, w, h);
       ctx.beginPath();
-      if (type === "t") return;
-      var artPiece = { t: type, x: 0, y: 0, r: rot || 0 };
-      var segs = pieceSegs(artPiece);
-      if (!segs.length) return;
-      var box = footprintBox(artPiece);
-      var scale = unit / MAP_CELL;
-      var si;
-      var started = false;
-      for (si = 0; si < segs.length; si++) {
-        var seg = segs[si];
-        if (seg.type === "line") {
-          var ax = (seg.ax - box.x0) * scale;
-          var az = (seg.az - box.z0) * scale;
-          var bx = (seg.bx - box.x0) * scale;
-          var bz = (seg.bz - box.z0) * scale;
-          if (!started) {
-            ctx.moveTo(ax, az);
-            started = true;
-          } else {
-            ctx.lineTo(ax, az);
-          }
-          ctx.lineTo(bx, bz);
-        } else {
-          var ccx = (seg.cx - box.x0) * scale;
-          var ccz = (seg.cz - box.z0) * scale;
-          var rr = seg.r * scale;
-          var sx = ccx + Math.cos(seg.a0) * rr;
-          var sy = ccz + Math.sin(seg.a0) * rr;
-          if (!started) {
-            ctx.moveTo(sx, sy);
-            started = true;
-          } else {
-            ctx.lineTo(sx, sy);
-          }
-          ctx.arc(ccx, ccz, rr, seg.a0, seg.a1, seg.a1 >= seg.a0);
-        }
-      }
+      if (!pts.length) return;
+      ctx.moveTo(pts[0].x, pts[0].y);
+      var i;
+      for (i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
     }
     function strokeTrack() {
-      ctx.lineCap = "butt";
+      ctx.lineCap = "round";
       ctx.lineJoin = "round";
       ctx.setLineDash([]);
-      var ribbon = unit * ((ASPHALT * 2) / MAP_CELL);
+      var m = Math.min(w, h);
+      var ribbon = type === "C" ? m * 0.2 : m * 0.18;
+      ctx.save();
       ctx.strokeStyle = "#8d97a6";
-      ctx.lineWidth = ribbon * 1.75;
-      trackPath();
+      ctx.lineWidth = ribbon * 1.5;
+      iconPath();
       ctx.stroke();
+      ctx.restore();
+      ctx.save();
       ctx.strokeStyle = "#ff2038";
-      ctx.lineWidth = ribbon * 1.42;
-      trackPath();
+      ctx.lineWidth = ribbon * 1.15;
+      iconPath();
       ctx.stroke();
+      ctx.restore();
+      ctx.save();
       ctx.strokeStyle = "#fff6ee";
-      ctx.lineWidth = ribbon * 1.42;
-      ctx.setLineDash([unit * 0.07, unit * 0.07]);
-      trackPath();
+      ctx.lineWidth = ribbon * 1.15;
+      ctx.setLineDash([m * 0.07, m * 0.07]);
+      iconPath();
       ctx.stroke();
-      ctx.setLineDash([]);
+      ctx.restore();
+      ctx.save();
       ctx.strokeStyle = "#3a3e46";
       ctx.lineWidth = ribbon;
-      trackPath();
+      iconPath();
       ctx.stroke();
-      ctx.strokeStyle = "#15171b";
-      ctx.lineWidth = Math.max(2, unit * 0.025);
-      trackPath();
-      ctx.stroke();
-      ctx.strokeStyle = "#d8d0b8";
-      ctx.lineWidth = Math.max(1, unit * 0.01);
-      ctx.setLineDash([unit * 0.05, unit * 0.04]);
-      trackPath();
-      ctx.stroke();
-      ctx.setLineDash([]);
+      ctx.restore();
     }
     if (type === "t") {
       ctx.fillStyle = "#5a4030";
@@ -3275,6 +3334,7 @@
     r.pitServicing = false;
     r.pitTimer = 0;
     r.pitUsedVisit = false;
+    r.pitAwayT = 0;
     r.launchMul = 1;
     r.launchT = 0;
     r.launchArmed = false;
@@ -3360,6 +3420,9 @@
     pitFlash = 0;
     pitUsedVisit = false;
     pitServicing = false;
+    pitVisit = false;
+    pitAwayT = 0;
+    pitBanner = "";
     revs = 0;
     launchMul = 1;
     launchT = 0;
@@ -3804,13 +3867,17 @@
       poseCar(r);
       return;
     }
-    if (!inPitLane(r) && !inPitGrab(r) && !r.pitServicing) {
-      r.pitTimer = 0;
-      r.pitUsedVisit = false;
+    if (inPitLane(r) || inPitGrab(r) || r.pitServicing) {
+      r.pitAwayT = 0;
+    } else {
+      r.pitAwayT = (r.pitAwayT || 0) + dt;
+      if (r.pitAwayT >= 0.48) {
+        r.pitTimer = 0;
+        r.pitUsedVisit = false;
+      }
     }
     if (!r.pitServicing && !r.pitUsedVisit && inPitGrab(r)) {
       r.pitServicing = true;
-      r.pitTimer = 0;
       r.speed = 0;
       r.slide = 0;
       poseCar(r);
@@ -4586,19 +4653,24 @@
     if (hud.tireNum) hud.tireNum.textContent = String(Math.round(tires));
     paintRevs();
 
-    var pitting = state === "racing" && (pitServicing || inPitLane(player) || inPitGrab(player));
-    var pct = pitHudPct;
+    var inBox = inPitLane(player) || inPitGrab(player);
+    var visiting = pitServicing || pitVisit || pitHudPct > 0;
+    var pitting = state === "racing" && (visiting || inBox || pitFlash > 0 || pitAwayT < 0.48);
     if (pitServicing) {
       var livePct = Math.min(100, Math.round((pitTimer / PIT_HOLD) * 100));
       if (livePct > pitHudPct) pitHudPct = livePct;
-      pct = pitHudPct;
     }
+    var nextBanner = "";
+    if (pitFlash > 0) nextBanner = "SERVICED";
+    else if (pitServicing || (pitVisit && !pitUsedVisit && pitHudPct > 0)) nextBanner = "PITTING  " + pitHudPct + "%";
+    else if (pitUsedVisit && (inBox || pitAwayT < 0.48)) nextBanner = "SERVICED — drive out";
+    else if (inBox) nextBanner = "PIT LANE";
     if (hud.pitting) {
-      hud.pitting.classList.toggle("hidden", !pitting && pitFlash <= 0);
-      if (pitFlash > 0) hud.pitting.textContent = "SERVICED";
-      else if (pitServicing) hud.pitting.textContent = "PITTING  " + pct + "%";
-      else if ((inPitLane(player) || inPitGrab(player)) && pitUsedVisit) hud.pitting.textContent = "SERVICED — drive out";
-      else if (inPitLane(player) || inPitGrab(player)) hud.pitting.textContent = "PIT LANE";
+      hud.pitting.classList.toggle("hidden", !nextBanner);
+      if (nextBanner !== pitBanner) {
+        hud.pitting.textContent = nextBanner;
+        pitBanner = nextBanner;
+      }
     }
 
     var warn = "";
@@ -5274,10 +5346,16 @@
       raceTime += simDt;
       revs = 0;
       var input = playerInput();
-      if (!inPitLane(player) && !inPitGrab(player) && !pitServicing) {
-        pitTimer = 0;
-        pitHudPct = 0;
-        pitUsedVisit = false;
+      if (inPitLane(player) || inPitGrab(player) || pitServicing) {
+        pitAwayT = 0;
+      } else {
+        pitAwayT += simDt;
+        if (pitAwayT >= 0.48) {
+          pitTimer = 0;
+          pitHudPct = 0;
+          pitUsedVisit = false;
+          pitVisit = false;
+        }
       }
       if (pitServicing) {
         input = { steer: 0, throttle: false, reverse: false, brake: true };
@@ -5302,8 +5380,7 @@
       emitRacerFx(player, input, simDt, true);
       if (!pitServicing && !pitUsedVisit && inPitGrab(player)) {
         pitServicing = true;
-        pitTimer = 0;
-        pitHudPct = 0;
+        pitVisit = true;
         player.speed = 0;
         player.slide = 0;
         poseCar(player);

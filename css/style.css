@@ -866,6 +866,7 @@ html.race-portrait #tilt-btn {
   background-position: center;
   touch-action: none;
   cursor: grab;
+  overflow: hidden;
 }
 
 .palette-tile {
@@ -875,6 +876,7 @@ html.race-portrait #tilt-btn {
   border-radius: 0;
   box-shadow: 0 2px 0 #3d3932, 0 5px 10px rgba(0, 0, 0, 0.4);
   background-size: 100% 100%;
+  overflow: hidden;
 }
 
 .palette-tile.wide {

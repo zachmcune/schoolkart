@@ -1201,7 +1201,11 @@ assert(!sim.ribbonsStack(closed90s[0], closed90s[1]), "incompatible 90s do not i
 assert(src.indexOf("Math.sin(t * Math.PI * 2)") !== -1, "chicane S is a sine inside the cell");
 assert(src.indexOf("env *= env") !== -1, "chicane S is flat at the ports");
 assert(src.indexOf("var amp = MAP_CELL * 0.1") !== -1, "zig-zag amplitude is small enough to keep the ribbon in-cell");
-assert(src.indexOf("function tileArt") !== -1, "editor still paints chips; another branch owns the pictures");
+assert(src.indexOf("function tileArt") !== -1, "editor still paints chips");
+assert(src.indexOf("function tileIconPts") !== -1, "90/sweeper/hairpin/chicane are in-square silhouettes");
+var artSrc = src.slice(src.indexOf("function tileArt"), src.indexOf("function paintTrackEditor"));
+assert(artSrc.indexOf("pieceSegs") === -1, "chips are not clipped world-ribbon");
+assert(artSrc.indexOf("tileIconPts") !== -1, "tileArt strokes the in-square silhouette");
 
 sim.lockRacePath("");
 assert(src.indexOf("var ACCEL = 16") !== -1, "wind-up is slow (arcade, not a snap)");
@@ -1680,10 +1684,51 @@ function proveCarHits() {
   assert(ram > tap, "ram spins more than a tap, ram=" + ram.toFixed(4) + " tap=" + tap.toFixed(4));
 }
 
+function proveTileIcons() {
+  var icon = new Function(sliceFn("tileIconPts") + "; return tileIconPts;")();
+  function inside(type, rot, w, h, label) {
+    var pts = icon(type, rot, w, h);
+    assert(pts.length >= 8, label + " has a silhouette, n=" + pts.length);
+    var i;
+    var minX = 1e9;
+    var maxX = -1e9;
+    var minY = 1e9;
+    var maxY = -1e9;
+    for (i = 0; i < pts.length; i++) {
+      assert(pts[i].x >= -0.5 && pts[i].x <= w + 0.5 && pts[i].y >= -0.5 && pts[i].y <= h + 0.5, label + " stays inside the square");
+      if (pts[i].x < minX) minX = pts[i].x;
+      if (pts[i].x > maxX) maxX = pts[i].x;
+      if (pts[i].y < minY) minY = pts[i].y;
+      if (pts[i].y > maxY) maxY = pts[i].y;
+    }
+    var span = Math.hypot(maxX - minX, maxY - minY);
+    assert(span > Math.min(w, h) * 0.35, label + " fills the chip, span=" + span.toFixed(1));
+    return { minX: minX, maxX: maxX, minY: minY, maxY: maxY, pts: pts };
+  }
+  var r90 = inside("r", 0, 160, 160, "90");
+  assert(r90.maxX - r90.minX > 50 && r90.maxY - r90.minY > 50, "90 is a quarter-circle, not a line");
+  inside("w", 0, 160, 160, "sweeper");
+  var hp = inside("H", 0, 320, 160, "hairpin");
+  assert(hp.maxX - hp.minX > (hp.maxY - hp.minY) * 1.1, "hairpin is a U across the wide chip");
+  var chi = inside("C", 0, 160, 160, "chicane");
+  var above = 0;
+  var below = 0;
+  var ci;
+  for (ci = 0; ci < chi.pts.length; ci++) {
+    if (chi.pts[ci].y < 80) above += 1;
+    else below += 1;
+  }
+  assert(above > 3 && below > 3, "chicane S is not a flat line");
+}
+
 function provePitPctSticky() {
   assert(src.indexOf("pitHudPct") !== -1, "pit % is sticky, not a raw timer redraw");
   assert(src.indexOf("if (nextPct > pitHudPct) pitHudPct = nextPct") !== -1, "pit % only climbs during a visit");
-  assert(src.indexOf("!inPitLane(player) && !inPitGrab(player) && !pitServicing") !== -1, "stuck in the box does not reset the visit");
+  assert(src.indexOf("pitAwayT") !== -1, "leaving the box needs a dwell before the visit resets");
+  assert(src.indexOf("if (nextBanner !== pitBanner)") !== -1, "HUD writes the pit string only when it changes");
+  var grab = src.slice(src.indexOf("if (!pitServicing && !pitUsedVisit && inPitGrab(player))"), src.indexOf("updateLaps(player)"));
+  assert(grab.indexOf("pitHudPct = 0") === -1, "re-grab does not restart pit %");
+  assert(grab.indexOf("pitTimer = 0") === -1, "re-grab does not restart the pit clock");
 }
 
 sim.lockRacePath("");
@@ -1693,6 +1738,7 @@ proveChicaneSteer(sim.encodeMap(zig), "custom zig-zag chicane board");
 proveChicaneSteer(sim.encodeMap(kitPieces()), "custom kit chicane+sweeper");
 proveSpeedSteer();
 proveCarHits();
+proveTileIcons();
 provePitPctSticky();
 assert(src.indexOf("var amp = MAP_CELL * 0.1") !== -1, "chicane S stays in-cell");
 assert(src.indexOf("env *= env") !== -1, "chicane S is flat at the ports");

@@ -115,7 +115,7 @@ waitHealth()
         assert(html.indexOf('rel="manifest"') !== -1, "web app manifest link");
         assert(html.indexOf("apple-mobile-web-app-capable") !== -1, "iOS home screen capable");
         assert(html.indexOf('apple-mobile-web-app-title" content="SchoolKart"') !== -1, "iOS title");
-        assert(html.indexOf('SK_BUILD = "mp67"') !== -1, "cache bump mp67");
+        assert(html.indexOf('SK_BUILD = "mp68"') !== -1, "cache bump mp68");
         assert(html.indexOf('maxlength="240"') !== -1, "share-string fits a full board");
         assert(html.indexOf('id="title-track"') !== -1, "title label matches Solo load");
         assert(html.indexOf('aria-label="90"') !== -1 && html.indexOf('aria-label="sweeper"') !== -1, "palette has 90 and sweeper chips");
@@ -149,7 +149,7 @@ waitHealth()
           .then(function (sr) {
             return sr.text().then(function (sw) {
               assert(sr.status === 200, "sw 200");
-              assert(sw.indexOf('BUILD = "mp67"') !== -1, "SW build matches cache");
+              assert(sw.indexOf('BUILD = "mp68"') !== -1, "SW build matches cache");
               assert(/cache:\s*"no-store"/.test(sw), "network-first no-store");
               assert(sw.indexOf("websocket") !== -1, "SW leaves websocket alone");
             });
@@ -178,7 +178,10 @@ waitHealth()
                   assert(js.indexOf('pathLine(150, "short")') !== -1, "Loop approach slab steers like a straight");
                   assert(js.indexOf("yawFromSpeed") !== -1, "steer comes from speed, not a tank");
                   assert(js.indexOf("function hitCarFeel") !== -1, "car hits: tap / ram / shove");
-                  assert(js.indexOf("pitHudPct") !== -1, "pit % does not bounce while stuck");
+                  assert(js.indexOf("pitHudPct") !== -1 && js.indexOf("pitAwayT") !== -1, "pit % does not bounce while stuck");
+                  assert(js.indexOf("function tileIconPts") !== -1, "90/sweeper/hairpin are in-square silhouettes");
+                  var artJs = js.slice(js.indexOf("function tileArt"), js.indexOf("function paintTrackEditor"));
+                  assert(artJs.indexOf("pieceSegs") === -1, "chips are not clipped world-ribbon");
                   assert(js.indexOf('lock("landscape")') !== -1, "race locks landscape when the browser allows");
                   assert(js.indexOf('lock("portrait")') === -1, "never lock or default to portrait");
                   assert(js.indexOf("portraitRaceBlock") !== -1, "portrait race is gated, not a vertical drive");
@@ -217,6 +220,7 @@ waitHealth()
                   assert(css.indexOf("html.race-portrait #rotate-hint.hidden") !== -1, "display:none cannot hide the sideways gate");
                   assert(css.indexOf("html.race-live #rotate-hint") !== -1, "tall race-live window forces the gate");
                   assert(/\.tile-cell\s*\{[^}]*overflow:\s*hidden/.test(css), "editor cells clip art so pieces cannot paint onto neighbors");
+                  assert(/\.palette-tile[\s\S]{0,400}overflow:\s*hidden/.test(css), "palette chips clip to the square");
                 });
               }),
             ]);
