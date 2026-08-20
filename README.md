@@ -28,7 +28,7 @@ Then visit `http://localhost:8080`.
 | Fuel | The **clock**. Ticks even while coasting. One forced box in 5 laps. Skip it and limp home. |
 | Tires | **Handling** (sloppy, run wide) — never a speed cap. Worn tires can still crawl to the box. Only **empty fuel** limps. |
 | Grass | A **crawl** plus extra wear. Never faster than asphalt, never parked at 0. Miss the peel and you can still roll back on. Holding W on the lawn loses. Readable green / sandy runoff — not a black void. |
-| Pit | Peel **LEFT** onto a lane that splits off the south straight. Drive **halfway** in — the car is grabbed and serviced (~2.5s, fuel + tires), then released to drive out. No Space, no sit-still. One service per visit. Full asphalt enter / exit. |
+| Pit | Peel **LEFT** onto a lane that splits off the south straight. Drive **halfway IN the lane** — then the car is grabbed and serviced (~2.5s, fuel + tires) and released. Clipping the entry ramp does **not** count. No Space, no sit-still. One service per visit. |
 
 **Controls:** W / ↑ throttle (also revs on the grid) · **Space = brake** · **S / ↓ reverse** · A D / ← → steer · Enter or Space on the title to grid up.
 
@@ -37,6 +37,55 @@ Then visit `http://localhost:8080`.
 **Hits:** cars bash — shove, spin, no ghosting through each other.
 
 Car **#7** is white/teal. Campus is golden-hour brick with **one** clock tower. Original IP only.
+
+## Multiplayer (Chromebook lunch)
+
+Friends open the Pages URL. One **Create room**, others type the 4–6 character code and **Join**. Host hits **Grid up** (or Enter). Max 8 cars. Same handling / fuel / tires as solo — no extra grip, no rubber-band speed.
+
+Late join and refresh rejoin the same code. A dropped car goes **ghost**; they can come back. Tab blur does not wipe the room. If the server is down, **Solo** still works.
+
+### Point Pages at Railway
+
+After you deploy the server, either:
+
+1. Edit `js/config.js`:
+
+```js
+window.SCHOOLKART_SERVER = "wss://YOUR-APP.up.railway.app";
+```
+
+2. Or share a query param (no rebuild):
+
+`https://zachmcune.github.io/schoolkart/?server=wss://YOUR-APP.up.railway.app`
+
+### Run the server locally
+
+```bash
+npm install
+npm start
+```
+
+Listens on `PORT` (default **8787**). Health: `GET /health`.
+
+Then open the static game with `?server=ws://localhost:8787` (use two browser windows to create + join).
+
+```bash
+python3 -m http.server 8080
+# http://localhost:8080/?server=ws://localhost:8787
+```
+
+### Railway
+
+- **Start command:** `npm start` (or `node server/index.js`)
+- **Env:** `PORT` is set by Railway — do not hardcode it
+- No database. Rooms live in memory (fine for lunch races)
+- Root `package.json` is the server manifest
+
+Protocol smoke test:
+
+```bash
+npm test
+```
 
 ## GitHub Pages
 

@@ -72,11 +72,32 @@
       <ul class="tips">
         <li><strong>W</strong> gas · <strong>Space</strong> brake · <strong>S</strong> reverse · A/D steer. Brake or you run wide.</li>
         <li><strong>Fuel is the clock.</strong> Ticks even if you coast. One box in 5 laps — skip it and limp home.</li>
-        <li><strong>Peel LEFT</strong> into the pit lane. Drive halfway in — the crew grabs you, services fuel + tires, then lets you drive out.</li>
+        <li><strong>Peel LEFT</strong> into the pit lane. Halfway <em>in the lane</em> the crew grabs you (not the entry clip), services, then lets you drive out.</li>
         <li><strong>Lights start:</strong> blue PRE-START, five reds, random hold, lights out = GO. Hold <strong>Space</strong> to plant, <strong>W</strong> to rev. Dump W without Space and you roll — JUMP, sit ~1.5s, still race.</li>
       </ul>
-      <p class="go">Press <kbd>Enter</kbd> or <kbd>Space</kbd> to grid up</p>
+      <div class="lobby-row">
+        <button type="button" class="lobby-btn solo" id="btn-solo">Solo</button>
+        <button type="button" class="lobby-btn" id="btn-create">Create room</button>
+      </div>
+      <div class="lobby-row">
+        <input id="join-code" class="lobby-input" maxlength="6" placeholder="CODE" autocomplete="off" />
+        <button type="button" class="lobby-btn" id="btn-join">Join</button>
+      </div>
+      <p class="go">Press <kbd>Enter</kbd> or <kbd>Space</kbd> for solo · or race friends</p>
       <p class="credit">Creative lead: Zachary McUne · Feel: Pit Crew Designer</p>
+    </div>
+
+    <div id="lobby-screen" class="screen hidden">
+      <p class="eyebrow">Room</p>
+      <h1 id="room-code">-----</h1>
+      <p id="lobby-status" class="sub">Waiting…</p>
+      <ul id="roster"></ul>
+      <p id="lobby-err"></p>
+      <div class="lobby-row">
+        <button type="button" class="lobby-btn" id="btn-grid">Grid up</button>
+        <button type="button" class="lobby-btn" id="btn-leave">Leave</button>
+      </div>
+      <p class="go">Host presses <kbd>Enter</kbd> to start the lights. Same handling as solo.</p>
     </div>
 
     <div id="countdown" class="screen hidden">
@@ -106,6 +127,8 @@
       document.write('<script src="https://unpkg.com/three@0.160.1/build/three.min.js"><\/script>');
     }
   </script>
-  <script src="js/game.js?v=f1-loop"></script>
+  <script src="js/config.js"></script>
+  <script src="js/net.js?v=mp1"></script>
+  <script src="js/game.js?v=mp1"></script>
 </body>
 </html>

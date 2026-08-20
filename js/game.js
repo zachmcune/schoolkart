@@ -46,10 +46,25 @@
   var SF_Z = -80;
   var GRID_P2_X = -14;
   var GRID_P2_Z = SF_Z - 2.7;
+  var SKINS = [
+    { color: 0xf4f1ea, num: 7, name: "House 7" },
+    { color: 0xd4a017, num: 12, name: "Hall Monitor" },
+    { color: 0xb4532e, num: 21, name: "Sub Teacher" },
+    { color: 0x3d8cff, num: 3, name: "Library Kid" },
+    { color: 0x9b59b6, num: 9, name: "Band Kid" },
+    { color: 0x2ecc71, num: 18, name: "Lab Partner" },
+    { color: 0xe67e22, num: 5, name: "Detention" },
+    { color: 0x1abc9c, num: 14, name: "Yearbook" },
+  ];
 
-  // Split pit: peels LEFT off the south straight, grab halfway, exit before the 90.
+  function gridSlot(i) {
+    return { x: -6 - i * 8, z: SF_Z + (i % 2 ? -2.7 : 2.7) };
+  }
+
+  // Split pit: peels LEFT off the south straight. Grab only HALFWAY IN the lane —
+  // clipping the entry ramp does not count.
   var PIT_LANE = { x0: 14, x1: 72, z0: -66.2, z1: -57.6 };
-  var PIT_GRAB = { x0: 36, x1: 52, z0: -66.8, z1: -57.0 };
+  var PIT_GRAB = { x0: 43, x1: 58, z0: -66.0, z1: -57.8 };
   var PIT_PAVE = [
     { x0: 6, x1: 26, z0: -76.6, z1: -58.0 },
     { x0: 12, x1: 32, z0: -70.0, z1: -57.2 },
@@ -81,6 +96,12 @@
   var audio = { ctx: null, osc: null, gain: null };
   var gantryReds = [];
   var gantryBlues = [];
+  var mpMode = false;
+  var remotes = {};
+  var lastNetSend = 0;
+  var playerGridX = GRID_P2_X;
+  var playerGridZ = GRID_P2_Z;
+  var net = window.SchoolKartNet;
 
   var canvas = document.getElementById("view");
   var renderer = new THREE.WebGLRenderer({
@@ -130,6 +151,11 @@
     finishPlace: document.getElementById("finish-place"),
     revWrap: document.getElementById("rev-wrap"),
     revFill: document.getElementById("rev-fill"),
+    lobby: document.getElementById("lobby-screen"),
+    roomCode: document.getElementById("room-code"),
+    roster: document.getElementById("roster"),
+    lobbyStatus: document.getElementById("lobby-status"),
+    lobbyErr: document.getElementById("lobby-err"),
     lights: [
       document.getElementById("rl0"),
       document.getElementById("rl1"),
@@ -702,9 +728,11 @@
   }
 
   function resetGrid() {
-    resetRacer(player, GRID_P2_X, GRID_P2_Z, 0, TRACK_LEN - 14);
+    resetRacer(player, playerGridX, playerGridZ, 0, TRACK_LEN - 14);
     resetRacer(cpus[0], -6, SF_Z + 2.7, 0, TRACK_LEN - 6);
     resetRacer(cpus[1], -22, SF_Z + 2.7, 0, TRACK_LEN - 22);
+    cpus[0].mesh.visible = !mpMode;
+    cpus[1].mesh.visible = !mpMode;
     raceTime = 0;
     didPit = false;
     pitTimer = 0;
@@ -722,12 +750,13 @@
     holdDelay = 0.2 + Math.random() * 2.8;
   }
 
-  function inPitGrab(r) {
-    return inRect(r.x, r.z, PIT_GRAB);
+  function inPitLane(r) {
+    return inRect(r.x, r.z, PIT_LANE);
   }
 
-  function inPitLane(r) {
-    return onPitPavement(r.x, r.z);
+  function inPitGrab(r) {
+    var mid = (PIT_LANE.x0 + PIT_LANE.x1) * 0.5;
+    return inPitLane(r) && r.x >= mid;
   }
 
   function updateLaps(r) {
@@ -827,6 +856,8 @@
 
     r.mesh.position.set(r.x, 0, r.z);
     r.mesh.rotation.set(0, -r.heading, 0);
+    r.mesh.rotation.x = 0;
+    r.mesh.rotation.z = 0;
     var wheels = r.mesh.userData.wheels;
     if (wheels) {
       var spin = r.speed * dt * 2.4;
@@ -937,6 +968,8 @@
   function poseCar(r) {
     r.mesh.position.set(r.x, 0, r.z);
     r.mesh.rotation.set(0, -r.heading, 0);
+    r.mesh.rotation.x = 0;
+    r.mesh.rotation.z = 0;
   }
 
   function playerInput() {
@@ -957,9 +990,10 @@
 
   function setScreen(which) {
     hud.title.classList.toggle("hidden", which !== "title");
+    if (hud.lobby) hud.lobby.classList.toggle("hidden", which !== "lobby");
     hud.countdown.classList.toggle("hidden", which !== "start");
     hud.finish.classList.toggle("hidden", which !== "finish");
-    hud.root.classList.toggle("hidden", which === "title");
+    hud.root.classList.toggle("hidden", which === "title" || which === "lobby");
     hud.revWrap.classList.toggle("hidden", which !== "start");
   }
 
@@ -1017,6 +1051,10 @@
   }
 
   function startSequence() {
+    mpMode = false;
+    playerGridX = GRID_P2_X;
+    playerGridZ = GRID_P2_Z;
+    clearRemotes();
     resetGrid();
     state = "start";
     setScreen("start");
@@ -1035,11 +1073,19 @@
       ? "Pit stop: yes — you took the box"
       : "Pit stop: no — you skipped it and limped";
     var place = 1;
-    if (cpus[0].finished && cpus[0].finishTime < player.finishTime) place += 1;
-    if (!cpus[0].finished && !player.finished) place += 1;
-    if (cpus[1].finished && cpus[1].finishTime < player.finishTime) place += 1;
-    var names = ["1st", "2nd", "3rd"];
-    hud.finishPlace.textContent = names[place - 1] + " · vs Hall Monitor & Sub Teacher";
+    if (mpMode) {
+      Object.keys(remotes).forEach(function (id) {
+        var r = remotes[id].r;
+        if (r.finished && r.finishTime && r.finishTime < player.finishTime) place += 1;
+      });
+      hud.finishPlace.textContent = place + " · room " + (net && net.room ? net.room : "");
+    } else {
+      if (cpus[0].finished && cpus[0].finishTime < player.finishTime) place += 1;
+      if (!cpus[0].finished && !player.finished) place += 1;
+      if (cpus[1].finished && cpus[1].finishTime < player.finishTime) place += 1;
+      var names = ["1st", "2nd", "3rd"];
+      hud.finishPlace.textContent = names[place - 1] + " · vs Hall Monitor & Sub Teacher";
+    }
   }
 
   function updateHud() {
@@ -1080,6 +1126,7 @@
     var fz = Math.sin(player.heading);
     var desired = new THREE.Vector3(player.x - fx * back, up, player.z - fz * back);
     var look = new THREE.Vector3(player.x + fx * 7, 1.2, player.z + fz * 7);
+    desired.y = up;
     camera.position.lerp(desired, 1 - Math.pow(0.0015, dt));
     camera.lookAt(look);
   }
@@ -1115,8 +1162,8 @@
     }
     if (
       !jumped &&
-      (Math.abs(player.x - GRID_P2_X) > 0.85 ||
-        Math.abs(player.z - GRID_P2_Z) > 0.85 ||
+      (Math.abs(player.x - playerGridX) > 0.85 ||
+        Math.abs(player.z - playerGridZ) > 0.85 ||
         player.speed > 0.75)
     ) {
       jumped = true;
@@ -1128,6 +1175,11 @@
       for (var w = 0; w < wheels.length; w++) wheels[w].spinner.rotation.z -= spin;
     }
 
+    if (mpMode && net && net.active) {
+      startPhase = net.startPhase || startPhase;
+      redsOn = net.redsOn;
+      holdDelay = net.holdDelay || holdDelay;
+    } else {
     startT -= dt;
     if (startPhase === "prestart") {
       hud.startMsg.textContent = "PRE-START";
@@ -1166,9 +1218,180 @@
         setRevSound(false);
       }
     }
-    pinGrid(cpus[0], -6, SF_Z + 2.7);
-    pinGrid(cpus[1], -22, SF_Z + 2.7);
+    }
+
+    if (mpMode) {
+      if (startPhase === "prestart") {
+        hud.startMsg.textContent = "PRE-START";
+        hud.startMsg.className = "start-msg";
+        paintLights(0, true);
+      } else if (startPhase === "reds" || startPhase === "hold") {
+        hud.startMsg.textContent = "LIGHTS";
+        hud.startMsg.className = "start-msg reds";
+        paintLights(redsOn, false);
+      }
+    }
+    if (!mpMode) {
+      pinGrid(cpus[0], -6, SF_Z + 2.7);
+      pinGrid(cpus[1], -22, SF_Z + 2.7);
+    }
     chaseCamera(dt);
+  }
+
+  function lerpAng(a, b, t) {
+    var d = Math.atan2(Math.sin(b - a), Math.cos(b - a));
+    return a + d * t;
+  }
+
+  function clearRemotes() {
+    Object.keys(remotes).forEach(function (id) {
+      scene.remove(remotes[id].r.mesh);
+    });
+    remotes = {};
+  }
+
+  function ensureRemote(id, slot) {
+    if (remotes[id]) return remotes[id];
+    var skin = SKINS[slot % SKINS.length];
+    var r = createRacer("net", skin.color, skin.name, skin.num);
+    remotes[id] = { r: r, from: null, to: null, at: 0, ghost: false };
+    return remotes[id];
+  }
+
+  function ingestSnap(cars) {
+    var seen = {};
+    var now = performance.now();
+    (cars || []).forEach(function (c) {
+      if (c.id === (net && net.id)) return;
+      seen[c.id] = true;
+      var rem = ensureRemote(c.id, c.slot || 0);
+      rem.ghost = !!c.ghost;
+      rem.r.mesh.visible = true;
+      rem.r.mesh.traverse(function (ch) {
+        if (ch.material && ch.material.opacity !== undefined) {
+          ch.material.transparent = !!c.ghost;
+          if (ch.material.transparent) ch.material.opacity = 0.45;
+        }
+      });
+      rem.from = rem.to;
+      rem.to = { x: c.x, z: c.z, h: c.h, spd: c.spd, t: now };
+      rem.at = now;
+      rem.r.lap = c.lap;
+      rem.r.finished = !!c.finished;
+      rem.r.finishTime = rem.r.finished ? rem.r.finishTime || raceTime : 0;
+    });
+    Object.keys(remotes).forEach(function (id) {
+      if (!seen[id]) {
+        scene.remove(remotes[id].r.mesh);
+        delete remotes[id];
+      }
+    });
+  }
+
+  function poseRemotes() {
+    var now = performance.now();
+    Object.keys(remotes).forEach(function (id) {
+      var rem = remotes[id];
+      var r = rem.r;
+      if (rem.from && rem.to) {
+        var span = Math.max(16, rem.to.t - rem.from.t);
+        var u = clamp((now - rem.to.t) / span, 0, 1);
+        r.x = rem.from.x + (rem.to.x - rem.from.x) * u;
+        r.z = rem.from.z + (rem.to.z - rem.from.z) * u;
+        r.heading = lerpAng(rem.from.h, rem.to.h, u);
+        r.speed = rem.to.spd;
+      } else if (rem.to) {
+        r.x = rem.to.x;
+        r.z = rem.to.z;
+        r.heading = rem.to.h;
+        r.speed = rem.to.spd;
+      }
+      poseCar(r);
+      var wheels = r.mesh.userData.wheels;
+      if (wheels) {
+        var spin = r.speed * 0.04;
+        for (var i = 0; i < wheels.length; i++) wheels[i].spinner.rotation.z -= spin;
+      }
+    });
+  }
+
+  function bashRemotes() {
+    Object.keys(remotes).forEach(function (id) {
+      bashCars(player, remotes[id].r);
+    });
+  }
+
+  function sendNetState() {
+    if (!mpMode || !net || !net.active || !net.connected) return;
+    var now = performance.now();
+    if (now - lastNetSend < 80) return;
+    lastNetSend = now;
+    net.sendState({
+      x: player.x,
+      z: player.z,
+      h: player.heading,
+      spd: player.speed,
+      slide: player.slide,
+      lap: player.lap,
+      fuel: player.fuel,
+      tires: player.tires,
+      pit: pitServicing ? 1 : 0,
+      finished: player.finished ? 1 : 0,
+    });
+  }
+
+  function paintRoster() {
+    if (!hud.roster || !net) return;
+    hud.roomCode.textContent = net.room || "-----";
+    hud.lobbyStatus.textContent = net.isHost()
+      ? "You are host · Enter to grid up"
+      : "Waiting for host to grid up";
+    hud.lobbyErr.textContent = net.err || "";
+    hud.roster.innerHTML = "";
+    (net.players || []).forEach(function (p) {
+      var li = document.createElement("li");
+      var skin = SKINS[p.slot % SKINS.length];
+      li.textContent =
+        (p.id === net.id ? "YOU · " : "") +
+        (p.name || skin.name) +
+        "  #" +
+        skin.num +
+        (p.id === net.hostId ? " · host" : "") +
+        (p.ghost || !p.connected ? " · ghost" : "");
+      if (p.ghost || !p.connected) li.className = "ghost";
+      hud.roster.appendChild(li);
+    });
+  }
+
+  function beginOnlineStart() {
+    mpMode = true;
+    var mine = (net.players || []).filter(function (p) {
+      return p.id === net.id;
+    })[0];
+    var slot = mine ? mine.slot : 1;
+    var g = gridSlot(slot);
+    playerGridX = g.x;
+    playerGridZ = g.z;
+    resetGrid();
+    state = "start";
+    setScreen("start");
+    hud.startMsg.textContent = "PRE-START";
+    hud.startMsg.className = "start-msg";
+    paintLights(0, true);
+    ensureAudio();
+    sendNetState();
+  }
+
+  function goOnline() {
+    if (state === "start") {
+      paintLights(0, false);
+      hud.startMsg.textContent = "GO";
+      hud.startMsg.className = "start-msg go";
+      applyLaunch();
+      state = "racing";
+      setScreen("racing");
+      setRevSound(false);
+    }
   }
 
   function tick(ts) {
@@ -1179,11 +1402,15 @@
     if (launchT > 0) launchT -= dt;
     if (jumpT > 0) jumpT -= dt;
 
-    if (state === "title") {
+    if (state === "title" || state === "lobby") {
       titleCamera(dt);
       setRevSound(false);
     } else if (state === "start") {
       tickStart(dt);
+      if (mpMode) {
+        poseRemotes();
+        sendNetState();
+      }
     } else if (state === "racing") {
       raceTime += dt;
       revs = 0;
@@ -1221,14 +1448,21 @@
         poseCar(player);
       }
       updateLaps(player);
-      updateCpu(cpus[0], dt);
-      updateCpu(cpus[1], dt);
-      bashCars(player, cpus[0]);
-      bashCars(player, cpus[1]);
-      bashCars(cpus[0], cpus[1]);
-      bashCars(player, cpus[0]);
-      bashCars(player, cpus[1]);
-      bashCars(cpus[0], cpus[1]);
+      if (mpMode) {
+        poseRemotes();
+        bashRemotes();
+        bashRemotes();
+        sendNetState();
+      } else {
+        updateCpu(cpus[0], dt);
+        updateCpu(cpus[1], dt);
+        bashCars(player, cpus[0]);
+        bashCars(player, cpus[1]);
+        bashCars(cpus[0], cpus[1]);
+        bashCars(player, cpus[0]);
+        bashCars(player, cpus[1]);
+        bashCars(cpus[0], cpus[1]);
+      }
       chaseCamera(dt);
       if (player.finished) finishRace();
     } else {
@@ -1245,7 +1479,14 @@
     keys[e.code] = down;
     if (down) ensureAudio();
     if (down && (e.code === "Space" || e.code === "Enter")) {
-      if (state === "title" || state === "finished") startSequence();
+      if (state === "title") startSequence();
+      else if (state === "lobby" && e.code === "Enter" && net && net.isHost()) net.start();
+      else if (state === "finished" && !mpMode) startSequence();
+      else if (state === "finished" && mpMode) {
+        state = "lobby";
+        setScreen("lobby");
+        paintRoster();
+      }
       e.preventDefault();
     }
     if (
@@ -1273,6 +1514,83 @@
     renderer.setSize(window.innerWidth, window.innerHeight);
     layoutCamera();
   });
+
+  function openFriends(action, code) {
+    if (!net) {
+      if (hud.lobbyErr) hud.lobbyErr.textContent = "Net script missing — solo still works";
+      return;
+    }
+    net.connect(function (err) {
+      if (err) {
+        if (hud.lobbyErr) hud.lobbyErr.textContent = "Server offline — play solo";
+        return;
+      }
+      if (action === "create") net.create(net.name);
+      else net.join(code, net.name);
+    });
+  }
+
+  if (net) {
+    net.on("room", function () {
+      if (net.phase === "lobby" || net.phase === "finish") {
+        if (state === "title" || state === "lobby" || state === "finished") {
+          state = "lobby";
+          setScreen("lobby");
+        }
+      }
+      paintRoster();
+    });
+    net.on("lights", function () {
+      if (state === "lobby" || state === "title") beginOnlineStart();
+    });
+    net.on("go", goOnline);
+    net.on("snap", function (msg) {
+      ingestSnap(msg.cars);
+    });
+    net.on("err", paintRoster);
+    net.on("drop", function () {
+      if (!mpMode || !net.room) return;
+      net.connect(function (err) {
+        if (!err) net.join(net.room, net.name);
+      });
+    });
+  }
+
+  var btnSolo = document.getElementById("btn-solo");
+  var btnCreate = document.getElementById("btn-create");
+  var btnJoin = document.getElementById("btn-join");
+  var btnGrid = document.getElementById("btn-grid");
+  var btnLeave = document.getElementById("btn-leave");
+  var joinCode = document.getElementById("join-code");
+  if (btnSolo) {
+    btnSolo.addEventListener("click", function () {
+      startSequence();
+    });
+  }
+  if (btnCreate) {
+    btnCreate.addEventListener("click", function () {
+      openFriends("create");
+    });
+  }
+  if (btnJoin) {
+    btnJoin.addEventListener("click", function () {
+      openFriends("join", joinCode && joinCode.value);
+    });
+  }
+  if (btnGrid) {
+    btnGrid.addEventListener("click", function () {
+      if (net && net.isHost()) net.start();
+    });
+  }
+  if (btnLeave) {
+    btnLeave.addEventListener("click", function () {
+      mpMode = false;
+      if (net) net.leave();
+      clearRemotes();
+      state = "title";
+      setScreen("title");
+    });
+  }
 
   addWorld();
   resetGrid();
