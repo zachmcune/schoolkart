@@ -159,7 +159,7 @@
   });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.2));
   renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.setClearColor(0xff9a54, 1);
+  renderer.setClearColor(0xe87834, 1);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
 
   function layoutCamera() {
@@ -169,7 +169,7 @@
   }
 
   var scene = new THREE.Scene();
-  scene.fog = new THREE.Fog(0xffb072, 140, 560);
+  scene.fog = new THREE.Fog(0xf08a48, 260, 640);
 
   var camera = new THREE.PerspectiveCamera(
     62,
@@ -213,6 +213,7 @@
     hostTools: document.getElementById("host-tools"),
     nameInput: document.getElementById("display-name"),
     speedBtn: document.getElementById("btn-speed"),
+    bowieBtn: document.getElementById("btn-add-bowie"),
     circuit: document.getElementById("circuit-name"),
     touchLayer: document.getElementById("touch-layer"),
     revBtn: document.getElementById("rev-btn"),
@@ -773,12 +774,12 @@
     trackRoot = new THREE.Group();
     scene.add(trackRoot);
 
-    var apron = makeRibbon(ASPHALT + 11, 0.03, 0x6aaa40, null);
+    var apron = makeRibbon(ASPHALT + 11, 0.03, 0x4e8c2e, null);
     if (apron) trackRoot.add(apron);
-    var runoff = makeRibbon(ASPHALT + 5.4, 0.045, 0xe0b85a, null);
+    var runoff = makeRibbon(ASPHALT + 5.4, 0.045, 0xd4a84a, null);
     if (runoff) trackRoot.add(runoff);
 
-    trackRoot.add(makeRibbon(ASPHALT, 0.07, 0x10100e, null));
+    trackRoot.add(makeRibbon(ASPHALT, 0.07, 0x0c0c0b, null));
     trackRoot.add(makeRibbon(0.42, 0.095, 0xffffff, null));
     trackRoot.add(makeEdges(ASPHALT - 0.38, 0.22, 0.096, 0xf4f1e6));
     trackRoot.add(makeEdges(-(ASPHALT - 0.38), 0.22, 0.096, 0xf4f1e6));
@@ -979,13 +980,16 @@
   }
 
   function addWorld() {
-    scene.add(new THREE.HemisphereLight(0xffd4a8, 0x3d6a28, 1.05));
-    var sun = new THREE.DirectionalLight(0xffc078, 0.85);
-    sun.position.set(90, 26, -50);
+    scene.add(new THREE.HemisphereLight(0xffe6c4, 0x162214, 0.38));
+    var sun = new THREE.DirectionalLight(0xfff4dc, 1.55);
+    sun.position.set(72, 58, -42);
     scene.add(sun);
+    var shade = new THREE.DirectionalLight(0x3a5470, 0.2);
+    shade.position.set(-55, 16, 48);
+    scene.add(shade);
 
-    addBox(-40, -0.2, 80, 1100, 0.4, 900, 0x4e8c32);
-    addBox(8, 0.02, 40, 120, 0.06, 90, 0x5a9a3a);
+    addBox(-40, -0.2, 80, 1100, 0.4, 900, 0x3a6e28);
+    addBox(8, 0.02, 40, 120, 0.06, 90, 0x458434);
     addTrackMesh();
 
     addBox(8, 4.2, SF_Z - 17, 36, 6.4, 7, 0x8a4030);
@@ -1438,7 +1442,7 @@
     return new THREE.MeshLambertMaterial({
       color: color,
       emissive: color,
-      emissiveIntensity: glow == null ? 0.26 : glow,
+      emissiveIntensity: glow == null ? 0.06 : glow,
       side: THREE.DoubleSide,
     });
   }
@@ -1446,9 +1450,9 @@
   function makeCar(bodyColor, wingColor, num) {
     var g = new THREE.Group();
     var accent = wingColor || TEAL_DEEP;
-    var body = carMat(bodyColor, 0.3);
-    var wing = carMat(accent, 0.24);
-    var halo = carMat(0xf4efe6, 0.2);
+    var body = carMat(bodyColor, 0.07);
+    var wing = carMat(accent, 0.05);
+    var halo = carMat(0xf4efe6, 0.1);
     body.userData.part = "body";
     wing.userData.part = "wing";
 
@@ -1539,9 +1543,9 @@
       [-1.25, 0.3, 0.86, false],
       [-1.25, 0.3, -0.86, false],
     ];
-    var rubber = carMat(0x4a4a4a, 0.14);
-    var sidewall = new THREE.MeshBasicMaterial({ color: 0xf0e6d2, side: THREE.DoubleSide });
-    var rim = new THREE.MeshBasicMaterial({ color: 0xfff8ee, side: THREE.DoubleSide });
+    var rubber = carMat(0x1a1a1a, 0.02);
+    var sidewall = carMat(0xf2e6cc, 0.08);
+    var rim = carMat(0xfff6e8, 0.12);
     for (var i = 0; i < spots.length; i++) {
       var holder = new THREE.Group();
       holder.position.set(spots[i][0], spots[i][1], spots[i][2]);
@@ -1563,7 +1567,7 @@
 
     var blob = new THREE.Mesh(
       new THREE.CircleGeometry(1.15, 10),
-      new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.25, side: THREE.DoubleSide })
+      new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.4, side: THREE.DoubleSide })
     );
     blob.rotation.x = -Math.PI * 0.5;
     blob.position.y = 0.03;
@@ -3250,6 +3254,10 @@
     hud.lobbyErr.textContent = net.err || "";
     if (hud.hostTools) hud.hostTools.classList.toggle("hidden", !net.isHost());
     if (hud.gridBtn) hud.gridBtn.classList.toggle("hidden", !net.isHost());
+    var bowieIn = (net.players || []).some(function (p) {
+      return p.bot && p.name === "BowieKnife99";
+    });
+    if (hud.bowieBtn) hud.bowieBtn.disabled = !net.isHost() || bowieIn;
     var still = false;
     (net.players || []).forEach(function (p) {
       if (p.id === lobbyPick) still = true;
@@ -4000,6 +4008,11 @@
   if (btnAddBot) {
     btnAddBot.addEventListener("click", function () {
       if (net && net.isHost()) net.addBot();
+    });
+  }
+  if (hud.bowieBtn) {
+    hud.bowieBtn.addEventListener("click", function () {
+      if (net && net.isHost() && !hud.bowieBtn.disabled) net.addBowie();
     });
   }
   if (btnRemoveBot) {

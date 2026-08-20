@@ -111,6 +111,7 @@ waitHealth()
         assert(html.indexOf("Right gas · Left brake · Tilt to steer") !== -1, "mobile hint");
         assert(html.indexOf("body-swatches") !== -1, "garage on origin");
         assert(html.indexOf("btn-track") !== -1, "track editor on origin");
+        assert(html.indexOf("Add Bowie knife") !== -1, "Add Bowie knife button");
       });
     });
   })
@@ -295,26 +296,63 @@ function lobbyExtras() {
         });
       })
       .then(function () {
-        h.send({ t: "bot", op: "add" });
-        return h.waitFor(function (m) {
-          return m.t === "room" && m.players.some(function (p) {
-            return p.bot;
-          });
+        g.send({ t: "bot", op: "bowie" });
+        return g.waitFor(function (m) {
+          return m.t === "err";
         });
       })
-      .then(function (withBot) {
-        assert(withBot.players.length === 3, "host + guest + cpu");
-        var bot = withBot.players.filter(function (p) {
+      .then(function (guestBowie) {
+        assert(/host/i.test(guestBowie.msg), "guest cannot add Bowie");
+        h.send({ t: "bot", op: "bowie" });
+        h.send({ t: "bot", op: "bowie" });
+        return h.waitFor(function (m) {
+          return (
+            m.t === "room" &&
+            m.players.filter(function (p) {
+              return p.bot && p.name === "BowieKnife99";
+            }).length === 1 &&
+            m.players.filter(function (p) {
+              return p.bot;
+            }).length === 1
+          );
+        });
+      })
+      .then(function (withBowie) {
+        assert(withBowie.players.length === 3, "host + guest + Bowie");
+        h.send({ t: "bot", op: "add" });
+        return h.waitFor(function (m) {
+          return (
+            m.t === "room" &&
+            m.players.filter(function (p) {
+              return p.bot;
+            }).length === 2
+          );
+        });
+      })
+      .then(function (withTwo) {
+        var bots = withTwo.players.filter(function (p) {
           return p.bot;
+        });
+        assert(bots.length === 2, "host + guest + Bowie + extra");
+        var names = bots.map(function (p) {
+          return p.name;
+        });
+        assert(names.indexOf("BowieKnife99") !== -1, "hunter still in");
+        assert(names.indexOf("Hall Monitor") !== -1, "+Bot still adds other personalities");
+        var extra = bots.filter(function (p) {
+          return p.name !== "BowieKnife99";
         })[0];
-        assert(bot.name === "BowieKnife99", "first cpu is BowieKnife99");
         h.send({ t: "kick", id: "joinE" });
         return g
           .waitFor(function (m) {
             return m.t === "kicked";
           })
           .then(function () {
-            h.send({ t: "bot", op: "remove", id: bot.id });
+            h.send({ t: "bot", op: "remove", id: extra.id });
+            var hunter = bots.filter(function (p) {
+              return p.name === "BowieKnife99";
+            })[0];
+            h.send({ t: "bot", op: "remove", id: hunter.id });
             return h.waitFor(function (m) {
               return (
                 m.t === "room" &&
@@ -325,7 +363,7 @@ function lobbyExtras() {
           });
       })
       .then(function () {
-        console.log("OK lobby names/kick/bot/speed", code);
+        console.log("OK lobby names/kick/bot/speed/bowie", code);
         h.close();
         g.close();
       });

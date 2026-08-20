@@ -50,7 +50,7 @@ Car **#7** is white/teal by default. Title-screen garage picks body + wing color
 
 ## Multiplayer (Chromebook lunch)
 
-Friends open the Railway URL. One **name field**, then **Create** / **Join**. The in-room list shows names with a **★** on the host. Host-only buttons under the list: **Kick** (tap a name first), **+Bot −Bot**, and **1x · 1.25x** (cycles, 0.75x too). Speed is the same for everyone. Host hits **Grid up** (or Enter). Max 8 cars including CPUs. Same handling / fuel / tires as solo — no extra grip, no rubber-band.
+Friends open the Railway URL. One **name field**, then **Create** / **Join**. The in-room list shows names with a **★** on the host. Host-only buttons under the list: **Kick** (tap a name first), **+Bot −Bot**, **Add Bowie knife** (seats the hunter once; disables if they’re already in), and **1x · 1.25x** (cycles, 0.75x too). Speed is the same for everyone. Host hits **Grid up** (or Enter). Max 8 cars including CPUs. Same handling / fuel / tires as solo — no extra grip, no rubber-band.
 
 Late join after lights-out drops them into the live race and **says so** (no silent fail). Refresh **rejoins the same room and the same race** — same clock, fuel, tires, lap, and the other cars. It does not spawn a fresh 0:00 / full-tank solo. A dropped car goes **ghost**; they can come back. Tab blur does not wipe the room. If the server is down, **Solo** still works.
 
@@ -85,6 +85,6 @@ npm test
 
 Repo is also a static site (HTML + CSS + JS + Three.js from CDN). Public Pages currently deploys from this branch (`cursor/campus-loop-playable-f645`). Use Railway as the school link.
 
-`index.html` is marked `no-store`. JS/CSS are versioned (`?v=mp27`) so a **normal reload** picks up the lobby.
+`index.html` is marked `no-store`. JS/CSS are versioned (`?v=mp28`) so a **normal reload** picks up the lobby.
 
 No bundler. Keyboard on Chromebooks. Phones get tilt + halves. Light enough for school Chrome / integrated graphics.

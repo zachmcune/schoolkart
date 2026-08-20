@@ -250,14 +250,32 @@ function blankCar(id, name, slot, ws) {
   };
 }
 
-function addBot(room) {
+function hasBowie(room) {
+  return room.players.some(function (p) {
+    return p.bot && p.name === "BowieKnife99";
+  });
+}
+
+function addBot(room, forcedName) {
   if (room.players.length >= MAX) return null;
   var ns = nextSlot(room);
   if (ns < 0) return null;
+  if (forcedName === "BowieKnife99") {
+    if (hasBowie(room)) return "exists";
+    var hunter = blankCar("bot-" + Math.random().toString(36).slice(2, 10), "BowieKnife99", ns, null);
+    hunter.bot = true;
+    hunter.connected = true;
+    room.players.push(hunter);
+    return hunter;
+  }
   var nBots = room.players.filter(function (p) {
     return p.bot;
   }).length;
-  var car = blankCar("bot-" + Math.random().toString(36).slice(2, 10), BOT_NAMES[nBots % BOT_NAMES.length], ns, null);
+  var name = BOT_NAMES[nBots % BOT_NAMES.length];
+  if (name === "BowieKnife99" && hasBowie(room)) {
+    name = BOT_NAMES[(nBots + 1) % BOT_NAMES.length];
+  }
+  var car = blankCar("bot-" + Math.random().toString(36).slice(2, 10), name, ns, null);
   car.bot = true;
   car.connected = true;
   room.players.push(car);
@@ -549,6 +567,12 @@ wss.on("connection", function (ws) {
       }
       if (msg.op === "add") {
         if (!addBot(room)) {
+          send(ws, { t: "err", msg: "Room is full (8)" });
+          return;
+        }
+      } else if (msg.op === "bowie") {
+        var bowie = addBot(room, "BowieKnife99");
+        if (!bowie) {
           send(ws, { t: "err", msg: "Room is full (8)" });
           return;
         }

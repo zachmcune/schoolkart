@@ -93,6 +93,10 @@
     send({ t: "bot", op: "add" });
   };
 
+  net.addBowie = function () {
+    send({ t: "bot", op: "bowie" });
+  };
+
   net.removeBot = function (id) {
     send({ t: "bot", op: "remove", id: id });
   };

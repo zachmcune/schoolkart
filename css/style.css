@@ -531,6 +531,17 @@ kbd {
   border-left: 0;
 }
 
+.lobby-btn.bowie {
+  text-transform: none;
+  letter-spacing: 0.04em;
+  border-color: var(--gold);
+}
+
+.lobby-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
 .race-names {
   position: absolute;
   left: 14px;
