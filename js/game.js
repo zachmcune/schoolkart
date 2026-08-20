@@ -3,9 +3,8 @@
    Feel spec: Pit Crew Designer (fuel/tires/handling locked)
 
    Controls: W gas, Space brake, S reverse, A/D steer.
-   Pit: peel LEFT, asphalt in / stop / out. Auto-service in the box
-   below a walk for 2.5s. Pauses if you creep. Resets if you leave
-   or hit W. Space is brake — not pit hold. One service per visit.
+   Pit: peel LEFT onto a split lane. Halfway in, the car is grabbed
+   and serviced ~2.5s, then released to drive out. One service per visit.
    Start: PRE-START blue flash, five reds at 1s, hold 0.2–3s all ON,
    lights out = GO. Fuel starts then. Space plants the marks. W revs.
    Dump W without Space and the car can roll = JUMP + 1.5s dead, still race. */
@@ -34,7 +33,6 @@
   var IDLE_FUEL = 0.98;
   var THROTTLE_FUEL = 0.24;
   var PIT_HOLD = 2.5;
-  var PIT_WALK = 1.8;
   var JUMP_DEAD = 1.5;
   var ASPHALT = 8.6;
   var GRASS_MAX = 8.5;
@@ -48,23 +46,17 @@
   var SF_Z = -80;
   var GRID_P2_X = -14;
   var GRID_P2_Z = SF_Z - 2.7;
-  var X0 = -42;
-  var X1 = 115;
-  var R90 = 22;
-  var EAST = 70;
-  var RH = 12;
-  var RS = 52;
 
-  // Separate F1 pit: peels LEFT off the racing line AFTER the grid, not a box on it.
-  var PIT_LANE = { x0: 20, x1: 78, z0: -63.2, z1: -53.6 };
-  var PIT_BOX = { x0: 36, x1: 52, z0: -63.8, z1: -53.0 };
+  // Split pit: peels LEFT off the south straight, grab halfway, exit before the 90.
+  var PIT_LANE = { x0: 14, x1: 72, z0: -66.2, z1: -57.6 };
+  var PIT_GRAB = { x0: 36, x1: 52, z0: -66.8, z1: -57.0 };
   var PIT_PAVE = [
-    { x0: 8, x1: 36, z0: -76.6, z1: -61.0 },
-    { x0: 14, x1: 40, z0: -70.0, z1: -53.2 },
+    { x0: 6, x1: 26, z0: -76.6, z1: -58.0 },
+    { x0: 12, x1: 32, z0: -70.0, z1: -57.2 },
     PIT_LANE,
-    PIT_BOX,
-    { x0: 48, x1: 88, z0: -72.0, z1: -53.2 },
-    { x0: 62, x1: 98, z0: -76.8, z1: -61.0 },
+    PIT_GRAB,
+    { x0: 54, x1: 74, z0: -70.0, z1: -57.2 },
+    { x0: 60, x1: 78, z0: -76.6, z1: -58.0 },
   ];
 
   var keys = Object.create(null);
@@ -78,6 +70,7 @@
   var pitTimer = 0;
   var pitFlash = 0;
   var pitUsedVisit = false;
+  var pitServicing = false;
   var lastTs = 0;
   var camYaw = 0.6;
   var revs = 0;
@@ -231,12 +224,14 @@
     TRACK_LEN += len;
   }
 
-  addLine(X0, SF_Z, X1, SF_Z, "start");
-  addArc(X1, SF_Z + R90, R90, Math.PI * 1.5, Math.PI * 2, "the90");
-  addLine(X1 + R90, SF_Z + R90, X1 + R90, SF_Z + R90 + EAST, "east");
-  addArc(X1 + R90 - RH, SF_Z + R90 + EAST, RH, 0, Math.PI * 0.5, "hairpin");
-  addLine(X1 + R90 - RH, SF_Z + R90 + EAST + RH, X0, SF_Z + R90 + EAST + RH, "north");
-  addArc(X0, SF_Z + R90 + EAST + RH - RS, RS, Math.PI * 0.5, Math.PI * 1.5, "sweeper");
+  addLine(-60, SF_Z, 70, SF_Z, "start");
+  addArc(70, SF_Z + 20, 20, Math.PI * 1.5, Math.PI * 2, "the90");
+  addLine(90, -60, 90, -6, "short");
+  addArc(70, -6, 20, 0, Math.PI * 0.5, "kink");
+  addLine(70, 14, -80, 14, "north");
+  addArc(-80, 2, 12, Math.PI * 0.5, Math.PI, "hairpin");
+  addLine(-92, 2, -92, -48, "west");
+  addArc(-60, -48, 32, Math.PI, Math.PI * 1.5, "sweeper");
 
   function pointOnSeg(seg, u) {
     if (seg.type === "line") {
@@ -283,7 +278,7 @@
       }
     }
     var dist = Math.sqrt(best.d2);
-    var inPit = inRect(px, pz, PIT_BOX);
+    var inPit = inRect(px, pz, PIT_GRAB);
     var onAsphalt = dist <= ASPHALT || onPitPavement(px, pz);
     return {
       x: best.x,
@@ -411,36 +406,40 @@
     var kerb90 = makeRibbon(ASPHALT + 0.78, 0.085, 0xff2a44, ["the90"]);
     var kerbHair = makeRibbon(ASPHALT + 0.78, 0.085, 0xff2a44, ["hairpin"]);
     var kerbSweep = makeRibbon(ASPHALT + 0.78, 0.085, 0xff2a44, ["sweeper"]);
+    var kerbKink = makeRibbon(ASPHALT + 0.78, 0.085, 0xff2a44, ["kink"]);
     var kerbW90 = makeRibbon(ASPHALT + 0.38, 0.086, 0xffffff, ["the90"]);
     var kerbWHair = makeRibbon(ASPHALT + 0.38, 0.086, 0xffffff, ["hairpin"]);
     var kerbWSweep = makeRibbon(ASPHALT + 0.38, 0.086, 0xffffff, ["sweeper"]);
+    var kerbWKink = makeRibbon(ASPHALT + 0.38, 0.086, 0xffffff, ["kink"]);
     if (kerb90) scene.add(kerb90);
     if (kerbHair) scene.add(kerbHair);
     if (kerbSweep) scene.add(kerbSweep);
+    if (kerbKink) scene.add(kerbKink);
     if (kerbW90) scene.add(kerbW90);
     if (kerbWHair) scene.add(kerbWHair);
     if (kerbWSweep) scene.add(kerbWSweep);
+    if (kerbWKink) scene.add(kerbWKink);
 
     for (var p = 0; p < PIT_PAVE.length; p++) {
       paveRect(PIT_PAVE[p], 0.08, 0x3d4a5c);
     }
-    paveRect(PIT_BOX, 0.12, TEAL);
+    paveRect(PIT_GRAB, 0.12, TEAL);
     addBox((PIT_LANE.x0 + PIT_LANE.x1) * 0.5, 0.115, PIT_LANE.z0, PIT_LANE.x1 - PIT_LANE.x0, 0.03, 0.34, 0xffe566);
     addBox((PIT_LANE.x0 + PIT_LANE.x1) * 0.5, 0.115, PIT_LANE.z1, PIT_LANE.x1 - PIT_LANE.x0, 0.03, 0.34, 0x7cffd4);
-    var pitDecal = labelPlane("BOX", 7.2, 2.8, "#0a2a28", "#2ec8c3");
+    var pitDecal = labelPlane("PIT", 7.2, 2.8, "#0a2a28", "#2ec8c3");
     pitDecal.rotation.x = -Math.PI * 0.5;
-    pitDecal.position.set(44, 0.16, -58.2);
+    pitDecal.position.set(44, 0.16, -61.8);
     scene.add(pitDecal);
     var inDecal = labelPlane("IN", 5.4, 2.2, "#102018", "#ffe566");
     inDecal.rotation.x = -Math.PI * 0.5;
-    inDecal.position.set(18, 0.16, -68);
+    inDecal.position.set(16, 0.16, -68);
     scene.add(inDecal);
     var outDecal = labelPlane("OUT", 5.8, 2.2, "#102018", "#7cffd4");
     outDecal.rotation.x = -Math.PI * 0.5;
-    outDecal.position.set(82, 0.16, -68);
+    outDecal.position.set(66, 0.16, -68);
     scene.add(outDecal);
     for (var hsh = 0; hsh < 4; hsh++) {
-      addBox(38 + hsh * 3.6, 0.14, -58.4, 1.15, 0.02, 7.2, 0xffffff);
+      addBox(38 + hsh * 3.6, 0.14, -61.8, 1.15, 0.02, 7.2, 0xffffff);
     }
 
     var stripe = new THREE.Mesh(
@@ -473,15 +472,15 @@
       addBox(8 + row * 6, 4.4, SF_Z - 14.2, 5, 0.16, 0.16, 0xf4efe6);
     }
 
-    addBox(-8, 5.4, -8, 16, 10.8, 12, 0xb4532e);
-    addBox(-8, 11.2, -8, 18, 1, 14, 0x8a3a22);
-    addBox(78, 4.8, -20, 14, 9.6, 16, 0xa34628);
-    addBox(78, 10, -20, 16, 0.9, 18, 0x7a301c);
-    addBox(52, 3.8, 8, 18, 7.6, 10, 0xc4683a);
-    addBox(20, 0.35, -16, 24, 0.16, 32, 0x6f9a42);
+    addBox(-8, 5.4, -32, 16, 10.8, 12, 0xb4532e);
+    addBox(-8, 11.2, -32, 18, 1, 14, 0x8a3a22);
+    addBox(28, 4.8, -36, 14, 9.6, 16, 0xa34628);
+    addBox(28, 10, -36, 16, 0.9, 18, 0x7a301c);
+    addBox(-36, 3.8, -28, 18, 7.6, 10, 0xc4683a);
+    addBox(8, 0.35, -30, 24, 0.16, 32, 0x6f9a42);
 
-    var towerX = 36;
-    var towerZ = -22;
+    var towerX = 8;
+    var towerZ = -28;
     addBox(towerX, 11, towerZ, 7.2, 22, 7.2, 0x9a3f2a);
     addBox(towerX, 22.6, towerZ, 8.4, 1.4, 8.4, 0xd8b48a);
     addBox(towerX, 25.2, towerZ, 3.2, 4.2, 3.2, 0x8a3a22);
@@ -520,9 +519,10 @@
       pl.position.set(x, 3.2, z);
       scene.add(pl);
     }
-    cornerFlag(X1 + 6, SF_Z - 12, "THE 90");
-    cornerFlag(X1 + R90 + 10, SF_Z + R90 + EAST + 6, "HAIRPIN");
-    cornerFlag(X0 - 18, -28, "SWEEPER");
+    cornerFlag(78, SF_Z - 14, "THE 90");
+    cornerFlag(90, 8, "SHORT");
+    cornerFlag(-70, 22, "HAIRPIN");
+    cornerFlag(-78, -58, "SWEEPER");
 
     for (var t = 0; t < 10; t++) {
       var tx = -30 + (t % 5) * 28;
@@ -710,6 +710,7 @@
     pitTimer = 0;
     pitFlash = 0;
     pitUsedVisit = false;
+    pitServicing = false;
     revs = 0;
     launchMul = 1;
     launchT = 0;
@@ -721,8 +722,12 @@
     holdDelay = 0.2 + Math.random() * 2.8;
   }
 
-  function inPitBox(r) {
-    return inRect(r.x, r.z, PIT_BOX);
+  function inPitGrab(r) {
+    return inRect(r.x, r.z, PIT_GRAB);
+  }
+
+  function inPitLane(r) {
+    return onPitPavement(r.x, r.z);
   }
 
   function updateLaps(r) {
@@ -821,8 +826,7 @@
     r.slide *= Math.pow(0.07, dt);
 
     r.mesh.position.set(r.x, 0, r.z);
-    r.mesh.rotation.y = -r.heading;
-    r.mesh.rotation.z = clamp(-steer * 0.1 - r.slide * 0.02, -0.18, 0.18);
+    r.mesh.rotation.set(0, -r.heading, 0);
     var wheels = r.mesh.userData.wheels;
     if (wheels) {
       var spin = r.speed * dt * 2.4;
@@ -845,6 +849,7 @@
         bend = 0.95;
         tight = 1;
       } else if (p.name === "the90") bend = 0.62;
+      else if (p.name === "kink") bend = 0.5;
       else if (p.name === "sweeper") bend = 0.22;
       if (bend > worst) worst = bend;
       look += 7;
@@ -931,7 +936,7 @@
 
   function poseCar(r) {
     r.mesh.position.set(r.x, 0, r.z);
-    r.mesh.rotation.y = -r.heading;
+    r.mesh.rotation.set(0, -r.heading, 0);
   }
 
   function playerInput() {
@@ -1051,13 +1056,13 @@
     hud.tireFill.style.background = tires < 40 ? "linear-gradient(90deg,#8a5a10,#ffd36a)" : "";
     hud.revFill.style.width = Math.round(revs * 100) + "%";
 
-    var boxed = state === "racing" && inPitBox(player);
+    var pitting = state === "racing" && (pitServicing || inPitLane(player));
     var pct = Math.min(100, Math.round((pitTimer / PIT_HOLD) * 100));
-    hud.pitting.classList.toggle("hidden", !boxed && pitFlash <= 0);
+    hud.pitting.classList.toggle("hidden", !pitting && pitFlash <= 0);
     if (pitFlash > 0) hud.pitting.textContent = "SERVICED";
-    else if (boxed && pitUsedVisit) hud.pitting.textContent = "SERVICED — pull out";
-    else if (boxed && Math.abs(player.speed) < PIT_WALK) hud.pitting.textContent = "PITTING  " + pct + "%";
-    else if (boxed) hud.pitting.textContent = "SLOW TO A WALK";
+    else if (pitServicing) hud.pitting.textContent = "PITTING  " + pct + "%";
+    else if (inPitLane(player) && pitUsedVisit) hud.pitting.textContent = "SERVICED — drive out";
+    else if (inPitLane(player)) hud.pitting.textContent = "PIT LANE";
 
     var warn = "";
     if (jumpT > 0 || (state === "start" && jumped)) warn = "JUMP";
@@ -1081,8 +1086,8 @@
 
   function titleCamera(dt) {
     camYaw += dt * 0.16;
-    camera.position.set(36 + Math.cos(camYaw) * 78, 30, -22 + Math.sin(camYaw) * 78);
-    camera.lookAt(36, 8, -22);
+    camera.position.set(8 + Math.cos(camYaw) * 88, 32, -28 + Math.sin(camYaw) * 88);
+    camera.lookAt(8, 8, -28);
   }
 
   function pinGrid(r, x, z) {
@@ -1188,24 +1193,33 @@
         player.speed = 0;
         player.slide = 0;
       }
-      var boxed = inPitBox(player);
-      if (!boxed) {
+      if (!inPitLane(player) && !pitServicing) {
         pitTimer = 0;
         pitUsedVisit = false;
-      } else if (!pitUsedVisit && input.throttle) {
-        pitTimer = 0;
-      } else if (!pitUsedVisit && Math.abs(player.speed) < PIT_WALK) {
+      }
+      if (pitServicing) {
+        input = { steer: 0, throttle: false, reverse: false, brake: true };
+        player.speed = 0;
+        player.slide = 0;
         pitTimer += dt;
         if (pitTimer >= PIT_HOLD) {
           player.fuel = 100;
           player.tires = 100;
           didPit = true;
           pitUsedVisit = true;
+          pitServicing = false;
           pitTimer = 0;
           pitFlash = 1.2;
         }
       }
       applyMotion(player, input.steer, input.throttle, input.brake, input.reverse, dt, true);
+      if (!pitServicing && !pitUsedVisit && inPitGrab(player)) {
+        pitServicing = true;
+        pitTimer = 0;
+        player.speed = 0;
+        player.slide = 0;
+        poseCar(player);
+      }
       updateLaps(player);
       updateCpu(cpus[0], dt);
       updateCpu(cpus[1], dt);
@@ -1253,7 +1267,7 @@
   });
   window.addEventListener("blur", function () {
     keys = Object.create(null);
-    // pitTimer stays on blur. Leave the box or hit W to reset.
+    // pitTimer stays on blur. Leave the pit lane to reset a visit.
   });
   window.addEventListener("resize", function () {
     renderer.setSize(window.innerWidth, window.innerHeight);

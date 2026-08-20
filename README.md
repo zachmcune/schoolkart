@@ -24,11 +24,11 @@ Then visit `http://localhost:8080`.
 
 | Thing | Rule |
 | --- | --- |
-| Handling | Brake or you run wide. Stab **the 90**, slow for the **hairpin**, carry the **sweeper** only if tires are fresh. Holding W the whole way loses. |
+| Handling | Brake or you run wide. Stab **the 90**, a **short**, a **kink**, slow for the **hairpin**, carry the **sweeper** only if tires are fresh. Holding W the whole way loses. Not a ring. |
 | Fuel | The **clock**. Ticks even while coasting. One forced box in 5 laps. Skip it and limp home. |
 | Tires | **Handling** (sloppy, run wide) — never a speed cap. Worn tires can still crawl to the box. Only **empty fuel** limps. |
 | Grass | A **crawl** plus extra wear. Never faster than asphalt, never parked at 0. Miss the peel and you can still roll back on. Holding W on the lawn loses. Readable green / sandy runoff — not a black void. |
-| Pit | Real pull-off: peel **LEFT** into a separate pit lane (IN), stop in the teal **BOX**, then pull **OUT**. Service is automatic when you are in the box **and** below a walk for 2.5s. Timer **pauses** if you creep, **resets** if you leave the box or hit **W**. Space is **brake**, not pit hold. One service per visit. **S** reverse unsticks an overshoot. Blur does not zero the timer. |
+| Pit | Peel **LEFT** onto a lane that splits off the south straight. Drive **halfway** in — the car is grabbed and serviced (~2.5s, fuel + tires), then released to drive out. No Space, no sit-still. One service per visit. Full asphalt enter / exit. |
 
 **Controls:** W / ↑ throttle (also revs on the grid) · **Space = brake** · **S / ↓ reverse** · A D / ← → steer · Enter or Space on the title to grid up.
 
