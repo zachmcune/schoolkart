@@ -30,8 +30,10 @@
   var LIMP_ACCEL = 6;
   var STEER_RATE = 2.35;
   var MAX_LAT = 28;
-  var IDLE_FUEL = 0.98;
-  var THROTTLE_FUEL = 0.24;
+  // Burn is the clock. Retuned for measured TRACK_LEN (~1979). 5 laps
+  // still force ONE box — a second stop should never be required.
+  var IDLE_FUEL = 0.46;
+  var THROTTLE_FUEL = 0.12;
   var PIT_HOLD = 2.5;
   var JUMP_DEAD = 1.5;
   var ASPHALT = 8.6;
@@ -123,13 +125,13 @@
   }
 
   var scene = new THREE.Scene();
-  scene.fog = new THREE.Fog(0xffb072, 85, 250);
+  scene.fog = new THREE.Fog(0xffb072, 140, 560);
 
   var camera = new THREE.PerspectiveCamera(
     58,
     window.innerWidth / window.innerHeight,
     0.4,
-    420
+    680
   );
   layoutCamera();
 
@@ -204,9 +206,12 @@
 
   function closestOnArc(px, pz, cx, cz, r, a0, a1) {
     var ang = Math.atan2(pz - cz, px - cx);
-    if (ang < 0) ang += Math.PI * 2;
+    var lo = Math.min(a0, a1);
+    var hi = Math.max(a0, a1);
     var a = ang;
-    if (a < a0 || a > a1) {
+    while (a < lo - Math.PI) a += Math.PI * 2;
+    while (a > hi + Math.PI) a -= Math.PI * 2;
+    if (a < lo || a > hi) {
       var d0 = Math.abs(Math.atan2(Math.sin(ang - a0), Math.cos(ang - a0)));
       var d1 = Math.abs(Math.atan2(Math.sin(ang - a1), Math.cos(ang - a1)));
       a = d0 < d1 ? a0 : a1;
@@ -215,8 +220,10 @@
     var qz = cz + Math.sin(a) * r;
     var ex = px - qx;
     var ez = pz - qz;
-    var t = (a - a0) / (a1 - a0);
-    return { x: qx, z: qz, d2: ex * ex + ez * ez, t: t, h: a + Math.PI * 0.5 };
+    var span = a1 - a0;
+    var t = span !== 0 ? (a - a0) / span : 0;
+    var hd = a1 >= a0 ? a + Math.PI * 0.5 : a - Math.PI * 0.5;
+    return { x: qx, z: qz, d2: ex * ex + ez * ez, t: t, h: hd };
   }
 
   var PATH = [];
@@ -253,14 +260,59 @@
     TRACK_LEN += len;
   }
 
-  addLine(-60, SF_Z, 70, SF_Z, "start");
-  addArc(70, SF_Z + 20, 20, Math.PI * 1.5, Math.PI * 2, "the90");
-  addLine(90, -60, 90, -6, "short");
-  addArc(70, -6, 20, 0, Math.PI * 0.5, "kink");
-  addLine(70, 14, -80, 14, "north");
-  addArc(-80, 2, 12, Math.PI * 0.5, Math.PI, "hairpin");
-  addLine(-92, 2, -92, -48, "west");
-  addArc(-60, -48, 32, Math.PI, Math.PI * 1.5, "sweeper");
+  var _x = -200;
+  var _z = SF_Z;
+  var _h = 0;
+
+  function pathLine(dist, name) {
+    var nx = _x + Math.cos(_h) * dist;
+    var nz = _z + Math.sin(_h) * dist;
+    addLine(_x, _z, nx, nz, name);
+    _x = nx;
+    _z = nz;
+  }
+
+  function pathArc(r, deg, name) {
+    var rad = (deg * Math.PI) / 180;
+    var side = deg > 0 ? 1 : -1;
+    var cx = _x + Math.cos(_h + side * Math.PI * 0.5) * r;
+    var cz = _z + Math.sin(_h + side * Math.PI * 0.5) * r;
+    var a0 = Math.atan2(_z - cz, _x - cx);
+    var a1 = a0 + rad;
+    addArc(cx, cz, r, a0, a1, name);
+    _h += rad;
+    _x = cx + Math.cos(a1) * r;
+    _z = cz + Math.sin(a1) * r;
+  }
+
+  function pathSnap(targetDeg, r, name) {
+    var cur = (((_h * 180) / Math.PI) % 360 + 360) % 360;
+    var d = targetDeg - cur;
+    while (d > 180) d -= 360;
+    while (d < -180) d += 360;
+    if (Math.abs(d) >= 0.4) pathArc(r, d, name);
+  }
+
+  pathLine(430, "start");
+  pathArc(40, 48, "the90");
+  pathArc(13, 42, "the90");
+  pathLine(320, "short");
+  pathArc(12, 88, "chicane");
+  pathLine(150, "chicane");
+  pathArc(9, -100, "chicane");
+  pathLine(18, "chicane");
+  pathArc(13, 60, "chicane");
+  pathSnap(180, 18, "chicane");
+  pathLine(_x - -360, "north");
+  pathArc(11, 180, "hairpin");
+  pathLine(18, "exit");
+  pathArc(16, -90, "kink");
+  var sweepR = -200 - _x;
+  var southLen = _z - sweepR - SF_Z;
+  pathLine(southLen, "west");
+  pathArc(sweepR, 90, "sweeper");
+
+  var RIBBON_SEGS = Math.max(360, Math.round(TRACK_LEN / 2.4));
 
   function pointOnSeg(seg, u) {
     if (seg.type === "line") {
@@ -275,7 +327,7 @@
     return {
       x: seg.cx + Math.cos(a) * seg.r,
       z: seg.cz + Math.sin(a) * seg.r,
-      h: a + Math.PI * 0.5,
+      h: seg.a1 >= seg.a0 ? a + Math.PI * 0.5 : a - Math.PI * 0.5,
       name: seg.name,
     };
   }
@@ -323,7 +375,7 @@
   }
 
   function makeEdges(inset, halfW, y, color) {
-    var segs = 260;
+    var segs = RIBBON_SEGS;
     var pos = [];
     var idx = [];
     var used = 0;
@@ -347,7 +399,7 @@
   }
 
   function makeRibbon(half, y, color, onlyNames) {
-    var segs = 260;
+    var segs = RIBBON_SEGS;
     var pos = [];
     var idx = [];
     var used = 0;
@@ -421,8 +473,8 @@
     sun.position.set(90, 26, -50);
     scene.add(sun);
 
-    addBox(0, -0.2, 0, 560, 0.4, 560, 0x4e8c32);
-    addBox(40, 0.02, -18, 90, 0.06, 70, 0x5a9a3a);
+    addBox(-40, -0.2, 80, 1100, 0.4, 900, 0x4e8c32);
+    addBox(8, 0.02, 40, 120, 0.06, 90, 0x5a9a3a);
     var apron = makeRibbon(ASPHALT + 11, 0.03, 0x6aaa40, null);
     if (apron) scene.add(apron);
     var runoff = makeRibbon(ASPHALT + 5.4, 0.045, 0xe0b85a, null);
@@ -435,19 +487,19 @@
     var kerb90 = makeRibbon(ASPHALT + 0.78, 0.085, 0xff2a44, ["the90"]);
     var kerbHair = makeRibbon(ASPHALT + 0.78, 0.085, 0xff2a44, ["hairpin"]);
     var kerbSweep = makeRibbon(ASPHALT + 0.78, 0.085, 0xff2a44, ["sweeper"]);
-    var kerbKink = makeRibbon(ASPHALT + 0.78, 0.085, 0xff2a44, ["kink"]);
+    var kerbChi = makeRibbon(ASPHALT + 0.78, 0.085, 0xff2a44, ["chicane"]);
     var kerbW90 = makeRibbon(ASPHALT + 0.38, 0.086, 0xffffff, ["the90"]);
     var kerbWHair = makeRibbon(ASPHALT + 0.38, 0.086, 0xffffff, ["hairpin"]);
     var kerbWSweep = makeRibbon(ASPHALT + 0.38, 0.086, 0xffffff, ["sweeper"]);
-    var kerbWKink = makeRibbon(ASPHALT + 0.38, 0.086, 0xffffff, ["kink"]);
+    var kerbWChi = makeRibbon(ASPHALT + 0.38, 0.086, 0xffffff, ["chicane"]);
     if (kerb90) scene.add(kerb90);
     if (kerbHair) scene.add(kerbHair);
     if (kerbSweep) scene.add(kerbSweep);
-    if (kerbKink) scene.add(kerbKink);
+    if (kerbChi) scene.add(kerbChi);
     if (kerbW90) scene.add(kerbW90);
     if (kerbWHair) scene.add(kerbWHair);
     if (kerbWSweep) scene.add(kerbWSweep);
-    if (kerbWKink) scene.add(kerbWKink);
+    if (kerbWChi) scene.add(kerbWChi);
 
     for (var p = 0; p < PIT_PAVE.length; p++) {
       paveRect(PIT_PAVE[p], 0.08, 0x3d4a5c);
@@ -507,6 +559,8 @@
     addBox(28, 10, -36, 16, 0.9, 18, 0x7a301c);
     addBox(-36, 3.8, -28, 18, 7.6, 10, 0xc4683a);
     addBox(8, 0.35, -30, 24, 0.16, 32, 0x6f9a42);
+    addBox(-48, 4.4, 96, 22, 8.8, 14, 0xa34628);
+    addBox(-48, 9.2, 96, 24, 0.8, 16, 0x7a301c);
 
     var towerX = 8;
     var towerZ = -28;
@@ -548,14 +602,28 @@
       pl.position.set(x, 3.2, z);
       scene.add(pl);
     }
-    cornerFlag(78, SF_Z - 14, "THE 90");
-    cornerFlag(90, 8, "SHORT");
-    cornerFlag(-70, 22, "HAIRPIN");
-    cornerFlag(-78, -58, "SWEEPER");
+    function flagOn(name, title, side) {
+      var s = 0;
+      var i;
+      for (i = 0; i < PATH.length; i++) {
+        if (PATH[i].name === name) {
+          s = PATH[i].startS + PATH[i].len * 0.55;
+          break;
+        }
+      }
+      var p = centerlinePoint(s);
+      var nx = -Math.sin(p.h);
+      var nz = Math.cos(p.h);
+      cornerFlag(p.x + nx * (ASPHALT + 7) * side, p.z + nz * (ASPHALT + 7) * side, title);
+    }
+    flagOn("the90", "THE 90", -1);
+    flagOn("chicane", "CHICANE", 1);
+    flagOn("hairpin", "HAIRPIN", -1);
+    flagOn("sweeper", "SWEEPER", 1);
 
-    for (var t = 0; t < 10; t++) {
-      var tx = -30 + (t % 5) * 28;
-      var tz = t < 5 ? 48 : -118;
+    for (var t = 0; t < 14; t++) {
+      var tx = -80 + (t % 7) * 36;
+      var tz = t < 7 ? 210 : -130;
       var trunk = new THREE.Mesh(
         new THREE.CylinderGeometry(0.4, 0.5, 3, 5),
         new THREE.MeshLambertMaterial({ color: 0x6a4020, side: THREE.DoubleSide })
@@ -876,15 +944,16 @@
     var look = 0;
     var worst = 0;
     var tight = 0;
-    while (look < 42) {
+    while (look < 80) {
       var p = centerlinePoint(s + look);
       var bend = 0;
       if (p.name === "hairpin") {
         bend = 0.95;
         tight = 1;
-      } else if (p.name === "the90") bend = 0.62;
-      else if (p.name === "kink") bend = 0.5;
-      else if (p.name === "sweeper") bend = 0.22;
+      } else if (p.name === "chicane") bend = 0.74;
+      else if (p.name === "the90") bend = 0.62;
+      else if (p.name === "kink") bend = 0.48;
+      else if (p.name === "sweeper") bend = 0.2;
       if (bend > worst) worst = bend;
       look += 7;
     }
@@ -1211,8 +1280,8 @@
 
   function titleCamera(dt) {
     camYaw += dt * 0.16;
-    camera.position.set(8 + Math.cos(camYaw) * 88, 32, -28 + Math.sin(camYaw) * 88);
-    camera.lookAt(8, 8, -28);
+    camera.position.set(8 + Math.cos(camYaw) * 120, 40, -20 + Math.sin(camYaw) * 120);
+    camera.lookAt(8, 8, -20);
   }
 
   function pinGrid(r, x, z) {

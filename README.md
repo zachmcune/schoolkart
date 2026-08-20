@@ -18,12 +18,12 @@ Local: `npm start`, then open `http://localhost:8787` (or whatever `PORT` is). S
 
 ## Campus Loop (locked feel)
 
-5 laps, ~2–3 minutes. This is **not** a kart racer and **not** a sim.
+5 laps. Measured centerline **1979** world units (about 2 km at 1 unit ≈ 1 m). This is **not** a kart racer and **not** a sim.
 
 | Thing | Rule |
 | --- | --- |
-| Handling | Brake or you run wide. Stab **the 90**, a **short**, a **kink**, slow for the **hairpin**, carry the **sweeper** only if tires are fresh. Holding W the whole way loses. Not a ring. |
-| Fuel | The **clock**. Ticks even while coasting. One forced box in 5 laps. Skip it and limp home. |
+| Handling | Brake or you run wide. Wind the two long straights. Decreasing-radius **90**, left-right **chicane** (lift or clip grass), real **180 hairpin** (late brake = dump), **sweeper** only on fresh tires. Holding W the whole way loses. |
+| Fuel | The **clock**. Ticks even while coasting. Burn is tuned so **5 laps still force one box** — never a second stop. Skip it and limp home. |
 | Tires | **Handling** (sloppy, run wide) — never a speed cap. Worn tires can still crawl to the box. Only **empty fuel** limps. |
 | Grass | A **crawl** plus extra wear. Never faster than asphalt, never parked at 0. Miss the peel and you can still roll back on. Holding W on the lawn loses. Readable green / sandy runoff — not a black void. |
 | Pit | Peel **LEFT** onto a lane that splits off the south straight. Drive **halfway IN the lane** — then the car is grabbed and serviced (~2.5s, fuel + tires) and released. Clipping the entry ramp does **not** count. No Space, no sit-still. One service per visit. |
@@ -73,6 +73,6 @@ npm test
 
 Repo is also a static site (HTML + CSS + JS + Three.js from CDN). Public Pages currently deploys from this branch (`cursor/campus-loop-playable-f645`). Use Railway as the school link.
 
-`index.html` is marked `no-store`. JS/CSS are versioned (`?v=mp5`) so a **normal reload** picks up the lobby.
+`index.html` is marked `no-store`. JS/CSS are versioned (`?v=mp6`) so a **normal reload** picks up the lobby.
 
 No bundler. Keyboard only. Light enough for school Chrome / integrated graphics.

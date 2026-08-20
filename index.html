@@ -6,11 +6,11 @@
   <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <!-- sk-build mp5: Railway serves the game + rooms on one URL -->
+  <!-- sk-build mp6: ~2km Campus Loop, one-box fuel -->
   <meta name="theme-color" content="#1a120e" />
   <title>SchoolKart — Campus Loop</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect fill='%231a120e' width='64' height='64'/><rect fill='%232ec8c3' x='8' y='28' width='48' height='10'/><rect fill='%23f4efe6' x='22' y='16' width='20' height='8'/></svg>" />
-  <link rel="stylesheet" href="css/style.css?v=mp5" />
+  <link rel="stylesheet" href="css/style.css?v=mp6" />
 </head>
 <body>
   <div id="game">
@@ -74,7 +74,7 @@
       <h1>SCHOOLKART</h1>
       <p class="sub">Campus Loop · 5 laps · Car #7</p>
       <ul class="tips">
-        <li><strong>W</strong> gas · <strong>Space</strong> brake · <strong>S</strong> reverse · A/D steer. Brake or you run wide.</li>
+        <li><strong>W</strong> gas · <strong>Space</strong> brake · <strong>S</strong> reverse · A/D steer. Wind the straights. Late into the hairpin = dump. Lift in the chicane. Fresh tires to carry the sweeper.</li>
         <li><strong>Fuel is the clock.</strong> Ticks even if you coast. One box in 5 laps — skip it and limp home.</li>
         <li><strong>Peel LEFT</strong> into the pit lane. Halfway <em>in the lane</em> the crew grabs you (not the entry clip), services, then lets you drive out.</li>
         <li><strong>Lights start:</strong> blue PRE-START, five reds, random hold, lights out = GO. Hold <strong>Space</strong> to plant, <strong>W</strong> to rev. Dump W without Space and you roll — JUMP, sit ~1.5s, still race.</li>
@@ -127,7 +127,7 @@
   </div>
 
   <script>
-    window.SK_BUILD = "mp5";
+    window.SK_BUILD = "mp6";
     try {
       if (window.caches) {
         caches.keys().then(function (keys) {
@@ -144,8 +144,8 @@
       document.write('<script src="https://unpkg.com/three@0.160.1/build/three.min.js"><\/script>');
     }
   </script>
-  <script src="js/config.js?v=mp5"></script>
-  <script src="js/net.js?v=mp5"></script>
-  <script src="js/game.js?v=mp5"></script>
+  <script src="js/config.js?v=mp6"></script>
+  <script src="js/net.js?v=mp6"></script>
+  <script src="js/game.js?v=mp6"></script>
 </body>
 </html>
