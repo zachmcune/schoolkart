@@ -27,9 +27,9 @@
 
   var LAPS = 5;
   var MAX_SPEED = 48;
-  var ACCEL = 26;
-  var BRAKE_DECEL = 26; // squeeze: weaker at wind-out, full bite when slow (hairpin)
-  var COAST = 8;
+  var ACCEL = 16;
+  var BRAKE_DECEL = 20; // squeeze: weaker at wind-out, full bite when slow (hairpin)
+  var COAST = 2.4;
   var REVERSE_ACCEL = 18;
   var REVERSE_MAX = 12;
   var LIMP_SPEED = 13;
@@ -3750,7 +3750,7 @@
       if (r.lap >= p.pitLap || r.fuel < p.pitFuel || r.tires < p.pitTires) r.wantPit = true;
     }
 
-    var scan = scanAhead(r.s, 140 * p.brake);
+    var scan = scanAhead(r.s, 175 * p.brake);
     var look = (12 + r.speed * 0.3) * p.look;
     if (scan.dTight < 64) look = Math.min(look, 8 + scan.dTight * 0.22);
     if (scan.dChi < 36) look = Math.min(look, 13);
@@ -3758,19 +3758,19 @@
     var hpApex = p.hairpin;
     var hotHair = p.overshoot && (r.lap % 2) === 0;
     if (hotHair) hpApex = 18.8;
-    want = Math.min(want, approachWant(want, scan.dHair, 130 * p.brake, hpApex));
+    want = Math.min(want, approachWant(want, scan.dHair, 165 * p.brake, hpApex));
     if (scan.tightR < 22) {
       var cap = Math.sqrt(MAX_LAT * scan.tightR) * p.tight;
       if (hotHair && scan.dHair < 90) cap = Math.max(cap, 18.5);
       if (cap < 12) cap = 12;
-      want = Math.min(want, approachWant(want, scan.dTight, (42 + scan.tightR * 4) * p.brake, cap));
+      want = Math.min(want, approachWant(want, scan.dTight, (52 + scan.tightR * 4) * p.brake, cap));
     }
     if (scan.dChi > 0 && scan.dChi < 900) {
-      want = Math.min(want, approachWant(want, scan.dChi, 52 * p.brake, p.chicane));
+      want = Math.min(want, approachWant(want, scan.dChi, 66 * p.brake, p.chicane));
     }
-    want = Math.min(want, approachWant(want, scan.d90, 62 * p.brake, p.the90));
-    want = Math.min(want, approachWant(want, scan.dSweep, 80 * p.brake, p.sweeper));
-    want = Math.min(want, approachWant(want, scan.dKink, 50 * p.brake, 24));
+    want = Math.min(want, approachWant(want, scan.d90, 80 * p.brake, p.the90));
+    want = Math.min(want, approachWant(want, scan.dSweep, 100 * p.brake, p.sweeper));
+    want = Math.min(want, approachWant(want, scan.dKink, 62 * p.brake, 24));
     if (r.fuel <= 0) want = Math.min(want, LIMP_SPEED);
 
     var hunt = planHunt(r, p, want);

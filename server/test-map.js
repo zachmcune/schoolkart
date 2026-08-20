@@ -43,9 +43,9 @@ var code = [
   "var GRASS_DUMP = 40;",
   "var TIRE_FLOOR = 22;",
   "var MAX_SPEED = 48;",
-  "var ACCEL = 26;",
-  "var BRAKE_DECEL = 26;",
-  "var COAST = 8;",
+  "var ACCEL = 16;",
+  "var BRAKE_DECEL = 20;",
+  "var COAST = 2.4;",
   "var REVERSE_ACCEL = 18;",
   "var REVERSE_MAX = 12;",
   "var LIMP_SPEED = 13;",
@@ -955,6 +955,7 @@ function proveClean90s(pieces, label, lapFrac) {
   for (t = 0; t < seconds; t += 1 / 60) {
     var line = sim.projectTrack(car.x, car.z);
     var look = sim.centerlinePoint(line.s + 16);
+    var lookFar = sim.centerlinePoint(line.s + 28);
     var err = angDiff(look.h, car.heading);
     if (line.dist > 1.5) {
       var home = Math.atan2(line.z - car.z, line.x - car.x);
@@ -965,7 +966,13 @@ function proveClean90s(pieces, label, lapFrac) {
     if (steer < -1) steer = -1;
     var gas = line.dist < 6.2;
     var brake = false;
-    if (line.name === "the90" && car.speed > 30) gas = false;
+    var upcoming90 = line.name === "the90" || look.name === "the90" || lookFar.name === "the90";
+    if (upcoming90 && car.speed > 28) {
+      gas = false;
+      brake = true;
+    } else if (line.name === "the90" && car.speed > 24) {
+      gas = false;
+    }
     var h0 = car.heading;
     sim.applyMotion(car, steer, gas, brake, false, 1 / 60, true);
     sim.bashAllWalls(car);
@@ -1049,6 +1056,47 @@ assert(src.indexOf("Math.sin(t * Math.PI * 2)") !== -1, "chicane S is a sine ins
 assert(src.indexOf("env *= env") !== -1, "chicane S is flat at the ports");
 
 sim.lockRacePath("");
+assert(src.indexOf("var ACCEL = 16") !== -1, "wind-up is slow (arcade, not a snap)");
+assert(src.indexOf("var COAST = 2.4") !== -1, "lift keeps rolling");
+assert(src.indexOf("var BRAKE_DECEL = 20") !== -1, "Space is a planned squeeze");
+assert(src.indexOf("var MAX_LAT = 28") !== -1, "custom 90s are not glued to hide a spin");
+
+function tickFeel(car, steer, gas, brake, seconds) {
+  var t;
+  for (t = 0; t < seconds; t += 1 / 60) sim.applyMotion(car, steer, gas, brake, false, 1 / 60, true);
+}
+
+var wind = blankCar(0, -80, 0, 0);
+tickFeel(wind, 0, true, false, 2);
+assert(wind.speed > 26 && wind.speed < 36, "2s of W is still winding up, speed=" + wind.speed.toFixed(1));
+tickFeel(wind, 0, true, false, 1.2);
+assert(wind.speed > 40, "still reaches race pace, speed=" + wind.speed.toFixed(1));
+
+var roll = blankCar(0, -80, 0, 48);
+tickFeel(roll, 0, false, false, 2);
+assert(roll.speed > 42 && roll.speed < 48, "lifting W keeps you rolling, speed=" + roll.speed.toFixed(1));
+tickFeel(roll, 0, false, false, 1);
+assert(roll.speed > 36, "a 3s lift is not enough to make the 180, speed=" + roll.speed.toFixed(1));
+
+var tap = blankCar(0, -80, 0, 48);
+tickFeel(tap, 0, false, true, 0.12);
+tickFeel(tap, 0, false, false, 0.5);
+assert(tap.speed > 42, "tap-and-forget Space does not dump, speed=" + tap.speed.toFixed(1));
+
+var squeeze = blankCar(0, -80, 0, 48);
+tickFeel(squeeze, 0, false, true, 2.6);
+assert(squeeze.speed < 18 && squeeze.speed > 6, "held Space can make the 180, speed=" + squeeze.speed.toFixed(1));
+
+var biteHi = blankCar(0, -80, 0, 48);
+biteHi.brakeHold = 1;
+sim.applyMotion(biteHi, 0, false, true, false, 1 / 60, true);
+var dropHi = 48 - biteHi.speed;
+var biteLo = blankCar(0, -80, 0, 16);
+biteLo.brakeHold = 1;
+sim.applyMotion(biteLo, 0, false, true, false, 1 / 60, true);
+var dropLo = 16 - biteLo.speed;
+assert(dropHi < dropLo, "Space is weaker at high speed and bites when slow");
+
 var hs = 0;
 var sH;
 for (sH = 0; sH < sim.TRACK_LEN; sH += 5) {
