@@ -48,7 +48,7 @@ Local: `npm start`, then open `http://localhost:8787` (or whatever `PORT` is). S
 
 Car **#7** is white/teal by default. Title-screen garage picks body + wing colors (saved on the device). Friends see your paint in the room. Campus is golden-hour brick with **one** clock tower. Original IP only.
 
-**Track editor:** title **Track** button. Regular tile grid. Kit: straight, long straight, 90, wide sweeper, hairpin, chicane, start/finish, pit, tree. Pieces snap to cell centers and meet flush. Driveable asphalt is rebuilt from the placed pieces (custom maps are on-track). Drag, move, rotate 90°, trash. Share-string encodes type + cell + rotation. **Default · Campus Loop** restores the real ~2km loop and clears the save / room code.
+**Track editor:** title **Track** button. Regular tile grid. Kit: straight, long straight, 90, wide sweeper, hairpin, chicane, start/finish, pit, tree. Pieces snap to cell centers and meet flush. Driveable asphalt and the race line are rebuilt from the placed pieces — a closed loop laps; open layouts stay driveable. Bots follow the custom ribbon. Share-string (up to 240) encodes type + cell + rotation. **Default · Campus Loop** restores the real ~2km loop and clears the save / room code.
 
 ## Multiplayer (Chromebook lunch)
 
@@ -87,7 +87,7 @@ npm test
 
 Repo is also a static site (HTML + CSS + JS + Three.js from CDN). Public Pages currently deploys from this branch (`cursor/campus-loop-playable-f645`). Use Railway as the school link.
 
-`index.html` is marked `no-store`. JS/CSS are versioned (`?v=mp41`) so a **normal reload** picks up the lobby.
+`index.html` is marked `no-store`. JS/CSS are versioned (`?v=mp42`) so a **normal reload** picks up the lobby.
 
 **Install (PWA):** on phone Safari / Chrome, Add to Home Screen. Standalone landscape chrome, dark splash (`#1a120e`). Original teal/cream mark (192 + 512 + apple-touch-icon). The service worker is network-first and does **not** cache the race or the websocket — a new Railway deploy is not a trapped old build. Offline play is not required.
 

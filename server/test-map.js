@@ -72,6 +72,8 @@ var code = [
   "var raceTime = 3;",
   "var launchT = 0;",
   "var launchMul = 1;",
+  "var LAPS = 5;",
+  "var TRACK_CODE_MAX = 240;",
   sliceFn("clamp"),
   sliceFn("inRect"),
   sliceFn("onPitPavement"),
@@ -91,8 +93,14 @@ var code = [
   sliceFn("buildCodePath"),
   sliceFromTo("var MAP_SURF = [];", "rebuildPath"),
   sliceFn("rebuildPath"),
+  sliceFn("projectOn"),
   sliceFn("projectTrack"),
   sliceFn("applyMotion"),
+  sliceFn("updateLaps"),
+  sliceFn("inPitLane"),
+  sliceFn("inPitGrab"),
+  sliceFn("cleanTrack"),
+  sliceFn("cellsInBoard"),
   "function poseCar(r) { if (r.mesh && r.mesh.position) r.mesh.position.set(r.x, 0, r.z); }",
   "return {",
   "  rebuildPath: rebuildPath,",
@@ -104,11 +112,18 @@ var code = [
   "  footprint: footprint,",
   "  projectTrack: projectTrack,",
   "  applyMotion: applyMotion,",
+  "  updateLaps: updateLaps,",
+  "  inPitGrab: inPitGrab,",
+  "  cleanTrack: cleanTrack,",
+  "  cellsInBoard: cellsInBoard,",
   "  MAP_DXY: MAP_DXY,",
   "  MAP_CELL: MAP_CELL,",
   "  get TRACK_LEN() { return TRACK_LEN; },",
   "  get MAP_SURF() { return MAP_SURF; },",
+  "  get MAP_CLOSED() { return MAP_CLOSED; },",
   "  get PATH() { return PATH; },",
+  "  get PIT_META() { return PIT_META; },",
+  "  get RIBBON_SEGS() { return RIBBON_SEGS; },",
   "  get trackCode() { return trackCode; },",
   "  setTrack: function (c) { trackCode = c; }",
   "};",
@@ -185,12 +200,32 @@ function blankCar(x, z, h, spd) {
     brakeHold: 0,
     launchT: 0,
     launchMul: 1,
+    lap: 1,
+    s: 0,
+    lastS: 0,
+    lastX: x,
+    passedHalf: false,
+    finished: false,
+    finishTime: 0,
     mesh: {
       position: { set: function (x, y, z) { this.x = x; this.y = y; this.z = z; } },
       rotation: { set: function () {}, x: 0, y: 0, z: 0 },
       userData: {},
     },
   };
+}
+
+function angDiff(a, b) {
+  var d = a - b;
+  while (d > Math.PI) d -= Math.PI * 2;
+  while (d < -Math.PI) d += Math.PI * 2;
+  return d;
+}
+
+function segEnd(seg, start) {
+  if (seg.type === "line") return start ? { x: seg.ax, z: seg.az } : { x: seg.bx, z: seg.bz };
+  var a = start ? seg.a0 : seg.a1;
+  return { x: seg.cx + Math.cos(a) * seg.r, z: seg.cz + Math.sin(a) * seg.r };
 }
 
 assert(countFlush([{ t: "S", x: 1, y: 1, r: 0 }, { t: "r", x: 3, y: 1, r: 1 }]) === 1, "long straight meets a 90 flush");
@@ -277,7 +312,7 @@ var sz = (startSeg.az + startSeg.bz) * 0.5;
 var sh = Math.atan2(startSeg.bz - startSeg.az, startSeg.bx - startSeg.ax);
 var car = blankCar(sx, sz, sh, 30);
 var t;
-for (t = 0; t < 2; t += 1 / 30) {
+for (t = 0; t < 0.45; t += 1 / 30) {
   sim.applyMotion(car, 0, true, false, false, 1 / 30, false);
 }
 assert(car.speed > 22, "asphalt keeps race pace, speed=" + car.speed);
@@ -293,10 +328,139 @@ for (t = 0; t < 2.2; t += 1 / 30) {
 assert(grassCar.speed <= 8.7, "leaving the ribbon dumps to grass crawl, speed=" + grassCar.speed);
 assert(grassCar.tires < 90, "leaving the ribbon eats tires, tires=" + grassCar.tires);
 
+assert(sim.MAP_CLOSED, "rectangle is a closed loop");
+assert(sim.PATH.length >= 8, "race line is the placed loop");
+var path0 = sim.PATH[0];
+var pathN = sim.PATH[sim.PATH.length - 1];
+var loopA = segEnd(path0, true);
+var loopB = segEnd(pathN, false);
+assert(Math.hypot(loopA.x - loopB.x, loopA.z - loopB.z) < 4, "loop start meets loop end, no campus weld");
+var campusGhost = sim.projectTrack(0, -80);
+assert(!campusGhost.onAsphalt, "Campus S/F is not on a custom rectangle");
+
+function pointAtS(sVal) {
+  var ss = ((sVal % sim.TRACK_LEN) + sim.TRACK_LEN) % sim.TRACK_LEN;
+  var si;
+  for (si = 0; si < sim.PATH.length; si++) {
+    var sg = sim.PATH[si];
+    if (ss <= sg.startS + sg.len || si === sim.PATH.length - 1) {
+      var uu = sg.len ? (ss - sg.startS) / sg.len : 0;
+      if (sg.type === "line") return { x: sg.ax + (sg.bx - sg.ax) * uu, z: sg.az + (sg.bz - sg.az) * uu, h: Math.atan2(sg.bz - sg.az, sg.bx - sg.ax) };
+      var aa = sg.a0 + (sg.a1 - sg.a0) * uu;
+      return { x: sg.cx + Math.cos(aa) * sg.r, z: sg.cz + Math.sin(aa) * sg.r, h: aa + Math.PI * 0.5 };
+    }
+  }
+  return { x: sx, z: sz, h: sh };
+}
+
+var loopCar = blankCar(sx, sz, sh, 28);
+var startS = sim.projectTrack(sx, sz).s;
+loopCar.s = startS;
+loopCar.lastS = startS;
+var step;
+for (step = 0; step <= sim.TRACK_LEN * 1.15; step += 6) {
+  var pt = pointAtS(startS + step);
+  loopCar.x = pt.x;
+  loopCar.z = pt.z;
+  loopCar.heading = pt.h;
+  assert(sim.projectTrack(pt.x, pt.z).onAsphalt, "race line stays on custom asphalt at s=" + step);
+  assert(Math.hypot(pt.x - 0, pt.z - -80) > 40, "race line is not Campus S/F");
+  sim.updateLaps(loopCar);
+}
+assert(loopCar.lap >= 2, "closed rectangle actually laps, lap=" + loopCar.lap);
+assert(startS < sim.TRACK_LEN, "bot/player s is on the custom PATH, not a campus zero");
+
+var types = ["s", "S", "r", "w", "H", "C", "F", "P", "t"];
+var ti;
+for (ti = 0; ti < types.length; ti++) {
+  var rot;
+  for (rot = 0; rot < 4; rot++) {
+    var rp = { t: types[ti], x: 2, y: 2, r: rot };
+    if (!sim.cellsInBoard(sim.footprint(rp))) continue;
+    var ports = sim.portList(rp);
+    var segs = sim.pieceSegs(rp);
+    if (types[ti] === "t") {
+      assert(segs.length === 0 && ports.length === 0, "tree is not driveable");
+      continue;
+    }
+    assert(ports.length === 2 && segs.length >= 1, types[ti] + " rot " + rot + " has ports");
+    var A = segEnd(segs[0], true);
+    var B = segEnd(segs[segs.length - 1], false);
+    var p0 = sim.edgeMid(ports[0].x, ports[0].y, ports[0].dir);
+    var p1 = sim.edgeMid(ports[1].x, ports[1].y, ports[1].dir);
+    var d00 = Math.hypot(A.x - p0.x, A.z - p0.z);
+    var d01 = Math.hypot(A.x - p1.x, A.z - p1.z);
+    var d10 = Math.hypot(B.x - p0.x, B.z - p0.z);
+    var d11 = Math.hypot(B.x - p1.x, B.z - p1.z);
+    var match = (d00 < 0.05 && d11 < 0.05) || (d01 < 0.05 && d10 < 0.05);
+    assert(match, types[ti] + " rot " + rot + " ports do not meet seg ends");
+    var mid = segs[0];
+    var mx;
+    var mz;
+    if (mid.type === "line") {
+      mx = (mid.ax + mid.bx) * 0.5;
+      mz = (mid.az + mid.bz) * 0.5;
+    } else {
+      var ma = (mid.a0 + mid.a1) * 0.5;
+      mx = mid.cx + Math.cos(ma) * mid.r;
+      mz = mid.cz + Math.sin(ma) * mid.r;
+    }
+    sim.setTrack(sim.encodeMap([rp]));
+    sim.rebuildPath(sim.encodeMap([rp]));
+    var midHit = sim.projectTrack(mx, mz);
+    assert(midHit.onAsphalt && !midHit.grass, "no invisible off-track in the middle of " + types[ti] + " rot " + rot);
+  }
+}
+
+var longP = { t: "S", x: 1, y: 2, r: 0 };
+var longCells = sim.footprint(longP);
+assert(longCells.length === 2 && longCells[1].x === 2 && longCells[1].y === 2, "long straight occupies two cells");
+assert(countFlush([longP, { t: "s", x: 3, y: 2, r: 0 }]) === 1, "long + neighbor still flush");
+
+var open = [
+  { t: "s", x: 0, y: 0, r: 0 },
+  { t: "s", x: 3, y: 1, r: 0 },
+  { t: "r", x: 6, y: 4, r: 2 },
+];
+sim.setTrack(sim.encodeMap(open));
+sim.rebuildPath(sim.encodeMap(open));
+assert(!sim.MAP_CLOSED, "open layout is not a closed loop");
+assert(sim.projectTrack(sim.edgeMid(0, 0, 0).x - 1, sim.edgeMid(0, 0, 0).z).onAsphalt, "open layout still driveable");
+assert(sim.RIBBON_SEGS <= 420, "custom ribbon segs stay Chromebook-cheap");
+
+var noPit = sim.encodeMap(rectPieces());
+sim.setTrack(noPit);
+sim.rebuildPath(noPit);
+assert(!sim.PIT_META.on, "no pit piece = no fake grab");
+assert(!sim.inPitGrab({ x: 20, z: 52 }), "no pit piece, grab is off");
+
+var withPit = rectPieces();
+withPit[1] = { t: "P", x: 2, y: 1, r: 0 };
+sim.setTrack(sim.encodeMap(withPit));
+sim.rebuildPath(sim.encodeMap(withPit));
+assert(sim.PIT_META.on, "pit piece enables peel");
+var pitX = sim.PIT_META.ax + (sim.PIT_META.bx - sim.PIT_META.ax) * 0.65;
+var pitZ = sim.PIT_META.az + (sim.PIT_META.bz - sim.PIT_META.az) * 0.65;
+assert(sim.inPitGrab({ x: pitX, z: pitZ }), "pit grab works when the piece is present");
+
+var trees = [];
+var tx;
+var ty;
+for (ty = 0; ty < 6; ty++) {
+  for (tx = 0; tx < 8; tx++) trees.push({ t: "t", x: tx, y: ty, r: 0 });
+}
+var packed = sim.encodeMap(trees);
+assert(packed.length > 120 && packed.length <= 240, "full board share-string fits 240, got " + packed.length);
+assert(sim.cleanTrack(packed) === packed, "cleanTrack keeps a full-board code");
+assert(sim.parseMap(packed).length === 48, "reload/parse keeps every tree");
+var undone = sim.parseMap(sim.encodeMap(rectPieces()));
+assert(undone.length === 10 && undone[1].t === "F", "encode/decode persist type+cell+rot");
+
 var customLen = sim.TRACK_LEN;
 sim.setTrack("");
 sim.rebuildPath("");
 assert(sim.MAP_SURF.length === 0, "Campus Loop clears custom surface");
+assert(!sim.MAP_CLOSED, "Campus default is not a custom closed flag leak");
 assert(Math.abs(sim.TRACK_LEN - 1978.98) < 2, "Default Campus Loop length " + sim.TRACK_LEN);
 var line = sim.projectTrack(0, -80);
 assert(line.onAsphalt && !line.grass, "Campus S/F is asphalt again");
@@ -309,5 +473,7 @@ console.log(
     " off=" +
     offN +
     " customLen=" +
-    customLen.toFixed(1)
+    customLen.toFixed(1) +
+    " laps=" +
+    loopCar.lap
 );

@@ -110,7 +110,7 @@
   };
 
   net.setTrack = function (code) {
-    send({ t: "track", code: String(code || "").slice(0, 120) });
+    send({ t: "track", code: String(code || "").slice(0, 240) });
   };
 
   function applyRoom(msg) {

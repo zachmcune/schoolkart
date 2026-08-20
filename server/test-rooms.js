@@ -115,7 +115,8 @@ waitHealth()
         assert(html.indexOf('rel="manifest"') !== -1, "web app manifest link");
         assert(html.indexOf("apple-mobile-web-app-capable") !== -1, "iOS home screen capable");
         assert(html.indexOf('apple-mobile-web-app-title" content="SchoolKart"') !== -1, "iOS title");
-        assert(html.indexOf('SK_BUILD = "mp41"') !== -1, "cache bump mp41");
+        assert(html.indexOf('SK_BUILD = "mp42"') !== -1, "cache bump mp42");
+        assert(html.indexOf('maxlength="240"') !== -1, "share-string fits a full board");
         assert(html.indexOf("tile-map") !== -1, "modular tile map");
         assert(html.indexOf("btn-tile-rot") !== -1, "rotate control");
         assert(html.indexOf("palette-slot") !== -1, "physical piece tray");
@@ -144,7 +145,7 @@ waitHealth()
           .then(function (sr) {
             return sr.text().then(function (sw) {
               assert(sr.status === 200, "sw 200");
-              assert(sw.indexOf('BUILD = "mp41"') !== -1, "SW build matches cache");
+              assert(sw.indexOf('BUILD = "mp42"') !== -1, "SW build matches cache");
               assert(/cache:\s*"no-store"/.test(sw), "network-first no-store");
               assert(sw.indexOf("websocket") !== -1, "SW leaves websocket alone");
             });
@@ -156,6 +157,8 @@ waitHealth()
                   assert(r.status === 200, "game.js 200");
                   assert(js.indexOf("tile-rot-handle") !== -1, "on-piece rotate handle");
                   assert(js.indexOf("MAP_SURF") !== -1 && js.indexOf("pieceSegs") !== -1, "driveable surface from pieces");
+                  assert(js.indexOf("MAP_CLOSED") !== -1, "closed-loop lap flag");
+                  assert(js.indexOf("TRACK_CODE_MAX") !== -1, "full-board share-string");
                   assert(js.indexOf("#ff2038") !== -1 && js.indexOf("#3a3e46") !== -1, "asphalt + kerb piece art");
                 });
               }),
