@@ -50,6 +50,8 @@
   var TEAL = 0x2ec8c3;
   var TEAL_DEEP = 0x148f8c;
   var HIT_RADIUS = 2.55;
+  var WALLS = [];
+  var FX_MAX = 36;
 
   var SF_Z = -80;
   var GRID_P2_X = -14;
@@ -892,6 +894,91 @@
       );
       leaf.position.set(tree.x, 4.8, tree.z);
       trackRoot.add(leaf);
+    }
+
+    placeWalls();
+    drawWalls();
+  }
+
+  function wallSeg(ax, az, bx, bz, thick, kind, silent) {
+    if (Math.hypot(bx - ax, bz - az) < 0.8) return;
+    WALLS.push({
+      ax: ax,
+      az: az,
+      bx: bx,
+      bz: bz,
+      thick: thick || 0.55,
+      kind: kind || "armco",
+      silent: !!silent,
+    });
+  }
+
+  function wallArcs(name, side, offset, step, kind, thick) {
+    var i;
+    for (i = 0; i < PATH.length; i++) {
+      var seg = PATH[i];
+      if (seg.name !== name || seg.type !== "arc") continue;
+      var last = null;
+      var s;
+      for (s = 0; s <= seg.len + 0.01; s += step) {
+        var p = pointOnSeg(seg, clamp(s / seg.len, 0, 1));
+        var nx = -Math.sin(p.h) * side;
+        var nz = Math.cos(p.h) * side;
+        var x = p.x + nx * offset;
+        var z = p.z + nz * offset;
+        if (last) wallSeg(last.x, last.z, x, z, thick, kind, false);
+        last = { x: x, z: z };
+      }
+    }
+  }
+
+  function placeWalls() {
+    WALLS.length = 0;
+    // Discrete barriers at misses that should hurt — not a box around the map.
+    wallArcs("hairpin", -1, ASPHALT + 1.75, 6.5, "armco", 0.6);
+    wallArcs("the90", -1, ASPHALT + 1.65, 8, "armco", 0.55);
+    wallArcs("chicane", -1, ASPHALT + 1.5, 7, "armco", 0.5);
+    wallArcs("chicane", 1, ASPHALT + 1.5, 7, "armco", 0.5);
+    wallArcs("sweeper", -1, ASPHALT + 1.9, 12, "armco", 0.55);
+    wallArcs("kink", 1, ASPHALT + 1.6, 9, "armco", 0.5);
+    if (!trackCode) {
+      wallSeg(27, -69.6, 97, -69.6, 0.7, "pit", true);
+      wallSeg(-32, -74.8, 4, -73.6, 0.5, "armco", false);
+      wallSeg(-48, SF_Z - ASPHALT - 2.1, -12, SF_Z - ASPHALT - 2.1, 0.45, "armco", false);
+      wallSeg(18, SF_Z - ASPHALT - 2.1, 52, SF_Z - ASPHALT - 2.1, 0.45, "armco", false);
+    } else if (PIT_META.on) {
+      wallSeg(PIT_LANE.x0, PIT_LANE.z0 - 1.15, PIT_LANE.x1, PIT_LANE.z0 - 1.15, 0.6, "pit", false);
+    }
+  }
+
+  function drawWalls() {
+    var i;
+    for (i = 0; i < WALLS.length; i++) {
+      var w = WALLS[i];
+      if (w.silent) continue;
+      var dx = w.bx - w.ax;
+      var dz = w.bz - w.az;
+      var len = Math.hypot(dx, dz);
+      var kerb = w.kind === "kerb";
+      var h = kerb ? 0.26 : 1.05;
+      var dpth = kerb ? 0.62 : 0.38;
+      var col = kerb ? 0xff2a44 : w.kind === "pit" ? 0x2a2018 : 0xb8b4a8;
+      var mesh = new THREE.Mesh(
+        new THREE.BoxGeometry(len, h, dpth),
+        new THREE.MeshLambertMaterial({ color: col, side: THREE.DoubleSide })
+      );
+      mesh.position.set((w.ax + w.bx) * 0.5, h * 0.5, (w.az + w.bz) * 0.5);
+      mesh.rotation.set(0, -Math.atan2(dz, dx), 0);
+      trackRoot.add(mesh);
+      if (!kerb) {
+        var cap = new THREE.Mesh(
+          new THREE.BoxGeometry(len, 0.1, dpth + 0.08),
+          new THREE.MeshLambertMaterial({ color: w.kind === "pit" ? TEAL : 0x8a4030, side: THREE.DoubleSide })
+        );
+        cap.position.set(mesh.position.x, h + 0.04, mesh.position.z);
+        cap.rotation.copy(mesh.rotation);
+        trackRoot.add(cap);
+      }
     }
   }
 
@@ -1853,6 +1940,216 @@
     }
     poseCar(a);
     poseCar(b);
+    if (impact > 4) puffHit((a.x + b.x) * 0.5, (a.z + b.z) * 0.5, impact);
+  }
+
+  function bashWall(r, w) {
+    var hit = closestOnSeg(r.x, r.z, w.ax, w.az, w.bx, w.bz);
+    var rad = 1.35 + (w.thick || 0.55) * 0.5;
+    var d = Math.sqrt(hit.d2);
+    if (d >= rad) return 0;
+    var nx;
+    var nz;
+    if (d < 0.0001) {
+      var sx = w.bz - w.az;
+      var sz = -(w.bx - w.ax);
+      var sl = Math.hypot(sx, sz) || 1;
+      nx = sx / sl;
+      nz = sz / sl;
+    } else {
+      nx = (r.x - hit.x) / d;
+      nz = (r.z - hit.z) / d;
+    }
+    var push = rad - d;
+    r.x += nx * push;
+    r.z += nz * push;
+    var vx = Math.cos(r.heading) * r.speed + -Math.sin(r.heading) * r.slide;
+    var vz = Math.sin(r.heading) * r.speed + Math.cos(r.heading) * r.slide;
+    var rel = vx * nx + vz * nz;
+    if (rel >= 0) {
+      poseCar(r);
+      return 0;
+    }
+    var j = -rel * 0.72;
+    vx += j * nx;
+    vz += j * nz;
+    var impact = Math.abs(rel);
+    r.speed = Math.hypot(vx, vz) * (r.speed < 0 ? -1 : 1) * 0.82;
+    if (Math.hypot(vx, vz) > 0.6) r.heading = Math.atan2(vz, vx);
+    r.heading += (Math.random() - 0.5) * clamp(impact * 0.045, 0, 0.9);
+    r.slide += -nz * impact * 0.18;
+    if (impact > 10) r.speed *= 0.7;
+    poseCar(r);
+    return impact;
+  }
+
+  function bashAllWalls(r) {
+    if (!r) return 0;
+    var best = 0;
+    var i;
+    for (i = 0; i < WALLS.length; i++) {
+      var imp = bashWall(r, WALLS[i]);
+      if (imp > best) best = imp;
+    }
+    if (best > 4) puffHit(r.x, r.z, best);
+    return best;
+  }
+
+  var fxPool = [];
+  var fxN = 0;
+
+  function initFx() {
+    var geo = new THREE.PlaneGeometry(1, 1);
+    var i;
+    for (i = 0; i < FX_MAX; i++) {
+      var mat = new THREE.MeshBasicMaterial({
+        color: 0xffffff,
+        transparent: true,
+        opacity: 0.8,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+      });
+      var mesh = new THREE.Mesh(geo, mat);
+      mesh.visible = false;
+      mesh.frustumCulled = false;
+      scene.add(mesh);
+      fxPool.push({
+        mesh: mesh,
+        life: 0,
+        max: 1,
+        vx: 0,
+        vy: 0,
+        vz: 0,
+        grow: 1,
+        kind: "",
+      });
+    }
+  }
+
+  function spawnFx(kind, x, y, z, vx, vy, vz) {
+    if (!fxPool.length) return;
+    var p = fxPool[fxN % FX_MAX];
+    fxN += 1;
+    p.kind = kind;
+    p.life = kind === "spark" ? 0.2 : kind === "glow" ? 0.26 : kind === "smoke" ? 0.52 : 0.68;
+    p.max = p.life;
+    p.vx = vx;
+    p.vy = vy;
+    p.vz = vz;
+    p.grow = kind === "smoke" ? 2.2 : kind === "dust" ? 1.7 : kind === "glow" ? 0.9 : 0.3;
+    p.mesh.position.set(x, y, z);
+    p.mesh.visible = true;
+    var col = kind === "spark" ? 0xffe566 : kind === "glow" ? 0xff7a1a : kind === "dust" ? 0xc4a06a : 0xd0ccc4;
+    p.mesh.material.color.setHex(col);
+    p.mesh.material.opacity = kind === "spark" ? 1 : 0.74;
+    var s = kind === "spark" ? 0.16 : kind === "glow" ? 0.36 : kind === "smoke" ? 0.58 : 0.44;
+    if (kind === "glow") p.mesh.scale.set(0.52, 0.2, 1);
+    else p.mesh.scale.set(s, s, s);
+  }
+
+  function puffHit(x, z, impact) {
+    var n = impact > 12 ? 5 : 3;
+    var i;
+    for (i = 0; i < n; i++) {
+      var a = Math.random() * Math.PI * 2;
+      spawnFx(
+        "spark",
+        x,
+        0.32 + Math.random() * 0.28,
+        z,
+        Math.cos(a) * 7,
+        2.2 + Math.random() * 3.5,
+        Math.sin(a) * 7
+      );
+    }
+    spawnFx("smoke", x, 0.28, z, 0, 1.1, 0);
+  }
+
+  function wheelWorld(r, along, side) {
+    var c = Math.cos(r.heading);
+    var s = Math.sin(r.heading);
+    var lx = along < 0 ? -1.2 : 1.3;
+    var lz = side * 0.82;
+    return { x: r.x + c * lx - s * lz, z: r.z + s * lx + c * lz };
+  }
+
+  function nearPlayer(r) {
+    var dx = r.x - player.x;
+    var dz = r.z - player.z;
+    return dx * dx + dz * dz < 2500;
+  }
+
+  function emitRacerFx(r, inp, dt, isPlayer) {
+    if (!r || r.finished) return;
+    if (!isPlayer && !nearPlayer(r)) return;
+    r.fxT = (r.fxT || 0) + dt;
+    var spd = Math.abs(r.speed);
+    var sl = Math.abs(r.slide);
+    var throttle = !!(inp && inp.throttle);
+    var steer = inp ? inp.steer : 0;
+    var spinup =
+      throttle && spd < 5.5 && !(inp && inp.brake) && (isPlayer ? state === "start" || revs > 0.3 || spd < 4 : spd < 4);
+    if (isPlayer && state === "start") spinup = throttle && revs > 0.32;
+    var worn = r.tires < 42 && (sl > 0.65 || (spd > 12 && sl > 0.35));
+    var spinning = sl > 5.2;
+    var hard = Math.abs(steer) > 0.55 && spd > 20 && sl > 0.85;
+    if (r.fxT < 0.08) return;
+    r.fxT = 0;
+    var back = -Math.cos(r.heading);
+    var side = -Math.sin(r.heading);
+    if (spinup) {
+      var a = wheelWorld(r, -1, -1);
+      var b = wheelWorld(r, -1, 1);
+      spawnFx("glow", a.x, 0.18, a.z, back * 1.4, 0.15, side * 1.4);
+      spawnFx("glow", b.x, 0.18, b.z, back * 1.4, 0.15, side * 1.4);
+      return;
+    }
+    if (spinning) {
+      spawnFx("smoke", r.x + back * 0.4, 0.32, r.z + side * 0.4, back * 1.2, 1.6, side * 1.2);
+      spawnFx("dust", r.x, 0.2, r.z, (Math.random() - 0.5) * 2, 0.8, (Math.random() - 0.5) * 2);
+      return;
+    }
+    if (worn) {
+      var w = wheelWorld(r, -1, steer >= 0 ? 1 : -1);
+      spawnFx("dust", w.x, 0.16, w.z, back * 2.2, 0.7, side * 2.2);
+    }
+    if (hard) {
+      var h = wheelWorld(r, -1, steer > 0 ? 1 : -1);
+      spawnFx("smoke", h.x, 0.2, h.z, back * 1.6, 0.9, side * 1.6);
+    }
+  }
+
+  function updateFx(dt) {
+    var drive = state === "start" || state === "racing";
+    var i;
+    for (i = 0; i < fxPool.length; i++) {
+      var p = fxPool[i];
+      if (!p.mesh.visible) continue;
+      if (!drive) {
+        p.mesh.visible = false;
+        p.life = 0;
+        continue;
+      }
+      p.life -= dt;
+      if (p.life <= 0) {
+        p.mesh.visible = false;
+        continue;
+      }
+      var u = 1 - p.life / p.max;
+      p.mesh.position.x += p.vx * dt;
+      p.mesh.position.y += p.vy * dt;
+      p.mesh.position.z += p.vz * dt;
+      p.vy += (p.kind === "spark" ? -9 : 0.55) * dt;
+      if (p.kind !== "glow") {
+        var sc = Math.min(p.mesh.scale.x * (1 + p.grow * dt), 2.6);
+        p.mesh.scale.setScalar(sc);
+      } else {
+        p.mesh.scale.x = 0.52 + u * 0.2;
+        p.mesh.scale.y = 0.2 + u * 0.08;
+      }
+      p.mesh.material.opacity = (1 - u) * (p.kind === "spark" ? 1 : 0.72);
+      p.mesh.quaternion.copy(camera.quaternion);
+    }
   }
 
   function poseCar(r) {
@@ -2263,6 +2560,7 @@
       var spin = revs * dt * 16;
       for (var w = 0; w < wheels.length; w++) wheels[w].spinner.rotation.z -= spin;
     }
+    emitRacerFx(player, input, dt, true);
 
     if (mpMode && net && net.active) {
       startPhase = net.startPhase || startPhase;
@@ -2413,7 +2711,10 @@
         updateCpu(hostBots[ids[i]], dt);
         updateLaps(hostBots[ids[i]]);
         bashCars(player, hostBots[ids[i]]);
+        bashAllWalls(hostBots[ids[i]]);
+        emitRacerFx(hostBots[ids[i]], null, dt, false);
       }
+      bashAllWalls(player);
       for (i = 0; i < ids.length; i++) {
         for (j = i + 1; j < ids.length; j++) bashCars(hostBots[ids[i]], hostBots[ids[j]]);
         Object.keys(remotes).forEach(function (rid) {
@@ -2744,6 +3045,8 @@
         }
       }
       applyMotion(player, input.steer, input.throttle, input.brake, input.reverse, simDt, true);
+      bashAllWalls(player);
+      emitRacerFx(player, input, simDt, true);
       if (!pitServicing && !pitUsedVisit && inPitGrab(player)) {
         pitServicing = true;
         pitTimer = 0;
@@ -2767,6 +3070,11 @@
         bashCars(player, cpus[0]);
         bashCars(player, cpus[1]);
         bashCars(cpus[0], cpus[1]);
+        bashAllWalls(player);
+        bashAllWalls(cpus[0]);
+        bashAllWalls(cpus[1]);
+        emitRacerFx(cpus[0], null, simDt, false);
+        emitRacerFx(cpus[1], null, simDt, false);
       }
       chaseCamera(dt);
       if (player.finished) finishRace();
@@ -2776,6 +3084,7 @@
     }
 
     updateSky(dt);
+    updateFx(dt);
     updateHud();
     renderer.render(scene, camera);
     requestAnimationFrame(tick);
@@ -2962,6 +3271,7 @@
     var layer = hud.touchLayer;
     if (!layer) return;
     layer.addEventListener("pointerdown", function (e) {
+      if (!isPhoneLike()) return;
       if (e.target && e.target.id === "rev-btn") return;
       e.preventDefault();
       var half = e.clientX >= window.innerWidth * 0.5 ? "gas" : "brake";
@@ -3432,6 +3742,7 @@
   }
 
   addWorld();
+  initFx();
   bindMobile();
   paintGarage();
   persistPaint();
