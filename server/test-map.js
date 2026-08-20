@@ -253,6 +253,33 @@ function blankCar(x, z, h, spd) {
   };
 }
 
+function attachWheels(car) {
+  car.mesh.userData.wheels = [0, 1, 2, 3].map(function (_, i) {
+    return {
+      holder: { rotation: { y: 0 } },
+      spinner: { rotation: { z: 0 } },
+      front: i < 2,
+    };
+  });
+  return car;
+}
+
+function proveWheelSteer(label, x, z, h) {
+  var left = attachWheels(blankCar(x, z, h, 22));
+  var rearSpin = left.mesh.userData.wheels[2].spinner.rotation.z;
+  sim.applyMotion(left, 1, true, false, false, 1 / 60, true);
+  assert(left.heading > h, label + " A/left increases heading");
+  assert(left.mesh.userData.wheels[0].holder.rotation.y < 0, label + " A/left yaws open fronts left");
+  assert(left.mesh.userData.wheels[1].holder.rotation.y < 0, label + " both fronts match A/left");
+  assert(left.mesh.userData.wheels[2].holder.rotation.y === 0, label + " rears do not steer");
+  assert(left.mesh.userData.wheels[3].holder.rotation.y === 0, label + " offside rear does not steer");
+  assert(left.mesh.userData.wheels[2].spinner.rotation.z < rearSpin, label + " rears spin with speed");
+  var right = attachWheels(blankCar(x, z, h, 22));
+  sim.applyMotion(right, -1, true, false, false, 1 / 60, true);
+  assert(right.heading < h, label + " D/right decreases heading");
+  assert(right.mesh.userData.wheels[0].holder.rotation.y > 0, label + " D/right yaws open fronts right");
+}
+
 function angDiff(a, b) {
   var d = a - b;
   while (d > Math.PI) d -= Math.PI * 2;
@@ -677,6 +704,15 @@ assert(nose.speed < 12, "head-on kills most forward speed");
 assert(src.indexOf("hitKeepYaw") !== -1, "hits shove without atan2 yaw snap");
 assert(!/function bashWall\([\s\S]{0,700}heading = Math.atan2/.test(src), "bashWall does not snap heading to velocity");
 assert(!/function bashCars\([\s\S]{0,900}heading = Math.atan2/.test(src), "bashCars does not snap heading to velocity");
+assert(/var turn = -steer \* 0\.42/.test(src), "open wheels yaw with the turn, not against it");
+
+sim.lockRacePath("");
+proveWheelSteer("Campus Loop", 0, -80, 0);
+sim.lockRacePath(sim.encodeMap(rectPieces()));
+var wheelPose = sim.customGridPose();
+assert(wheelPose, "custom grid pose exists for wheel-steer proof");
+proveWheelSteer("custom board", wheelPose.x, wheelPose.z, wheelPose.h);
+sim.lockRacePath("");
 
 var loopCarSpd = blankCar(0, -80, 0, 30);
 assert(sim.speedKph(loopCarSpd) === Math.round(30 * 3.15), "speedo matches velocity, not a stuck 0");

@@ -3355,7 +3355,9 @@
     var wheels = r.mesh.userData.wheels;
     if (wheels) {
       var spin = r.speed * dt * 2.4;
-      var turn = steer * 0.42;
+      // A/left = +steer. Car local +Z is left. +holder.rotation.y yaws toward
+      // -Z (right), so the open fronts must use -steer to match the turn.
+      var turn = -steer * 0.42;
       for (var i = 0; i < wheels.length; i++) {
         wheels[i].spinner.rotation.z -= spin;
         wheels[i].holder.rotation.y = wheels[i].front ? turn : 0;
