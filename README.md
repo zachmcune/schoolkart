@@ -36,9 +36,9 @@ Local: `npm start`, then open `http://localhost:8787` (or whatever `PORT` is). S
 
 **Start:** skip formation lap. Blue PRE-START flash, five reds one-by-one (~1s), random hold (0.2–3s) with all five ON, lights out = GO. Fuel clock starts at lights-out. The car is **locked to the grid** until GO — no creep, no jump-roll. **W** is a timing game: hold it to park the needle in the green sweet-spot. Hit it at lights-out = launch. Miss low = sluggish. Miss high = wheelspin. Space is brake after GO.
 
-**Hits:** cars bash — shove, spin, no ghosting through each other. **Walls** sit at the misses that should hurt (hairpin outside, chicane, the 90, pit entry) — same shove/spin as car-on-car, not a box around the map.
+**Hits:** cars bash — shove, spin, no ghosting through each other. **Walls** are **only** outside the 180, the chicane, and the sweeper. They collide. Not a cage.
 
-**FX (cheap, must read):** orange heat at the rears when you light them up from a standstill / on the grid; sandy dust when tires are worn and sliding; grey smoke on a spin-out; a wisp on a hard turn; sparks + one puff on a bash. 36-plane pool so Chromebooks stay alive.
+**FX (designer lock, few, short, readable at 30fps):** two fat tire puffs at lights-out · thin grey streaks from the rears when tires are bad · short white slip off the outside wheels on a hard turn · one dust burst on a spin-out · one sharp spark at a hit (not a cloud). Launch puffs and hit sparks do not look the same.
 
 Car **#7** is white/teal by default. Title-screen garage picks body + wing colors (saved on the device). Friends see your paint in the room. Campus is golden-hour brick with **one** clock tower. Original IP only.
 
@@ -81,6 +81,6 @@ npm test
 
 Repo is also a static site (HTML + CSS + JS + Three.js from CDN). Public Pages currently deploys from this branch (`cursor/campus-loop-playable-f645`). Use Railway as the school link.
 
-`index.html` is marked `no-store`. JS/CSS are versioned (`?v=mp21`) so a **normal reload** picks up the lobby.
+`index.html` is marked `no-store`. JS/CSS are versioned (`?v=mp22`) so a **normal reload** picks up the lobby.
 
 No bundler. Keyboard on Chromebooks. Phones get tilt + halves. Light enough for school Chrome / integrated graphics.

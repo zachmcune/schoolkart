@@ -8,7 +8,10 @@
    and serviced ~2.5s, then released to drive out. One service per visit.
    Start: PRE-START blue flash, five reds at 1s, hold 0.2–3s all ON,
    lights out = GO. Fuel starts then. Car is locked to the grid until GO.
-   W is a timing game — land the needle in the green for a launch. */
+   W is a timing game — land the needle in the green for a launch.
+   Walls: ONLY outside the 180 / chicane / sweeper. They collide.
+   FX lock: two fat launch puffs, thin grey worn streaks, short white
+   slip, one spinout burst, one sharp hit spark. */
 (function () {
   "use strict";
 
@@ -51,7 +54,7 @@
   var TEAL_DEEP = 0x148f8c;
   var HIT_RADIUS = 2.55;
   var WALLS = [];
-  var FX_MAX = 36;
+  var FX_MAX = 18;
 
   var SF_Z = -80;
   var GRID_P2_X = -14;
@@ -913,11 +916,12 @@
     });
   }
 
-  function wallArcs(name, side, offset, step, kind, thick) {
+  function wallArcOutsides(name, offset, step, kind, thick) {
     var i;
     for (i = 0; i < PATH.length; i++) {
       var seg = PATH[i];
       if (seg.name !== name || seg.type !== "arc") continue;
+      var side = seg.a1 >= seg.a0 ? -1 : 1;
       var last = null;
       var s;
       for (s = 0; s <= seg.len + 0.01; s += step) {
@@ -934,21 +938,10 @@
 
   function placeWalls() {
     WALLS.length = 0;
-    // Discrete barriers at misses that should hurt — not a box around the map.
-    wallArcs("hairpin", -1, ASPHALT + 1.75, 6.5, "armco", 0.6);
-    wallArcs("the90", -1, ASPHALT + 1.65, 8, "armco", 0.55);
-    wallArcs("chicane", -1, ASPHALT + 1.5, 7, "armco", 0.5);
-    wallArcs("chicane", 1, ASPHALT + 1.5, 7, "armco", 0.5);
-    wallArcs("sweeper", -1, ASPHALT + 1.9, 12, "armco", 0.55);
-    wallArcs("kink", 1, ASPHALT + 1.6, 9, "armco", 0.5);
-    if (!trackCode) {
-      wallSeg(27, -69.6, 97, -69.6, 0.7, "pit", true);
-      wallSeg(-32, -74.8, 4, -73.6, 0.5, "armco", false);
-      wallSeg(-48, SF_Z - ASPHALT - 2.1, -12, SF_Z - ASPHALT - 2.1, 0.45, "armco", false);
-      wallSeg(18, SF_Z - ASPHALT - 2.1, 52, SF_Z - ASPHALT - 2.1, 0.45, "armco", false);
-    } else if (PIT_META.on) {
-      wallSeg(PIT_LANE.x0, PIT_LANE.z0 - 1.15, PIT_LANE.x1, PIT_LANE.z0 - 1.15, 0.6, "pit", false);
-    }
+    // Designer lock: ONLY outside the 180 / chicane / sweeper. Not a cage.
+    wallArcOutsides("hairpin", ASPHALT + 1.75, 6.5, "armco", 0.6);
+    wallArcOutsides("chicane", ASPHALT + 1.55, 7, "armco", 0.5);
+    wallArcOutsides("sweeper", ASPHALT + 1.9, 12, "armco", 0.55);
   }
 
   function drawWalls() {
@@ -1940,7 +1933,11 @@
     }
     poseCar(a);
     poseCar(b);
-    if (impact > 4) puffHit((a.x + b.x) * 0.5, (a.z + b.z) * 0.5, impact);
+    if (impact > 4 && !(a.hitFxT > 0) && !(b.hitFxT > 0)) {
+      a.hitFxT = 0.16;
+      b.hitFxT = 0.16;
+      puffHit((a.x + b.x) * 0.5, (a.z + b.z) * 0.5, nx, nz);
+    }
   }
 
   function bashWall(r, w) {
@@ -1980,18 +1977,22 @@
     r.slide += -nz * impact * 0.18;
     if (impact > 10) r.speed *= 0.7;
     poseCar(r);
+    if (impact > 4 && !(r.hitFxT > 0)) {
+      r.hitFxT = 0.16;
+      puffHit(r.x, r.z, nx, nz);
+    }
     return impact;
   }
 
   function bashAllWalls(r) {
     if (!r) return 0;
+    if (r.hitFxT > 0) r.hitFxT -= 0.016;
     var best = 0;
     var i;
     for (i = 0; i < WALLS.length; i++) {
       var imp = bashWall(r, WALLS[i]);
       if (imp > best) best = imp;
     }
-    if (best > 4) puffHit(r.x, r.z, best);
     return best;
   }
 
@@ -2031,38 +2032,46 @@
     var p = fxPool[fxN % FX_MAX];
     fxN += 1;
     p.kind = kind;
-    p.life = kind === "spark" ? 0.2 : kind === "glow" ? 0.26 : kind === "smoke" ? 0.52 : 0.68;
+    p.life =
+      kind === "spark" ? 0.11 : kind === "slip" ? 0.18 : kind === "streak" ? 0.2 : kind === "puff" ? 0.34 : 0.36;
     p.max = p.life;
-    p.vx = vx;
-    p.vy = vy;
-    p.vz = vz;
-    p.grow = kind === "smoke" ? 2.2 : kind === "dust" ? 1.7 : kind === "glow" ? 0.9 : 0.3;
+    p.vx = vx || 0;
+    p.vy = vy || 0;
+    p.vz = vz || 0;
+    p.grow = kind === "puff" || kind === "burst" ? 1.4 : 0;
     p.mesh.position.set(x, y, z);
     p.mesh.visible = true;
-    var col = kind === "spark" ? 0xffe566 : kind === "glow" ? 0xff7a1a : kind === "dust" ? 0xc4a06a : 0xd0ccc4;
+    var col =
+      kind === "spark"
+        ? 0xfff3a0
+        : kind === "slip"
+          ? 0xf4efe6
+          : kind === "streak"
+            ? 0x8a8a88
+            : kind === "puff"
+              ? 0xcbb79a
+              : 0xb08958;
     p.mesh.material.color.setHex(col);
-    p.mesh.material.opacity = kind === "spark" ? 1 : 0.74;
-    var s = kind === "spark" ? 0.16 : kind === "glow" ? 0.36 : kind === "smoke" ? 0.58 : 0.44;
-    if (kind === "glow") p.mesh.scale.set(0.52, 0.2, 1);
-    else p.mesh.scale.set(s, s, s);
+    p.mesh.material.opacity = kind === "spark" ? 1 : 0.82;
+    if (kind === "spark") p.mesh.scale.set(0.72, 0.07, 1);
+    else if (kind === "streak") p.mesh.scale.set(1.55, 0.1, 1);
+    else if (kind === "slip") p.mesh.scale.set(0.62, 0.2, 1);
+    else if (kind === "puff") p.mesh.scale.set(1.35, 1.05, 1);
+    else p.mesh.scale.set(1.5, 1.15, 1);
   }
 
-  function puffHit(x, z, impact) {
-    var n = impact > 12 ? 5 : 3;
-    var i;
-    for (i = 0; i < n; i++) {
-      var a = Math.random() * Math.PI * 2;
-      spawnFx(
-        "spark",
-        x,
-        0.32 + Math.random() * 0.28,
-        z,
-        Math.cos(a) * 7,
-        2.2 + Math.random() * 3.5,
-        Math.sin(a) * 7
-      );
-    }
-    spawnFx("smoke", x, 0.28, z, 0, 1.1, 0);
+  function puffHit(x, z, nx, nz) {
+    spawnFx("spark", x, 0.42, z, (nx || 0) * 5, 0.8, (nz || 0) * 5);
+  }
+
+  function launchPuffs(r) {
+    if (!r) return;
+    var a = wheelWorld(r, -1, -1);
+    var b = wheelWorld(r, -1, 1);
+    var back = -Math.cos(r.heading);
+    var side = -Math.sin(r.heading);
+    spawnFx("puff", a.x, 0.24, a.z, back * 2.2, 0.35, side * 2.2);
+    spawnFx("puff", b.x, 0.24, b.z, back * 2.2, 0.35, side * 2.2);
   }
 
   function wheelWorld(r, along, side) {
@@ -2082,40 +2091,34 @@
   function emitRacerFx(r, inp, dt, isPlayer) {
     if (!r || r.finished) return;
     if (!isPlayer && !nearPlayer(r)) return;
+    if (r.hitFxT > 0) r.hitFxT -= dt;
     r.fxT = (r.fxT || 0) + dt;
     var spd = Math.abs(r.speed);
     var sl = Math.abs(r.slide);
-    var throttle = !!(inp && inp.throttle);
     var steer = inp ? inp.steer : 0;
-    var spinup =
-      throttle && spd < 5.5 && !(inp && inp.brake) && (isPlayer ? state === "start" || revs > 0.3 || spd < 4 : spd < 4);
-    if (isPlayer && state === "start") spinup = throttle && revs > 0.32;
-    var worn = r.tires < 42 && (sl > 0.65 || (spd > 12 && sl > 0.35));
+    var worn = r.tires < 42 && spd > 8;
     var spinning = sl > 5.2;
     var hard = Math.abs(steer) > 0.55 && spd > 20 && sl > 0.85;
-    if (r.fxT < 0.08) return;
-    r.fxT = 0;
     var back = -Math.cos(r.heading);
     var side = -Math.sin(r.heading);
-    if (spinup) {
-      var a = wheelWorld(r, -1, -1);
-      var b = wheelWorld(r, -1, 1);
-      spawnFx("glow", a.x, 0.18, a.z, back * 1.4, 0.15, side * 1.4);
-      spawnFx("glow", b.x, 0.18, b.z, back * 1.4, 0.15, side * 1.4);
-      return;
-    }
     if (spinning) {
-      spawnFx("smoke", r.x + back * 0.4, 0.32, r.z + side * 0.4, back * 1.2, 1.6, side * 1.2);
-      spawnFx("dust", r.x, 0.2, r.z, (Math.random() - 0.5) * 2, 0.8, (Math.random() - 0.5) * 2);
-      return;
+      if (!r.spinFx) {
+        r.spinFx = true;
+        spawnFx("burst", r.x, 0.28, r.z, back * 0.8, 0.9, side * 0.8);
+      }
+    } else {
+      r.spinFx = false;
     }
+    if (r.fxT < 0.16) return;
+    r.fxT = 0;
     if (worn) {
-      var w = wheelWorld(r, -1, steer >= 0 ? 1 : -1);
-      spawnFx("dust", w.x, 0.16, w.z, back * 2.2, 0.7, side * 2.2);
-    }
-    if (hard) {
-      var h = wheelWorld(r, -1, steer > 0 ? 1 : -1);
-      spawnFx("smoke", h.x, 0.2, h.z, back * 1.6, 0.9, side * 1.6);
+      var wr = wheelWorld(r, -1, -1);
+      var wl = wheelWorld(r, -1, 1);
+      spawnFx("streak", wr.x, 0.14, wr.z, back * 5.5, 0.05, side * 5.5);
+      spawnFx("streak", wl.x, 0.14, wl.z, back * 5.5, 0.05, side * 5.5);
+    } else if (hard) {
+      var out = wheelWorld(r, -1, steer > 0 ? 1 : -1);
+      spawnFx("slip", out.x, 0.16, out.z, back * 2.4, 0.2, side * 2.4);
     }
   }
 
@@ -2139,15 +2142,11 @@
       p.mesh.position.x += p.vx * dt;
       p.mesh.position.y += p.vy * dt;
       p.mesh.position.z += p.vz * dt;
-      p.vy += (p.kind === "spark" ? -9 : 0.55) * dt;
-      if (p.kind !== "glow") {
-        var sc = Math.min(p.mesh.scale.x * (1 + p.grow * dt), 2.6);
-        p.mesh.scale.setScalar(sc);
-      } else {
-        p.mesh.scale.x = 0.52 + u * 0.2;
-        p.mesh.scale.y = 0.2 + u * 0.08;
+      if (p.kind === "puff" || p.kind === "burst") {
+        p.mesh.scale.x = Math.min(p.mesh.scale.x * (1 + p.grow * dt), 2.1);
+        p.mesh.scale.y = Math.min(p.mesh.scale.y * (1 + p.grow * dt), 1.8);
       }
-      p.mesh.material.opacity = (1 - u) * (p.kind === "spark" ? 1 : 0.72);
+      p.mesh.material.opacity = (1 - u) * (p.kind === "spark" ? 1 : 0.8);
       p.mesh.quaternion.copy(camera.quaternion);
     }
   }
@@ -2254,6 +2253,7 @@
       launchCall = "SLUGGISH";
     }
     launchCallT = 2;
+    launchPuffs(player);
   }
 
   function persistMe() {
@@ -2560,7 +2560,6 @@
       var spin = revs * dt * 16;
       for (var w = 0; w < wheels.length; w++) wheels[w].spinner.rotation.z -= spin;
     }
-    emitRacerFx(player, input, dt, true);
 
     if (mpMode && net && net.active) {
       startPhase = net.startPhase || startPhase;
