@@ -978,17 +978,35 @@
   }
 
   function addInfieldGrass() {
-    var OFF = ASPHALT + RUNOFF + 7.5;
-    var s;
-    for (s = 90; s < TRACK_LEN - 50; s += 210) {
-      var p = centerlinePoint(s);
-      if (p.name === "start" || skipLeftBarrier(p)) continue;
-      var nx = -Math.sin(p.h);
-      var nz = Math.cos(p.h);
-      var x = p.x + nx * OFF;
-      var z = p.z + nz * OFF;
-      if (onPitPavement(x, z)) continue;
-      addBox(x, 0.06, z, 30, 0.1, 20, 0x4ea03c, trackRoot);
+    var grassMat = new THREE.MeshLambertMaterial({
+      color: 0x4ea03c,
+      emissive: 0x184018,
+      side: THREE.DoubleSide,
+    });
+    function patch(x, z, w, d) {
+      if (onPitPavement(x, z)) return;
+      var info = projectTrack(x, z);
+      if (info.dist < ASPHALT + RUNOFF + 5.5) return;
+      var mesh = new THREE.Mesh(new THREE.BoxGeometry(w, 0.1, d), grassMat);
+      mesh.position.set(x, 0.055, z);
+      trackRoot.add(mesh);
+    }
+    var rings = [
+      { off: ASPHALT + RUNOFF + 9, w: 38, d: 26, step: 185 },
+      { off: ASPHALT + RUNOFF + 38, w: 54, d: 38, step: 220 },
+      { off: ASPHALT + RUNOFF + 74, w: 72, d: 48, step: 260 },
+    ];
+    var ri;
+    for (ri = 0; ri < rings.length; ri++) {
+      var ring = rings[ri];
+      var s;
+      for (s = 70 + ri * 45; s < TRACK_LEN - 40; s += ring.step) {
+        var p = centerlinePoint(s);
+        if (p.name === "start" || skipLeftBarrier(p)) continue;
+        var nx = -Math.sin(p.h);
+        var nz = Math.cos(p.h);
+        patch(p.x + nx * ring.off, p.z + nz * ring.off, ring.w, ring.d);
+      }
     }
   }
 
