@@ -78,6 +78,7 @@ var code = [
   "];",
   "var PIT_META = { ax: 8, az: -62, bx: 118, bz: -62, on: true };",
   "var PATH = [];",
+  "var MAP_SURF = [];",
   "var TRACK_LEN = 0;",
   "var _x = -200;",
   "var _z = SF_Z;",

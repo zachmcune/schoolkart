@@ -152,6 +152,7 @@
   var lastNetSend = 0;
   var playerGridX = GRID_P2_X;
   var playerGridZ = GRID_P2_Z;
+  var gridHeading = 0;
   var joining = false;
   var lateJoinT = 0;
   var net = window.SchoolKartNet;
@@ -340,7 +341,7 @@
   var RIBBON_SEGS = 360;
 
   function cleanTrack(raw) {
-    return String(raw || "").replace(/[^sSLRHCKPtrM0-9]/g, "").slice(0, 120);
+    return String(raw || "").replace(/[^sSLRHCKPtrMFw0-9]/g, "").slice(0, 120);
   }
 
   function addLine(ax, az, bx, bz, name) {
@@ -572,9 +573,12 @@
     autoClosePath();
   }
 
+  var MAP_SURF = [];
   var MAP_W = 8;
   var MAP_H = 6;
   var MAP_CELL = 88;
+  var MAP_OX = -200;
+  var MAP_OZ = SF_Z;
   var MAP_DXY = [
     [1, 0],
     [0, 1],
@@ -582,16 +586,105 @@
     [0, -1],
   ];
   var MAP_TYPES = {
-    s: { ports: [0, 2], name: "straight" },
-    r: { ports: [0, 1], name: "90" },
-    H: { ports: [0, 1], name: "hairpin" },
-    C: { ports: [0, 2], name: "chicane" },
-    P: { ports: [0, 2], name: "pit" },
-    t: { ports: [], name: "tree" },
+    s: { kind: "flat", name: "short" },
+    S: { kind: "long", name: "short" },
+    r: { kind: "corner", name: "the90" },
+    w: { kind: "sweep", name: "sweeper" },
+    H: { kind: "hairpin", name: "hairpin" },
+    C: { kind: "chicane", name: "chicane" },
+    F: { kind: "flat", name: "start" },
+    P: { kind: "flat", name: "start" },
+    t: { kind: "prop", name: "tree" },
   };
 
   function mapKey(x, y) {
     return x + "," + y;
+  }
+
+  function cellNW(x, y) {
+    return { x: MAP_OX + x * MAP_CELL, z: MAP_OZ + y * MAP_CELL };
+  }
+
+  function cellCenter(x, y) {
+    return { x: MAP_OX + (x + 0.5) * MAP_CELL, z: MAP_OZ + (y + 0.5) * MAP_CELL };
+  }
+
+  function edgeMid(x, y, dir) {
+    var o = cellNW(x, y);
+    var h = MAP_CELL * 0.5;
+    if (dir === 0) return { x: o.x + MAP_CELL, z: o.z + h };
+    if (dir === 1) return { x: o.x + h, z: o.z + MAP_CELL };
+    if (dir === 2) return { x: o.x, z: o.z + h };
+    return { x: o.x + h, z: o.z };
+  }
+
+  function footprint(p) {
+    var cells = [{ x: p.x, y: p.y }];
+    var kind = MAP_TYPES[p.t] && MAP_TYPES[p.t].kind;
+    if (kind === "long" || kind === "hairpin") {
+      var d = MAP_DXY[p.r & 3];
+      cells.push({ x: p.x + d[0], y: p.y + d[1] });
+    } else if (kind === "sweep") {
+      cells.push({ x: p.x + 1, y: p.y }, { x: p.x, y: p.y + 1 }, { x: p.x + 1, y: p.y + 1 });
+    }
+    return cells;
+  }
+
+  function cellsInBoard(cells) {
+    var i;
+    for (i = 0; i < cells.length; i++) {
+      if (cells[i].x < 0 || cells[i].y < 0 || cells[i].x >= MAP_W || cells[i].y >= MAP_H) return false;
+    }
+    return cells.length > 0;
+  }
+
+  function pieceSpan(t, r) {
+    var kind = MAP_TYPES[t] && MAP_TYPES[t].kind;
+    if (kind === "sweep") return { cols: 2, rows: 2 };
+    if (kind === "long" || kind === "hairpin") return r & 1 ? { cols: 1, rows: 2 } : { cols: 2, rows: 1 };
+    return { cols: 1, rows: 1 };
+  }
+
+  function portList(p) {
+    var k = MAP_TYPES[p.t] && MAP_TYPES[p.t].kind;
+    var x = p.x;
+    var y = p.y;
+    var r = p.r & 3;
+    if (k === "prop" || !k) return [];
+    if (k === "flat" || k === "chicane") {
+      return [
+        { dir: (0 + r) & 3, x: x, y: y },
+        { dir: (2 + r) & 3, x: x, y: y },
+      ];
+    }
+    if (k === "corner") {
+      return [
+        { dir: (0 + r) & 3, x: x, y: y },
+        { dir: (1 + r) & 3, x: x, y: y },
+      ];
+    }
+    if (k === "long") {
+      var d = MAP_DXY[r];
+      return [
+        { dir: (r + 2) & 3, x: x, y: y },
+        { dir: r, x: x + d[0], y: y + d[1] },
+      ];
+    }
+    if (k === "hairpin") {
+      var hd = MAP_DXY[r];
+      var open = (r + 1) & 3;
+      return [
+        { dir: open, x: x, y: y },
+        { dir: open, x: x + hd[0], y: y + hd[1] },
+      ];
+    }
+    if (k === "sweep") {
+      if (r === 0) return [{ dir: 0, x: x + 1, y: y }, { dir: 1, x: x, y: y + 1 }];
+      if (r === 1) return [{ dir: 1, x: x + 1, y: y + 1 }, { dir: 2, x: x, y: y }];
+      if (r === 2) return [{ dir: 2, x: x, y: y + 1 }, { dir: 3, x: x + 1, y: y }];
+      return [{ dir: 3, x: x, y: y }, { dir: 0, x: x + 1, y: y + 1 }];
+    }
+    return [];
   }
 
   function parseMap(code) {
@@ -604,8 +697,10 @@
       var y = +code.charAt(i + 2);
       var r = +code.charAt(i + 3);
       if (!MAP_TYPES[t]) continue;
-      if (x < 0 || y < 0 || x >= MAP_W || y >= MAP_H || r < 0 || r > 3 || isNaN(x) || isNaN(y) || isNaN(r)) continue;
-      pieces.push({ t: t, x: x, y: y, r: r });
+      if (isNaN(x) || isNaN(y) || isNaN(r) || r < 0 || r > 3) continue;
+      var p = { t: t, x: x, y: y, r: r };
+      if (!cellsInBoard(footprint(p))) continue;
+      pieces.push(p);
     }
     return pieces;
   }
@@ -620,112 +715,321 @@
     return s;
   }
 
-  function portsFor(t, r) {
-    var base = MAP_TYPES[t] && MAP_TYPES[t].ports;
-    if (!base || !base.length) return [];
-    return [(base[0] + r) & 3, (base[1] + r) & 3];
-  }
-
-  function portWorld(x, y, dir) {
-    var cx = -200 + (x + 0.5) * MAP_CELL;
-    var cz = SF_Z + (y + 0.5) * MAP_CELL;
-    var h = MAP_CELL * 0.5;
-    if (dir === 0) return { x: cx + h, z: cz };
-    if (dir === 1) return { x: cx, z: cz + h };
-    if (dir === 2) return { x: cx - h, z: cz };
-    return { x: cx, z: cz - h };
-  }
-
-  function emitMapPiece(p, fromPort) {
-    var ps = portsFor(p.t, p.r);
-    var outPort = ps[0] === fromPort ? ps[1] : ps[0];
-    var inH = (fromPort + 2) & 3;
-    var turn = ((outPort - inH) + 4) & 3;
-    var outDeg = outPort * 90;
-    if (p.t === "P") {
-      placePitHere();
-      pathLine(MAP_CELL, "start");
-    } else if (p.t === "s") {
-      pathLine(MAP_CELL, "short");
-    } else if (p.t === "r") {
-      if (turn === 1) pathArc(MAP_CELL * 0.42, 90, "the90");
-      else if (turn === 3) pathArc(MAP_CELL * 0.42, -90, "the90");
-      else pathLine(MAP_CELL * 0.7, "short");
-    } else if (p.t === "H") {
-      pathArc(MAP_CELL * 0.2, turn === 1 || turn === 2 ? 180 : -180, "hairpin");
-    } else if (p.t === "C") {
-      pathArc(14, 62, "chicane");
-      pathLine(16, "chicane");
-      pathArc(11, -80, "chicane");
-    } else {
-      pathLine(MAP_CELL * 0.6, "short");
+  function occupyMap(pieces) {
+    var by = {};
+    var i;
+    var j;
+    for (i = 0; i < pieces.length; i++) {
+      var cells = footprint(pieces[i]);
+      for (j = 0; j < cells.length; j++) by[mapKey(cells[j].x, cells[j].y)] = pieces[i];
     }
-    pathSnap(outDeg, 14, p.t === "H" ? "hairpin" : p.t === "C" ? "chicane" : "close");
+    return by;
+  }
+
+  function footprintsOverlap(a, b) {
+    var A = footprint(a);
+    var B = footprint(b);
+    var i;
+    var j;
+    for (i = 0; i < A.length; i++) {
+      for (j = 0; j < B.length; j++) {
+        if (A[i].x === B[j].x && A[i].y === B[j].y) return true;
+      }
+    }
+    return false;
+  }
+
+  function lineSeg(ax, az, bx, bz, name) {
+    return { type: "line", ax: ax, az: az, bx: bx, bz: bz, name: name };
+  }
+
+  function arcSeg(cx, cz, r, a0, a1, name) {
+    return { type: "arc", cx: cx, cz: cz, r: r, a0: a0, a1: a1, name: name };
+  }
+
+  function reverseSeg(seg) {
+    if (seg.type === "line") return lineSeg(seg.bx, seg.bz, seg.ax, seg.az, seg.name);
+    return arcSeg(seg.cx, seg.cz, seg.r, seg.a1, seg.a0, seg.name);
+  }
+
+  function chicanePts(x, y, r) {
+    var w = edgeMid(x, y, (2 + r) & 3);
+    var e = edgeMid(x, y, (0 + r) & 3);
+    var c = cellCenter(x, y);
+    var fx = e.x - w.x;
+    var fz = e.z - w.z;
+    var fl = Math.hypot(fx, fz) || 1;
+    fx /= fl;
+    fz /= fl;
+    var lx = -fz;
+    var lz = fx;
+    return [
+      w,
+      { x: c.x + lx * MAP_CELL * 0.22 - fx * MAP_CELL * 0.12, z: c.z + lz * MAP_CELL * 0.22 - fz * MAP_CELL * 0.12 },
+      { x: c.x - lx * MAP_CELL * 0.22 + fx * MAP_CELL * 0.12, z: c.z - lz * MAP_CELL * 0.22 + fz * MAP_CELL * 0.12 },
+      e,
+    ];
+  }
+
+  function pieceSegs(p) {
+    var name = MAP_TYPES[p.t].name;
+    var k = MAP_TYPES[p.t].kind;
+    var x = p.x;
+    var y = p.y;
+    var r = p.r & 3;
+    var C = MAP_CELL;
+    if (k === "prop") return [];
+    if (k === "flat") {
+      var a = edgeMid(x, y, (2 + r) & 3);
+      var b = edgeMid(x, y, (0 + r) & 3);
+      return [lineSeg(a.x, a.z, b.x, b.z, name)];
+    }
+    if (k === "long") {
+      var ports = portList(p);
+      var pa = edgeMid(ports[0].x, ports[0].y, ports[0].dir);
+      var pb = edgeMid(ports[1].x, ports[1].y, ports[1].dir);
+      return [lineSeg(pa.x, pa.z, pb.x, pb.z, name)];
+    }
+    if (k === "corner") {
+      var o = cellNW(x, y);
+      var cx;
+      var cz;
+      var a0;
+      var a1;
+      if (r === 0) {
+        cx = o.x + C;
+        cz = o.z + C;
+        a0 = -Math.PI * 0.5;
+        a1 = -Math.PI;
+      } else if (r === 1) {
+        cx = o.x;
+        cz = o.z + C;
+        a0 = 0;
+        a1 = -Math.PI * 0.5;
+      } else if (r === 2) {
+        cx = o.x;
+        cz = o.z;
+        a0 = Math.PI * 0.5;
+        a1 = 0;
+      } else {
+        cx = o.x + C;
+        cz = o.z;
+        a0 = Math.PI;
+        a1 = Math.PI * 0.5;
+      }
+      return [arcSeg(cx, cz, C * 0.5, a0, a1, name)];
+    }
+    if (k === "chicane") {
+      var pts = chicanePts(x, y, r);
+      return [
+        lineSeg(pts[0].x, pts[0].z, pts[1].x, pts[1].z, name),
+        lineSeg(pts[1].x, pts[1].z, pts[2].x, pts[2].z, name),
+        lineSeg(pts[2].x, pts[2].z, pts[3].x, pts[3].z, name),
+      ];
+    }
+    if (k === "hairpin") {
+      var hp = portList(p);
+      var ha = edgeMid(hp[0].x, hp[0].y, hp[0].dir);
+      var hb = edgeMid(hp[1].x, hp[1].y, hp[1].dir);
+      var hcx = (ha.x + hb.x) * 0.5;
+      var hcz = (ha.z + hb.z) * 0.5;
+      var ang0 = Math.atan2(ha.z - hcz, ha.x - hcx);
+      var ang1 = ang0 + Math.PI;
+      return [arcSeg(hcx, hcz, C * 0.5, ang0, ang1, name)];
+    }
+    if (k === "sweep") {
+      var o2 = cellNW(x, y);
+      var scx;
+      var scz;
+      var sa0;
+      var sa1;
+      if (r === 0) {
+        scx = o2.x + C * 2;
+        scz = o2.z + C * 2;
+        sa0 = -Math.PI * 0.5;
+        sa1 = -Math.PI;
+      } else if (r === 1) {
+        scx = o2.x;
+        scz = o2.z + C * 2;
+        sa0 = 0;
+        sa1 = -Math.PI * 0.5;
+      } else if (r === 2) {
+        scx = o2.x;
+        scz = o2.z;
+        sa0 = Math.PI * 0.5;
+        sa1 = 0;
+      } else {
+        scx = o2.x + C * 2;
+        scz = o2.z;
+        sa0 = Math.PI;
+        sa1 = Math.PI * 0.5;
+      }
+      return [arcSeg(scx, scz, C * 1.5, sa0, sa1, name)];
+    }
+    return [];
+  }
+
+  function emitSeg(seg) {
+    if (seg.type === "line") addLine(seg.ax, seg.az, seg.bx, seg.bz, seg.name);
+    else addArc(seg.cx, seg.cz, seg.r, seg.a0, seg.a1, seg.name);
+  }
+
+  function segsFromEnter(p, fromDir, fromX, fromY) {
+    var segs = pieceSegs(p).slice();
+    var ports = portList(p);
+    var i;
+    var enter = 0;
+    for (i = 0; i < ports.length; i++) {
+      if (ports[i].dir === fromDir && ports[i].x === fromX && ports[i].y === fromY) enter = i;
+    }
+    if (enter === 1) {
+      segs.reverse();
+      for (i = 0; i < segs.length; i++) segs[i] = reverseSeg(segs[i]);
+    }
+    return segs;
+  }
+
+  function placePitFromPiece(p) {
+    var segs = pieceSegs(p);
+    if (!segs.length || segs[0].type !== "line") return;
+    var s = segs[0];
+    var heading = Math.atan2(s.bz - s.az, s.bx - s.ax);
+    var fx = Math.cos(heading);
+    var fz = Math.sin(heading);
+    var lx = Math.cos(heading + Math.PI * 0.5);
+    var lz = Math.sin(heading + Math.PI * 0.5);
+    var len = MAP_CELL;
+    var inset = 12;
+    var half = 5.4;
+    var xs = [s.ax + lx * (inset - half), s.ax + lx * (inset + half), s.ax + fx * len + lx * (inset - half), s.ax + fx * len + lx * (inset + half)];
+    var zs = [s.az + lz * (inset - half), s.az + lz * (inset + half), s.az + fz * len + lz * (inset - half), s.az + fz * len + lz * (inset + half)];
+    PIT_LANE.x0 = Math.min.apply(null, xs);
+    PIT_LANE.x1 = Math.max.apply(null, xs);
+    PIT_LANE.z0 = Math.min.apply(null, zs);
+    PIT_LANE.z1 = Math.max.apply(null, zs);
+    PIT_META.ax = s.ax + lx * inset;
+    PIT_META.az = s.az + lz * inset;
+    PIT_META.bx = s.ax + fx * len + lx * inset;
+    PIT_META.bz = s.az + fz * len + lz * inset;
+    PIT_META.on = true;
+    var t0 = 0.48;
+    var t1 = 0.78;
+    var gx = [
+      PIT_META.ax + (PIT_META.bx - PIT_META.ax) * t0 + lx * -half,
+      PIT_META.ax + (PIT_META.bx - PIT_META.ax) * t0 + lx * half,
+      PIT_META.ax + (PIT_META.bx - PIT_META.ax) * t1 + lx * -half,
+      PIT_META.ax + (PIT_META.bx - PIT_META.ax) * t1 + lx * half,
+    ];
+    var gz = [
+      PIT_META.az + (PIT_META.bz - PIT_META.az) * t0 + lz * -half,
+      PIT_META.az + (PIT_META.bz - PIT_META.az) * t0 + lz * half,
+      PIT_META.az + (PIT_META.bz - PIT_META.az) * t1 + lz * -half,
+      PIT_META.az + (PIT_META.bz - PIT_META.az) * t1 + lz * half,
+    ];
+    PIT_GRAB.x0 = Math.min.apply(null, gx);
+    PIT_GRAB.x1 = Math.max.apply(null, gx);
+    PIT_GRAB.z0 = Math.min.apply(null, gz);
+    PIT_GRAB.z1 = Math.max.apply(null, gz);
+    PIT_PAVE.length = 0;
+    PIT_PAVE.push(PIT_LANE, PIT_GRAB);
+  }
+
+  function findEnterPort(p, dir, cx, cy) {
+    var ports = portList(p);
+    var i;
+    for (i = 0; i < ports.length; i++) {
+      if (ports[i].dir === dir && ports[i].x === cx && ports[i].y === cy) return ports[i];
+    }
+    return null;
   }
 
   function buildMapPath(code) {
+    MAP_SURF = [];
     var pieces = parseMap(code);
-    var by = {};
     var i;
+    var j;
     for (i = 0; i < pieces.length; i++) {
-      by[mapKey(pieces[i].x, pieces[i].y)] = pieces[i];
       if (pieces[i].t === "t") {
-        stampTrees.push({
-          x: -200 + (pieces[i].x + 0.5) * MAP_CELL,
-          z: SF_Z + (pieces[i].y + 0.5) * MAP_CELL,
-        });
+        var tc = cellCenter(pieces[i].x, pieces[i].y);
+        stampTrees.push({ x: tc.x, z: tc.z });
+      } else {
+        var surf = pieceSegs(pieces[i]);
+        for (j = 0; j < surf.length; j++) MAP_SURF.push(surf[j]);
       }
     }
     var track = pieces.filter(function (p) {
       return p.t !== "t";
     });
     if (!track.length) {
+      MAP_SURF = [];
       setDefaultPit();
       buildCampusPath();
       return;
     }
+    var occ = occupyMap(track);
     var start = null;
     for (i = 0; i < track.length; i++) {
-      if (track[i].t === "P") {
+      if (track[i].t === "F") {
         start = track[i];
         break;
       }
     }
+    if (!start) {
+      for (i = 0; i < track.length; i++) {
+        if (track[i].t === "P") {
+          start = track[i];
+          break;
+        }
+      }
+    }
     if (!start) start = track[0];
-    var ports = portsFor(start.t, start.r);
-    var fromPort = ports[0];
-    var enter = portWorld(start.x, start.y, fromPort);
-    _x = enter.x;
-    _z = enter.z;
-    _h = ((fromPort + 2) & 3) * Math.PI * 0.5;
+    var startPorts = portList(start);
+    var fromPort = startPorts[0];
     var visited = {};
     var cur = start;
     var hadPit = false;
+    var used = {};
     var guard = 0;
     while (cur && guard++ < 64) {
-      var k = mapKey(cur.x, cur.y);
-      if (visited[k]) break;
-      visited[k] = 1;
-      emitMapPiece(cur, fromPort);
-      if (cur.t === "P") hadPit = true;
-      var ps = portsFor(cur.t, cur.r);
-      var outPort = ps[0] === fromPort ? ps[1] : ps[0];
-      if (outPort == null) break;
-      var nx = cur.x + MAP_DXY[outPort][0];
-      var ny = cur.y + MAP_DXY[outPort][1];
-      var np = by[mapKey(nx, ny)];
+      var id = mapKey(cur.x, cur.y);
+      if (visited[id]) break;
+      visited[id] = 1;
+      used[id] = 1;
+      var segs = segsFromEnter(cur, fromPort.dir, fromPort.x, fromPort.y);
+      for (j = 0; j < segs.length; j++) emitSeg(segs[j]);
+      if (cur.t === "P") {
+        placePitFromPiece(cur);
+        hadPit = true;
+      }
+      var ports = portList(cur);
+      var out = ports[0];
+      if (fromPort && ports[0].dir === fromPort.dir && ports[0].x === fromPort.x && ports[0].y === fromPort.y) out = ports[1];
+      if (!out) break;
+      var nx = out.x + MAP_DXY[out.dir][0];
+      var ny = out.y + MAP_DXY[out.dir][1];
+      var np = occ[mapKey(nx, ny)];
       if (!np || np.t === "t") break;
-      var back = (outPort + 2) & 3;
-      if (portsFor(np.t, np.r).indexOf(back) === -1) break;
-      fromPort = back;
+      var back = (out.dir + 2) & 3;
+      var hit = findEnterPort(np, back, nx, ny);
+      if (!hit) break;
+      fromPort = hit;
       cur = np;
     }
+    for (i = 0; i < track.length; i++) {
+      if (used[mapKey(track[i].x, track[i].y)]) continue;
+      var extra = pieceSegs(track[i]);
+      for (j = 0; j < extra.length; j++) emitSeg(extra[j]);
+      if (track[i].t === "P" && !hadPit) {
+        placePitFromPiece(track[i]);
+        hadPit = true;
+      }
+    }
     if (!hadPit) clearPit();
-    autoClosePath();
   }
 
   function rebuildPath(code) {
     resetPathCursor();
+    MAP_SURF = [];
     if (code) {
       if (code.charAt(0) === "M") buildMapPath(code);
       else buildCodePath(code);
@@ -797,15 +1101,16 @@
   function projectTrack(px, pz) {
     var best = null;
     var bestS = 0;
-    for (var i = 0; i < PATH.length; i++) {
-      var seg = PATH[i];
+    var segs = MAP_SURF.length ? MAP_SURF : PATH;
+    for (var i = 0; i < segs.length; i++) {
+      var seg = segs[i];
       var hit =
         seg.type === "line"
           ? closestOnSeg(px, pz, seg.ax, seg.az, seg.bx, seg.bz)
           : closestOnArc(px, pz, seg.cx, seg.cz, seg.r, seg.a0, seg.a1);
       if (!best || hit.d2 < best.d2) {
         best = hit;
-        bestS = seg.startS + hit.t * seg.len;
+        bestS = (seg.startS || 0) + hit.t * (seg.len || 0);
         best.name = seg.name;
       }
     }
@@ -1440,9 +1745,12 @@
 
   var TILE_LABEL = {
     s: "straight",
+    S: "long",
     r: "90",
+    w: "sweeper",
     H: "hairpin",
     C: "chicane",
+    F: "start",
     P: "pit",
     t: "tree",
   };
@@ -1455,127 +1763,165 @@
   function tileArt(type, rot, size) {
     var key = type + rot + ":" + size;
     if (_tileArt[key]) return _tileArt[key];
-    var s = size || 160;
+    var unit = size || 160;
+    var span = pieceSpan(type, rot || 0);
+    var w = unit * span.cols;
+    var h = unit * span.rows;
     var c = document.createElement("canvas");
-    c.width = c.height = s;
+    c.width = w;
+    c.height = h;
     var ctx = c.getContext("2d");
     ctx.fillStyle = "#6a655c";
-    ctx.fillRect(0, 0, s, s);
-    var bevel = ctx.createLinearGradient(0, 0, s, s);
-    bevel.addColorStop(0, "rgba(255,255,255,0.14)");
-    bevel.addColorStop(0.42, "rgba(255,255,255,0)");
-    bevel.addColorStop(1, "rgba(0,0,0,0.22)");
+    ctx.fillRect(0, 0, w, h);
+    var bevel = ctx.createLinearGradient(0, 0, w, h);
+    bevel.addColorStop(0, "rgba(255,255,255,0.12)");
+    bevel.addColorStop(0.45, "rgba(255,255,255,0)");
+    bevel.addColorStop(1, "rgba(0,0,0,0.2)");
     ctx.fillStyle = bevel;
-    ctx.fillRect(0, 0, s, s);
-    ctx.strokeStyle = "rgba(26,18,14,0.35)";
-    ctx.lineWidth = 2;
-    ctx.strokeRect(1, 1, s - 2, s - 2);
-    ctx.save();
-    ctx.translate(s * 0.5, s * 0.5);
-    ctx.rotate((rot || 0) * Math.PI * 0.5);
-    ctx.translate(-s * 0.5, -s * 0.5);
+    ctx.fillRect(0, 0, w, h);
     function trackPath() {
       ctx.beginPath();
-      if (type === "r") {
-        ctx.moveTo(s, s * 0.5);
-        ctx.arc(s, s, s * 0.5, -Math.PI * 0.5, Math.PI, false);
-      } else if (type === "H") {
-        ctx.moveTo(s, s * 0.5);
-        ctx.lineTo(s * 0.62, s * 0.5);
-        ctx.arc(s * 0.42, s * 0.5, s * 0.2, 0, Math.PI, true);
-        ctx.quadraticCurveTo(s * 0.28, s * 0.78, s * 0.5, s);
-      } else if (type === "C") {
-        ctx.moveTo(0, s * 0.5);
-        ctx.bezierCurveTo(s * 0.26, s * 0.14, s * 0.3, s * 0.16, s * 0.5, s * 0.5);
-        ctx.bezierCurveTo(s * 0.7, s * 0.84, s * 0.74, s * 0.86, s, s * 0.5);
-      } else {
-        ctx.moveTo(0, s * 0.5);
-        ctx.lineTo(s, s * 0.5);
+      var k = MAP_TYPES[type] && MAP_TYPES[type].kind;
+      var u = unit;
+      if (type === "t") return;
+      if (k === "flat" || k === "chicane") {
+        ctx.save();
+        ctx.translate(u * 0.5, u * 0.5);
+        ctx.rotate((rot || 0) * Math.PI * 0.5);
+        ctx.translate(-u * 0.5, -u * 0.5);
+        if (k === "chicane") {
+          ctx.moveTo(0, u * 0.5);
+          ctx.lineTo(u * 0.38, u * 0.28);
+          ctx.lineTo(u * 0.62, u * 0.72);
+          ctx.lineTo(u, u * 0.5);
+        } else {
+          ctx.moveTo(0, u * 0.5);
+          ctx.lineTo(u, u * 0.5);
+        }
+        ctx.restore();
+        return;
+      }
+      if (k === "corner") {
+        ctx.save();
+        ctx.translate(u * 0.5, u * 0.5);
+        ctx.rotate((rot || 0) * Math.PI * 0.5);
+        ctx.translate(-u * 0.5, -u * 0.5);
+        ctx.moveTo(u, u * 0.5);
+        ctx.arc(u, u, u * 0.5, -Math.PI * 0.5, -Math.PI, true);
+        ctx.restore();
+        return;
+      }
+      if (k === "long") {
+        if (rot & 1) {
+          ctx.moveTo(u * 0.5, 0);
+          ctx.lineTo(u * 0.5, h);
+        } else {
+          ctx.moveTo(0, u * 0.5);
+          ctx.lineTo(w, u * 0.5);
+        }
+        return;
+      }
+      if (k === "hairpin") {
+        if (rot === 0) {
+          ctx.moveTo(u * 0.5, u);
+          ctx.arc(u, u, u * 0.5, Math.PI, 0, false);
+        } else if (rot === 1) {
+          ctx.moveTo(0, u * 0.5);
+          ctx.arc(0, u, u * 0.5, -Math.PI * 0.5, Math.PI * 0.5, false);
+        } else if (rot === 2) {
+          ctx.moveTo(u * 0.5, 0);
+          ctx.arc(u, 0, u * 0.5, Math.PI, 0, true);
+        } else {
+          ctx.moveTo(u, u * 0.5);
+          ctx.arc(u, u, u * 0.5, -Math.PI * 0.5, Math.PI * 0.5, true);
+        }
+        return;
+      }
+      if (k === "sweep") {
+        var R = u * 1.5;
+        if (rot === 0) {
+          ctx.moveTo(w, u * 0.5);
+          ctx.arc(w, h, R, -Math.PI * 0.5, -Math.PI, true);
+        } else if (rot === 1) {
+          ctx.moveTo(u * 1.5, h);
+          ctx.arc(0, h, R, 0, -Math.PI * 0.5, true);
+        } else if (rot === 2) {
+          ctx.moveTo(0, u * 1.5);
+          ctx.arc(0, 0, R, Math.PI * 0.5, 0, true);
+        } else {
+          ctx.moveTo(u * 0.5, 0);
+          ctx.arc(w, 0, R, Math.PI, Math.PI * 0.5, true);
+        }
       }
     }
     function strokeTrack() {
       ctx.lineCap = "butt";
       ctx.lineJoin = "round";
       ctx.setLineDash([]);
+      var ribbon = unit * 0.2;
       ctx.strokeStyle = "#8d97a6";
-      ctx.lineWidth = s * 0.42;
+      ctx.lineWidth = ribbon * 1.75;
       trackPath();
       ctx.stroke();
       ctx.strokeStyle = "#ff2038";
-      ctx.lineWidth = s * 0.34;
+      ctx.lineWidth = ribbon * 1.42;
       trackPath();
       ctx.stroke();
       ctx.strokeStyle = "#fff6ee";
-      ctx.lineWidth = s * 0.34;
-      ctx.setLineDash([s * 0.07, s * 0.07]);
+      ctx.lineWidth = ribbon * 1.42;
+      ctx.setLineDash([unit * 0.07, unit * 0.07]);
       trackPath();
       ctx.stroke();
       ctx.setLineDash([]);
       ctx.strokeStyle = "#3a3e46";
-      ctx.lineWidth = s * 0.24;
+      ctx.lineWidth = ribbon;
       trackPath();
       ctx.stroke();
       ctx.strokeStyle = "#15171b";
-      ctx.lineWidth = Math.max(2, s * 0.03);
+      ctx.lineWidth = Math.max(2, unit * 0.025);
       trackPath();
       ctx.stroke();
       ctx.strokeStyle = "#d8d0b8";
-      ctx.lineWidth = Math.max(1, s * 0.012);
-      ctx.setLineDash([s * 0.055, s * 0.04]);
+      ctx.lineWidth = Math.max(1, unit * 0.01);
+      ctx.setLineDash([unit * 0.05, unit * 0.04]);
       trackPath();
       ctx.stroke();
       ctx.setLineDash([]);
     }
-    function drawPorts(dirs) {
-      var i;
-      for (i = 0; i < dirs.length; i++) {
-        ctx.save();
-        ctx.translate(s * 0.5, s * 0.5);
-        ctx.rotate(dirs[i] * Math.PI * 0.5);
-        ctx.fillStyle = "#2b2e34";
-        ctx.fillRect(s * 0.5 - 8, -10, 8, 20);
-        ctx.fillStyle = "#3a3e46";
-        ctx.fillRect(s * 0.5 - 7, -7, 7, 14);
-        ctx.fillStyle = "#111318";
-        ctx.fillRect(s * 0.5 - 7, -1.5, 7, 3);
-        ctx.restore();
-      }
-    }
     if (type === "t") {
       ctx.fillStyle = "#5a4030";
       ctx.beginPath();
-      ctx.arc(s * 0.5, s * 0.72, s * 0.16, 0, Math.PI * 2);
+      ctx.arc(unit * 0.5, unit * 0.72, unit * 0.16, 0, Math.PI * 2);
       ctx.fill();
       ctx.fillStyle = "#6a4020";
-      ctx.fillRect(s * 0.45, s * 0.5, s * 0.1, s * 0.24);
+      ctx.fillRect(unit * 0.45, unit * 0.5, unit * 0.1, unit * 0.24);
       ctx.fillStyle = "#3f8a32";
       ctx.beginPath();
-      ctx.arc(s * 0.5, s * 0.4, s * 0.2, 0, Math.PI * 2);
+      ctx.arc(unit * 0.5, unit * 0.4, unit * 0.2, 0, Math.PI * 2);
       ctx.fill();
       ctx.fillStyle = "#4ea03c";
       ctx.beginPath();
-      ctx.arc(s * 0.4, s * 0.36, s * 0.14, 0, Math.PI * 2);
-      ctx.arc(s * 0.6, s * 0.34, s * 0.13, 0, Math.PI * 2);
+      ctx.arc(unit * 0.4, unit * 0.36, unit * 0.14, 0, Math.PI * 2);
+      ctx.arc(unit * 0.6, unit * 0.34, unit * 0.13, 0, Math.PI * 2);
       ctx.fill();
     } else {
       strokeTrack();
-      if (type === "P") {
-        ctx.fillStyle = "#2ec8c3";
-        ctx.fillRect(s * 0.22, s * 0.08, s * 0.56, s * 0.2);
-        ctx.fillStyle = "#148f8c";
-        ctx.fillRect(s * 0.22, s * 0.26, s * 0.56, 3);
-        ctx.strokeStyle = "#2ec8c3";
-        ctx.lineWidth = 3;
-        ctx.setLineDash([5, 4]);
-        ctx.beginPath();
-        ctx.moveTo(s * 0.5, s * 0.28);
-        ctx.lineTo(s * 0.5, s * 0.4);
-        ctx.stroke();
-        ctx.setLineDash([]);
+      if (type === "P" || type === "F") {
+        ctx.save();
+        ctx.translate(unit * 0.5, unit * 0.5);
+        ctx.rotate((rot || 0) * Math.PI * 0.5);
+        ctx.translate(-unit * 0.5, -unit * 0.5);
+        if (type === "P") {
+          ctx.fillStyle = "#2ec8c3";
+          ctx.fillRect(unit * 0.22, unit * 0.08, unit * 0.56, unit * 0.18);
+        } else {
+          ctx.fillStyle = "#fff6ee";
+          ctx.fillRect(unit * 0.42, unit * 0.22, unit * 0.04, unit * 0.56);
+          ctx.fillRect(unit * 0.54, unit * 0.22, unit * 0.04, unit * 0.56);
+        }
+        ctx.restore();
       }
-      drawPorts(MAP_TYPES[type] && MAP_TYPES[type].ports ? MAP_TYPES[type].ports : []);
     }
-    ctx.restore();
     _tileArt[key] = c.toDataURL();
     return _tileArt[key];
   }
@@ -1598,44 +1944,69 @@
       }
     }
     if (!hud.tileBoard) return;
-    var by = {};
     var pieces = parseMap(trackCode);
-    var i;
-    for (i = 0; i < pieces.length; i++) by[mapKey(pieces[i].x, pieces[i].y)] = pieces[i];
+    var occ = occupyMap(pieces);
+    var painted = {};
     var html = "";
     var y;
     var x;
     for (y = 0; y < MAP_H; y++) {
       for (x = 0; x < MAP_W; x++) {
         var k = mapKey(x, y);
-        var p = by[k];
-        var sel = tileSel === k;
-        if (p) {
+        if (painted[k]) continue;
+        var p = occ[k];
+        if (p && p.x === x && p.y === y) {
+          var fp = footprint(p);
+          var minx = x;
+          var miny = y;
+          var maxx = x;
+          var maxy = y;
+          var fi;
+          for (fi = 0; fi < fp.length; fi++) {
+            painted[mapKey(fp[fi].x, fp[fi].y)] = 1;
+            if (fp[fi].x < minx) minx = fp[fi].x;
+            if (fp[fi].y < miny) miny = fp[fi].y;
+            if (fp[fi].x > maxx) maxx = fp[fi].x;
+            if (fp[fi].y > maxy) maxy = fp[fi].y;
+          }
+          var sel = tileSel === mapKey(p.x, p.y);
           html +=
             '<div class="tile-cell' +
             (sel ? " picked" : "") +
             '" data-x="' +
-            x +
+            p.x +
             '" data-y="' +
-            y +
+            p.y +
             '" data-tile="' +
             p.t +
             '" data-rot="' +
             p.r +
-            '" role="button" tabindex="0" style="background-image:url(' +
+            '" role="button" tabindex="0" style="grid-column:' +
+            (minx + 1) +
+            " / span " +
+            (maxx - minx + 1) +
+            ";grid-row:" +
+            (miny + 1) +
+            " / span " +
+            (maxy - miny + 1) +
+            ";background-image:url(" +
             tileArt(p.t, p.r, 160) +
             ')">';
           if (sel) {
             html += '<button type="button" class="tile-rot-handle" data-rot-handle="1" aria-label="Rotate 90 degrees">↻</button>';
           }
           html += "</div>";
-        } else {
+        } else if (!p) {
           html +=
             '<div class="tile-cell empty" data-x="' +
             x +
             '" data-y="' +
             y +
-            '" role="button" tabindex="0"></div>';
+            '" role="button" tabindex="0" style="grid-column:' +
+            (x + 1) +
+            ";grid-row:" +
+            (y + 1) +
+            '"></div>';
         }
       }
     }
@@ -1664,12 +2035,29 @@
     if (net && net.active && net.isHost() && net.setTrack) net.setTrack(trackCode);
   }
 
+  function pieceAt(x, y, pieces) {
+    var occ = occupyMap(pieces || parseMap(trackCode));
+    return occ[mapKey(x, y)] || null;
+  }
+
+  function canSit(p, pieces, skip) {
+    if (!cellsInBoard(footprint(p))) return false;
+    var i;
+    for (i = 0; i < pieces.length; i++) {
+      if (skip && pieces[i].x === skip.x && pieces[i].y === skip.y && pieces[i].t === skip.t) continue;
+      if (footprintsOverlap(p, pieces[i])) return false;
+    }
+    return true;
+  }
+
   function placePiece(t, x, y, r) {
     if (!MAP_TYPES[t] || x < 0 || y < 0 || x >= MAP_W || y >= MAP_H) return;
+    var next = { t: t, x: x, y: y, r: r || 0 };
+    if (!cellsInBoard(footprint(next))) return;
     var pieces = parseMap(trackCode).filter(function (p) {
-      return !(p.x === x && p.y === y);
+      return !footprintsOverlap(p, next);
     });
-    pieces.push({ t: t, x: x, y: y, r: r || 0 });
+    pieces.push(next);
     tileSel = mapKey(x, y);
     commitTrack(encodeMap(pieces));
   }
@@ -1677,18 +2065,28 @@
   function movePiece(x0, y0, x1, y1) {
     if (x0 === x1 && y0 === y1) return;
     var pieces = parseMap(trackCode);
-    var moving = null;
-    var occ = null;
-    var i;
-    for (i = 0; i < pieces.length; i++) {
-      if (pieces[i].x === x0 && pieces[i].y === y0) moving = pieces[i];
-      if (pieces[i].x === x1 && pieces[i].y === y1) occ = pieces[i];
-    }
+    var moving = pieceAt(x0, y0, pieces);
     if (!moving) return;
-    if (occ) {
-      occ.x = x0;
-      occ.y = y0;
+    var dest = { t: moving.t, x: x1, y: y1, r: moving.r };
+    if (!cellsInBoard(footprint(dest))) return;
+    var occ = pieceAt(x1, y1, pieces);
+    if (occ && occ !== moving && occ.t === moving.t) {
+      var swapA = { t: moving.t, x: x1, y: y1, r: moving.r };
+      var swapB = { t: occ.t, x: moving.x, y: moving.y, r: occ.r };
+      if (cellsInBoard(footprint(swapA)) && cellsInBoard(footprint(swapB))) {
+        moving.x = x1;
+        moving.y = y1;
+        occ.x = x0;
+        occ.y = y0;
+        tileSel = mapKey(x1, y1);
+        commitTrack(encodeMap(pieces));
+      }
+      return;
     }
+    var others = pieces.filter(function (p) {
+      return p !== moving;
+    });
+    if (!canSit(dest, others)) return;
     moving.x = x1;
     moving.y = y1;
     tileSel = mapKey(x1, y1);
@@ -1696,26 +2094,30 @@
   }
 
   function deletePiece(x, y) {
+    var hit = pieceAt(x, y);
+    if (!hit) return;
     var next = encodeMap(
       parseMap(trackCode).filter(function (p) {
-        return !(p.x === x && p.y === y);
+        return !(p.x === hit.x && p.y === hit.y);
       })
     );
-    if (tileSel === mapKey(x, y)) tileSel = "";
+    if (tileSel === mapKey(hit.x, hit.y)) tileSel = "";
     commitTrack(next);
   }
 
   function rotatePiece(x, y) {
     var pieces = parseMap(trackCode);
-    var i;
-    for (i = 0; i < pieces.length; i++) {
-      if (pieces[i].x === x && pieces[i].y === y) {
-        pieces[i].r = (pieces[i].r + 1) & 3;
-        tileSel = mapKey(x, y);
-        commitTrack(encodeMap(pieces));
-        return;
-      }
-    }
+    var hit = pieceAt(x, y, pieces);
+    if (!hit) return;
+    var tryR = (hit.r + 1) & 3;
+    var next = { t: hit.t, x: hit.x, y: hit.y, r: tryR };
+    var others = pieces.filter(function (p) {
+      return p !== hit;
+    });
+    if (!canSit(next, others)) return;
+    hit.r = tryR;
+    tileSel = mapKey(hit.x, hit.y);
+    commitTrack(encodeMap(pieces));
   }
 
   function rotateSelected() {
@@ -2353,10 +2755,76 @@
     r.mesh.rotation.set(0, -heading, 0);
   }
 
+  function customGridPose() {
+    if (!trackCode || trackCode.charAt(0) !== "M" || !MAP_SURF.length) return null;
+    var pieces = parseMap(trackCode);
+    var pick = null;
+    var i;
+    for (i = 0; i < pieces.length; i++) {
+      if (pieces[i].t === "F") {
+        pick = pieces[i];
+        break;
+      }
+    }
+    if (!pick) {
+      for (i = 0; i < pieces.length; i++) {
+        if (pieces[i].t === "s" || pieces[i].t === "S" || pieces[i].t === "P") {
+          pick = pieces[i];
+          break;
+        }
+      }
+    }
+    if (!pick) {
+      for (i = 0; i < pieces.length; i++) {
+        if (pieces[i].t !== "t") {
+          pick = pieces[i];
+          break;
+        }
+      }
+    }
+    if (!pick) return null;
+    var segs = pieceSegs(pick);
+    if (!segs.length) return null;
+    var ports = portList(pick);
+    var h = ports.length ? ((ports[0].dir + 2) & 3) * Math.PI * 0.5 : 0;
+    var mid;
+    if (segs[0].type === "line") {
+      mid = { x: (segs[0].ax + segs[0].bx) * 0.5, z: (segs[0].az + segs[0].bz) * 0.5 };
+    } else {
+      var a = (segs[0].a0 + segs[0].a1) * 0.5;
+      mid = { x: segs[0].cx + Math.cos(a) * segs[0].r, z: segs[0].cz + Math.sin(a) * segs[0].r };
+    }
+    return { x: mid.x, z: mid.z, h: h };
+  }
+
+  function applyCustomGrid() {
+    var pose = customGridPose();
+    if (pose) {
+      playerGridX = pose.x;
+      playerGridZ = pose.z;
+      gridHeading = pose.h;
+      return pose;
+    }
+    playerGridX = GRID_P2_X;
+    playerGridZ = GRID_P2_Z;
+    gridHeading = 0;
+    return null;
+  }
+
   function resetGrid() {
-    resetRacer(player, playerGridX, playerGridZ, 0, TRACK_LEN - 14);
-    resetRacer(cpus[0], -6, SF_Z + 2.7, 0, TRACK_LEN - 6);
-    resetRacer(cpus[1], -22, SF_Z + 2.7, 0, TRACK_LEN - 22);
+    var pose = applyCustomGrid();
+    var hx = pose ? Math.cos(pose.h) : 1;
+    var hz = pose ? Math.sin(pose.h) : 0;
+    var lx = pose ? -hz : 0;
+    var lz = pose ? hx : 1;
+    resetRacer(player, playerGridX, playerGridZ, gridHeading, TRACK_LEN - 14);
+    if (pose) {
+      resetRacer(cpus[0], pose.x - hx * 8 + lx * 2.7, pose.z - hz * 8 + lz * 2.7, pose.h, TRACK_LEN - 6);
+      resetRacer(cpus[1], pose.x - hx * 16 + lx * 2.7, pose.z - hz * 16 + lz * 2.7, pose.h, TRACK_LEN - 22);
+    } else {
+      resetRacer(cpus[0], -6, SF_Z + 2.7, 0, TRACK_LEN - 6);
+      resetRacer(cpus[1], -22, SF_Z + 2.7, 0, TRACK_LEN - 22);
+    }
     cpus[0].mesh.visible = !mpMode;
     cpus[1].mesh.visible = !mpMode;
     raceTime = 0;
@@ -3599,7 +4067,7 @@
     r.slide = 0;
     r.x = x;
     r.z = z;
-    r.heading = 0;
+    r.heading = gridHeading;
     poseCar(r);
   }
 
@@ -4843,6 +5311,9 @@
     var ghost = document.createElement("div");
     ghost.className = "tile-ghost";
     ghost.style.backgroundImage = "url(" + tileArt(hit.ch, hit.rot || 0, 160) + ")";
+    var span = pieceSpan(hit.ch, hit.rot || 0);
+    ghost.style.width = 40 * span.cols + "px";
+    ghost.style.height = 40 * span.rows + "px";
     document.body.appendChild(ghost);
     ghost.style.left = e.clientX + "px";
     ghost.style.top = e.clientY + "px";

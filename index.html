@@ -6,7 +6,7 @@
   <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <!-- sk-build mp40: physical modular-piece tile map -->
+  <!-- sk-build mp41: physical modular-piece tile map -->
   <meta name="theme-color" content="#1a120e" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -16,7 +16,7 @@
   <link rel="manifest" href="manifest.json" />
   <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png" />
   <link rel="apple-touch-icon" href="apple-touch-icon.png" />
-  <link rel="stylesheet" href="css/style.css?v=mp40" />
+  <link rel="stylesheet" href="css/style.css?v=mp41" />
 </head>
 <body>
   <div id="game">
@@ -163,17 +163,29 @@
           <div class="palette-tile" data-tile="s" role="button" tabindex="0" aria-label="straight"></div>
           <span class="palette-name">straight</span>
         </div>
+        <div class="palette-slot" data-tile="S">
+          <div class="palette-tile wide" data-tile="S" role="button" tabindex="0" aria-label="long straight"></div>
+          <span class="palette-name">long</span>
+        </div>
         <div class="palette-slot" data-tile="r">
           <div class="palette-tile" data-tile="r" role="button" tabindex="0" aria-label="90"></div>
           <span class="palette-name">90</span>
         </div>
+        <div class="palette-slot" data-tile="w">
+          <div class="palette-tile" data-tile="w" role="button" tabindex="0" aria-label="sweeper"></div>
+          <span class="palette-name">sweeper</span>
+        </div>
         <div class="palette-slot" data-tile="H">
-          <div class="palette-tile" data-tile="H" role="button" tabindex="0" aria-label="hairpin"></div>
+          <div class="palette-tile wide" data-tile="H" role="button" tabindex="0" aria-label="hairpin"></div>
           <span class="palette-name">hairpin</span>
         </div>
         <div class="palette-slot" data-tile="C">
           <div class="palette-tile" data-tile="C" role="button" tabindex="0" aria-label="chicane"></div>
           <span class="palette-name">chicane</span>
+        </div>
+        <div class="palette-slot" data-tile="F">
+          <div class="palette-tile" data-tile="F" role="button" tabindex="0" aria-label="start finish"></div>
+          <span class="palette-name">start</span>
         </div>
         <div class="palette-slot" data-tile="P">
           <div class="palette-tile" data-tile="P" role="button" tabindex="0" aria-label="pit"></div>
@@ -209,7 +221,7 @@
   </div>
 
   <script>
-    window.SK_BUILD = "mp40";
+    window.SK_BUILD = "mp41";
     try {
       if (window.caches) {
         caches.keys().then(function (keys) {
@@ -220,7 +232,7 @@
       }
     } catch (e) {}
     if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.register("sw.js?v=mp40").catch(function () {});
+      navigator.serviceWorker.register("sw.js?v=mp41").catch(function () {});
     }
   </script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.160.1/build/three.min.js"></script>
@@ -229,8 +241,8 @@
       document.write('<script src="https://unpkg.com/three@0.160.1/build/three.min.js"><\/script>');
     }
   </script>
-  <script src="js/config.js?v=mp40"></script>
-  <script src="js/net.js?v=mp40"></script>
-  <script src="js/game.js?v=mp40"></script>
+  <script src="js/config.js?v=mp41"></script>
+  <script src="js/net.js?v=mp41"></script>
+  <script src="js/game.js?v=mp41"></script>
 </body>
 </html>
