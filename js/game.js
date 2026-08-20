@@ -1122,17 +1122,18 @@
     addBox(28, 4.8, -36, 14, 9.6, 16, 0xa34628);
     addBox(28, 10, -36, 16, 0.9, 18, 0x7a301c);
     addBox(-36, 3.8, -28, 18, 7.6, 10, 0xc4683a);
-    var grassMat = new THREE.MeshBasicMaterial({ color: 0x6edc4c, side: THREE.DoubleSide });
+    var grassMat = new THREE.MeshBasicMaterial({ color: 0x74e852, side: THREE.DoubleSide });
     function campusQuad(x, z, w, d) {
-      var mesh = new THREE.Mesh(new THREE.BoxGeometry(w, 0.12, d), grassMat);
-      mesh.position.set(x, 0.08, z);
+      var h = 0.48;
+      var mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), grassMat);
+      mesh.position.set(x, 0.2 + h * 0.5, z);
       scene.add(mesh);
     }
-    campusQuad(10, -47, 78, 16);
-    campusQuad(8, -33, 48, 28);
-    campusQuad(-22, -30, 36, 26);
-    campusQuad(46, -38, 40, 32);
-    campusQuad(6, -12, 56, 30);
+    campusQuad(12, -34, 32, 24);
+    campusQuad(-22, -30, 28, 22);
+    campusQuad(8, -43, 44, 14);
+    campusQuad(40, -36, 22, 24);
+    campusQuad(8, -20, 30, 16);
     addBox(-48, 4.4, 96, 22, 8.8, 14, 0xa34628);
     addBox(-48, 9.2, 96, 24, 0.8, 16, 0x7a301c);
 
