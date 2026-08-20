@@ -1,17 +1,11 @@
 /* SchoolKart — Campus Loop
    Creative lead: Zachary McUne
-   Feel spec: Pit Crew Designer (locked — do not invent a different pit or economy)
+   Feel spec: Pit Crew Designer (fuel/tires/handling locked)
 
-   Handling: brake or you run wide. Stab the 90, slow for the hairpin,
-   carry the sweeper only if tires are fresh.
-   Fuel is the CLOCK: one forced box in 5 laps; coasting still ticks fuel;
-   skip the box = limp home.
-   Tires are the HANDLING: loose if you push, not shredded.
-   Grass is a CRAWL + extra wear — never a highway, never a hard stop.
-   Pit: open painted TEAL box — no wall, no clamp. Hold Space 2.5s.
-   A stop costs enough you pick WHEN (lap 2 vs 3), not whether.
-   Look: white/teal car #7, golden-hour brick campus, one clock tower.
-   5 laps in ~2–3 minutes. Holding W the whole way must lose. */
+   Controls: W gas, Space brake, S reverse, A/D steer.
+   Pit: peel OFF the racing line, stop in the box, auto-service ~2.5s.
+   Start: 2026-style PRE-START blue flash (~2s arcade), five reds at 1s,
+   random 0.2–3s hold, lights out = GO. */
 (function () {
   "use strict";
 
@@ -28,6 +22,8 @@
   var ACCEL = 26;
   var BRAKE_DECEL = 54;
   var COAST = 8;
+  var REVERSE_ACCEL = 18;
+  var REVERSE_MAX = 12;
   var LIMP_SPEED = 13;
   var LIMP_ACCEL = 6;
   var STEER_RATE = 2.35;
@@ -42,6 +38,7 @@
   var TIRE_FLOOR = 22;
   var TEAL = 0x2ec8c3;
   var TEAL_DEEP = 0x148f8c;
+  var HIT_RADIUS = 2.55;
 
   var SF_Z = -80;
   var X0 = -42;
@@ -51,21 +48,39 @@
   var RH = 12;
   var RS = 52;
 
-  // One paved pit lane = entry AND exit. Overlaps the south-straight ribbon
-  // so you peel in and rejoin on the same asphalt. No grass hop either way.
-  var PIT_LANE = { x0: -28, x1: X1, z0: SF_Z - ASPHALT, z1: SF_Z + 20 };
-  var PIT_BOX = { x0: 4, x1: 28, z0: SF_Z + 4, z1: SF_Z + 17 };
+  // Separate F1 pit: peels LEFT off the racing line AFTER the grid, not a box on it.
+  var PIT_LANE = { x0: 20, x1: 78, z0: -63.2, z1: -53.6 };
+  var PIT_BOX = { x0: 36, x1: 52, z0: -63.8, z1: -53.0 };
+  var PIT_PAVE = [
+    { x0: 10, x1: 26, z0: -76.4, z1: -62.0 },
+    { x0: 16, x1: 30, z0: -66.0, z1: -53.4 },
+    PIT_LANE,
+    PIT_BOX,
+    { x0: 66, x1: 82, z0: -66.0, z1: -53.4 },
+    { x0: 72, x1: 94, z0: -76.4, z1: -62.0 },
+  ];
 
   var keys = Object.create(null);
   var state = "title";
-  var countLeft = 0;
-  var countShown = "";
+  var startPhase = "prestart";
+  var startT = 0;
+  var redsOn = 0;
+  var holdDelay = 1;
   var raceTime = 0;
   var didPit = false;
   var pitTimer = 0;
   var pitFlash = 0;
+  var pitUsedVisit = false;
   var lastTs = 0;
   var camYaw = 0.6;
+  var revs = 0;
+  var launchMul = 1;
+  var launchT = 0;
+  var jumped = false;
+  var jumpT = 0;
+  var audio = { ctx: null, osc: null, gain: null };
+  var gantryReds = [];
+  var gantryBlues = [];
 
   var canvas = document.getElementById("view");
   var renderer = new THREE.WebGLRenderer({
@@ -78,8 +93,6 @@
   renderer.setClearColor(0xff9a54, 1);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
 
-  // lookAt + Y-up puts world-left (+Z on the eastbound straight) on screen-right.
-  // Flip NDC X so peel LEFT, A/←, and the teal box are the same side.
   function layoutCamera() {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
@@ -110,11 +123,20 @@
     warn: document.getElementById("warn"),
     title: document.getElementById("title-screen"),
     countdown: document.getElementById("countdown"),
-    countNum: document.getElementById("count-num"),
+    startMsg: document.getElementById("start-msg"),
     finish: document.getElementById("finish-screen"),
     finishTime: document.getElementById("finish-time"),
     finishPit: document.getElementById("finish-pit"),
     finishPlace: document.getElementById("finish-place"),
+    revWrap: document.getElementById("rev-wrap"),
+    revFill: document.getElementById("rev-fill"),
+    lights: [
+      document.getElementById("rl0"),
+      document.getElementById("rl1"),
+      document.getElementById("rl2"),
+      document.getElementById("rl3"),
+      document.getElementById("rl4"),
+    ],
   };
 
   function clamp(v, a, b) {
@@ -126,7 +148,10 @@
   }
 
   function onPitPavement(x, z) {
-    return inRect(x, z, PIT_LANE) || inRect(x, z, PIT_BOX);
+    for (var i = 0; i < PIT_PAVE.length; i++) {
+      if (inRect(x, z, PIT_PAVE[i])) return true;
+    }
+    return false;
   }
 
   function formatTime(t) {
@@ -266,6 +291,30 @@
     };
   }
 
+  function makeEdges(inset, halfW, y, color) {
+    var segs = 260;
+    var pos = [];
+    var idx = [];
+    var used = 0;
+    for (var i = 0; i <= segs; i++) {
+      var p = centerlinePoint((i / segs) * TRACK_LEN);
+      var nx = -Math.sin(p.h);
+      var nz = Math.cos(p.h);
+      pos.push(p.x + nx * (inset + halfW), y, p.z + nz * (inset + halfW));
+      pos.push(p.x + nx * (inset - halfW), y, p.z + nz * (inset - halfW));
+      if (used > 0) {
+        var a = (used - 1) * 2;
+        idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
+      }
+      used += 1;
+    }
+    var geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+    geo.setIndex(idx);
+    geo.computeVertexNormals();
+    return new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ color: color, side: THREE.DoubleSide }));
+  }
+
   function makeRibbon(half, y, color, onlyNames) {
     var segs = 260;
     var pos = [];
@@ -325,90 +374,89 @@
     return mesh;
   }
 
+  function paveRect(b, y, color) {
+    var mesh = new THREE.Mesh(
+      new THREE.BoxGeometry(b.x1 - b.x0, 0.1, b.z1 - b.z0),
+      new THREE.MeshLambertMaterial({ color: color, side: THREE.DoubleSide })
+    );
+    mesh.position.set((b.x0 + b.x1) * 0.5, y, (b.z0 + b.z1) * 0.5);
+    scene.add(mesh);
+    return mesh;
+  }
+
   function addWorld() {
     scene.add(new THREE.HemisphereLight(0xffd4a8, 0x5a3824, 0.9));
     var sun = new THREE.DirectionalLight(0xffc078, 0.85);
     sun.position.set(90, 26, -50);
     scene.add(sun);
 
-    addBox(0, -0.2, 0, 560, 0.4, 560, 0x6a8f3a);
-    addBox(40, 0.03, -18, 90, 0.08, 70, 0x7aa046);
+    addBox(0, -0.2, 0, 560, 0.4, 560, 0x2f5a20);
+    addBox(40, 0.02, -18, 90, 0.06, 70, 0x3a6a26);
+    var runoff = makeRibbon(ASPHALT + 4.4, 0.04, 0xc9a24e, null);
+    if (runoff) scene.add(runoff);
 
-    scene.add(makeRibbon(ASPHALT, 0.06, 0x2c2a28, null));
-    scene.add(makeRibbon(0.16, 0.08, 0xf4efe6, null));
-    var kerb90 = makeRibbon(ASPHALT + 0.65, 0.075, 0xe24b3a, ["the90"]);
-    var kerbHair = makeRibbon(ASPHALT + 0.65, 0.075, 0xe24b3a, ["hairpin"]);
+    scene.add(makeRibbon(ASPHALT, 0.07, 0x10100e, null));
+    scene.add(makeRibbon(0.42, 0.095, 0xffffff, null));
+    scene.add(makeEdges(ASPHALT - 0.38, 0.22, 0.096, 0xf4f1e6));
+    scene.add(makeEdges(-(ASPHALT - 0.38), 0.22, 0.096, 0xf4f1e6));
+    var kerb90 = makeRibbon(ASPHALT + 0.78, 0.085, 0xff2a44, ["the90"]);
+    var kerbHair = makeRibbon(ASPHALT + 0.78, 0.085, 0xff2a44, ["hairpin"]);
+    var kerbSweep = makeRibbon(ASPHALT + 0.78, 0.085, 0xff2a44, ["sweeper"]);
+    var kerbW90 = makeRibbon(ASPHALT + 0.38, 0.086, 0xffffff, ["the90"]);
+    var kerbWHair = makeRibbon(ASPHALT + 0.38, 0.086, 0xffffff, ["hairpin"]);
+    var kerbWSweep = makeRibbon(ASPHALT + 0.38, 0.086, 0xffffff, ["sweeper"]);
     if (kerb90) scene.add(kerb90);
     if (kerbHair) scene.add(kerbHair);
+    if (kerbSweep) scene.add(kerbSweep);
+    if (kerbW90) scene.add(kerbW90);
+    if (kerbWHair) scene.add(kerbWHair);
+    if (kerbWSweep) scene.add(kerbWSweep);
 
-    var pitLane = new THREE.Mesh(
-      new THREE.BoxGeometry(PIT_LANE.x1 - PIT_LANE.x0, 0.1, PIT_LANE.z1 - PIT_LANE.z0),
-      new THREE.MeshLambertMaterial({ color: 0x32302c, side: THREE.DoubleSide })
-    );
-    pitLane.position.set(
-      (PIT_LANE.x0 + PIT_LANE.x1) * 0.5,
-      0.055,
-      (PIT_LANE.z0 + PIT_LANE.z1) * 0.5
-    );
-    scene.add(pitLane);
-    addBox(
-      (PIT_LANE.x0 + PIT_LANE.x1) * 0.5,
-      0.07,
-      PIT_LANE.z1 - 0.18,
-      PIT_LANE.x1 - PIT_LANE.x0,
-      0.02,
-      0.35,
-      0xf4efe6
-    );
-
-    var pit = new THREE.Mesh(
-      new THREE.BoxGeometry(PIT_BOX.x1 - PIT_BOX.x0, 0.12, PIT_BOX.z1 - PIT_BOX.z0),
-      new THREE.MeshLambertMaterial({ color: TEAL, side: THREE.DoubleSide })
-    );
-    pit.position.set(
-      (PIT_BOX.x0 + PIT_BOX.x1) * 0.5,
-      0.11,
-      (PIT_BOX.z0 + PIT_BOX.z1) * 0.5
-    );
-    scene.add(pit);
-
-    for (var hsh = 0; hsh < 5; hsh++) {
-      addBox(
-        PIT_BOX.x0 + 3 + hsh * 4.2,
-        0.13,
-        (PIT_BOX.z0 + PIT_BOX.z1) * 0.5,
-        1.1,
-        0.02,
-        PIT_BOX.z1 - PIT_BOX.z0 - 1.2,
-        0xf4efe6
-      );
+    for (var p = 0; p < PIT_PAVE.length; p++) {
+      paveRect(PIT_PAVE[p], 0.08, 0x3d4a5c);
     }
-
-    var pitDecal = labelPlane("PIT", 8, 3.2, "#0a2a28", "#2ec8c3");
+    paveRect(PIT_BOX, 0.12, TEAL);
+    addBox((PIT_LANE.x0 + PIT_LANE.x1) * 0.5, 0.115, PIT_LANE.z0, PIT_LANE.x1 - PIT_LANE.x0, 0.03, 0.34, 0xffe566);
+    addBox((PIT_LANE.x0 + PIT_LANE.x1) * 0.5, 0.115, PIT_LANE.z1, PIT_LANE.x1 - PIT_LANE.x0, 0.03, 0.34, 0x7cffd4);
+    var pitDecal = labelPlane("BOX", 7.2, 2.8, "#0a2a28", "#2ec8c3");
     pitDecal.rotation.x = -Math.PI * 0.5;
-    pitDecal.position.set(16, 0.16, (PIT_BOX.z0 + PIT_BOX.z1) * 0.5);
+    pitDecal.position.set(44, 0.16, -58.2);
     scene.add(pitDecal);
-
-    for (var ch = 0; ch < 3; ch++) {
-      addBox(-10 + ch * 4, 0.1, SF_Z + 3.2, 1.6, 0.04, 0.45, 0x2ec8c3);
-    }
-    for (var ex = 0; ex < 5; ex++) {
-      addBox(34 + ex * 10, 0.1, SF_Z + 1.2, 2.2, 0.04, 0.4, 0xf4efe6);
+    var inDecal = labelPlane("IN", 5.4, 2.2, "#102018", "#ffe566");
+    inDecal.rotation.x = -Math.PI * 0.5;
+    inDecal.position.set(18, 0.16, -68);
+    scene.add(inDecal);
+    var outDecal = labelPlane("OUT", 5.8, 2.2, "#102018", "#7cffd4");
+    outDecal.rotation.x = -Math.PI * 0.5;
+    outDecal.position.set(82, 0.16, -68);
+    scene.add(outDecal);
+    for (var hsh = 0; hsh < 4; hsh++) {
+      addBox(38 + hsh * 3.6, 0.14, -58.4, 1.15, 0.02, 7.2, 0xffffff);
     }
 
     var stripe = new THREE.Mesh(
-      new THREE.BoxGeometry(1.5, 0.14, ASPHALT * 2),
-      new THREE.MeshLambertMaterial({ color: 0xf4efe6, side: THREE.DoubleSide })
+      new THREE.BoxGeometry(1.6, 0.14, ASPHALT * 2),
+      new THREE.MeshLambertMaterial({ color: 0xffffff, side: THREE.DoubleSide })
     );
     stripe.position.set(0, 0.1, SF_Z);
     scene.add(stripe);
 
-    addBox(0, 6.2, SF_Z - ASPHALT - 1.1, 10, 0.3, 0.3, 0x2a2018);
-    addBox(-4.5, 5, SF_Z - ASPHALT - 1.1, 0.3, 6.2, 0.3, 0x2a2018);
-    addBox(4.5, 5, SF_Z - ASPHALT - 1.1, 0.3, 6.2, 0.3, 0x2a2018);
-    addBox(-2.1, 6.2, SF_Z - ASPHALT - 1.1, 0.65, 0.65, 0.35, 0xe24b3a);
-    addBox(0, 6.2, SF_Z - ASPHALT - 1.1, 0.65, 0.65, 0.35, 0xffe08a);
-    addBox(2.1, 6.2, SF_Z - ASPHALT - 1.1, 0.65, 0.65, 0.35, 0x2ec8c3);
+    var gxs = [-6, -14, -22];
+    var gzs = [SF_Z + 2.7, SF_Z - 2.7, SF_Z + 2.7];
+    for (var gb = 0; gb < 3; gb++) {
+      addBox(gxs[gb], 0.09, gzs[gb], 5.2, 0.03, 2.6, 0xffffff);
+      addBox(gxs[gb], 0.1, gzs[gb], 4.6, 0.02, 0.12, 0x111111);
+    }
+
+    var gy = SF_Z - ASPHALT - 1.1;
+    addBox(0, 6.4, gy, 12, 0.35, 0.35, 0x2a2018);
+    addBox(-5.2, 5.1, gy, 0.3, 6.4, 0.3, 0x2a2018);
+    addBox(5.2, 5.1, gy, 0.3, 6.4, 0.3, 0x2a2018);
+    gantryBlues.push(addBox(-4.4, 6.55, gy, 1.1, 0.7, 0.4, 0x1a3040));
+    gantryBlues.push(addBox(4.4, 6.55, gy, 1.1, 0.7, 0.4, 0x1a3040));
+    for (var li = 0; li < 5; li++) {
+      gantryReds.push(addBox(-2.4 + li * 1.2, 6.55, gy, 0.7, 0.7, 0.4, 0x3a1010));
+    }
 
     addBox(8, 4.2, SF_Z - 17, 36, 6.4, 7, 0x8a4030);
     addBox(8, 7.6, SF_Z - 17, 38, 0.8, 8, 0xd8b48a);
@@ -564,17 +612,26 @@
 
     var wheels = [];
     var spots = [
-      [1.15, 0.28, 0.78],
-      [1.15, 0.28, -0.78],
-      [-1.15, 0.3, 0.8],
-      [-1.15, 0.3, -0.8],
+      [1.15, 0.28, 0.78, true],
+      [1.15, 0.28, -0.78, true],
+      [-1.15, 0.3, 0.8, false],
+      [-1.15, 0.3, -0.8, false],
     ];
     for (var i = 0; i < spots.length; i++) {
-      var w = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 0.28, 8), black);
-      w.rotation.x = Math.PI * 0.5;
-      w.position.set(spots[i][0], spots[i][1], spots[i][2]);
-      g.add(w);
-      wheels.push(w);
+      var holder = new THREE.Group();
+      holder.position.set(spots[i][0], spots[i][1], spots[i][2]);
+      var spinner = new THREE.Group();
+      holder.add(spinner);
+      var mesh = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 0.3, 10), black);
+      mesh.rotation.x = Math.PI * 0.5;
+      spinner.add(mesh);
+      var spoke = new THREE.Mesh(
+        new THREE.BoxGeometry(0.07, 0.5, 0.07),
+        new THREE.MeshLambertMaterial({ color: 0xe8e4dc, side: THREE.DoubleSide })
+      );
+      spinner.add(spoke);
+      g.add(holder);
+      wheels.push({ holder: holder, spinner: spinner, front: spots[i][3] });
     }
 
     var blob = new THREE.Mesh(
@@ -636,13 +693,23 @@
   }
 
   function resetGrid() {
-    resetRacer(player, -20, SF_Z - 2.2, 0, TRACK_LEN - 20);
-    resetRacer(cpus[0], -10, SF_Z + 1.8, 0, TRACK_LEN - 10);
-    resetRacer(cpus[1], -30, SF_Z + 1.1, 0, TRACK_LEN - 30);
+    resetRacer(player, -14, SF_Z - 2.7, 0, TRACK_LEN - 14);
+    resetRacer(cpus[0], -6, SF_Z + 2.7, 0, TRACK_LEN - 6);
+    resetRacer(cpus[1], -22, SF_Z + 2.7, 0, TRACK_LEN - 22);
     raceTime = 0;
     didPit = false;
     pitTimer = 0;
     pitFlash = 0;
+    pitUsedVisit = false;
+    revs = 0;
+    launchMul = 1;
+    launchT = 0;
+    jumped = false;
+    jumpT = 0;
+    startPhase = "prestart";
+    startT = 2;
+    redsOn = 0;
+    holdDelay = 0.2 + Math.random() * 2.8;
   }
 
   function inPitBox(r) {
@@ -673,40 +740,57 @@
     r.lastX = r.x;
   }
 
-  function applyMotion(r, steer, throttle, brake, dt, isPlayer) {
+  function applyMotion(r, steer, throttle, brake, reverse, dt, isPlayer) {
     var info = projectTrack(r.x, r.z);
     var surface = info.grass ? 0.34 : 1;
     var tire = clamp(r.tires / 100, 0, 1);
     var tireFeel = 0.38 + 0.62 * tire;
     var empty = isPlayer && r.fuel <= 0;
     var maxV = empty ? LIMP_SPEED : MAX_SPEED;
+    if (isPlayer && jumpT > 0) maxV = Math.min(maxV, 16);
+    var accel = empty ? LIMP_ACCEL : ACCEL;
+    if (isPlayer && launchT > 0) accel *= launchMul;
 
     if (isPlayer && state === "racing") {
       r.fuel -= IDLE_FUEL * dt;
-      if (throttle && !empty) r.fuel -= THROTTLE_FUEL * dt;
+      if (throttle && !empty && r.speed >= 0) r.fuel -= THROTTLE_FUEL * dt;
       if (r.fuel < 0) r.fuel = 0;
     }
 
-    if (brake) r.speed -= BRAKE_DECEL * dt;
-    else if (throttle) r.speed += (empty ? LIMP_ACCEL : ACCEL) * dt;
-    else r.speed -= COAST * dt;
+    if (brake) {
+      if (r.speed > 0) r.speed -= BRAKE_DECEL * dt;
+      else if (r.speed < 0) r.speed += BRAKE_DECEL * dt;
+      if (Math.abs(r.speed) < 0.35) r.speed = 0;
+    } else if (throttle) {
+      r.speed += accel * dt;
+    } else if (reverse) {
+      r.speed -= REVERSE_ACCEL * dt;
+    } else if (r.speed > 0) {
+      r.speed -= COAST * dt;
+      if (r.speed < 0) r.speed = 0;
+    } else if (r.speed < 0) {
+      r.speed += COAST * dt;
+      if (r.speed > 0) r.speed = 0;
+    }
 
     if (info.grass) {
       if (r.speed > GRASS_MAX) {
         r.speed -= GRASS_DUMP * dt;
         if (r.speed < GRASS_MAX) r.speed = GRASS_MAX;
       }
-      if (r.speed > GRASS_MAX) r.speed = GRASS_MAX;
-      if (r.speed < GRASS_ROLL) r.speed = GRASS_ROLL;
-      if (isPlayer) r.tires -= 6.2 * dt;
-    } else {
+      if (r.speed < -GRASS_MAX) r.speed = -GRASS_MAX;
+      if (r.speed > 0 && r.speed < GRASS_ROLL) r.speed = GRASS_ROLL;
+      if (isPlayer && r.speed > 0) r.tires -= 6.2 * dt;
+    } else if (r.speed >= 0) {
       r.speed = clamp(r.speed, 0, maxV);
+    } else {
+      r.speed = clamp(r.speed, -REVERSE_MAX, 0);
     }
 
-    var speed01 = r.speed / MAX_SPEED;
+    var speed01 = Math.abs(r.speed) / MAX_SPEED;
     var steerScale = 1 - 0.58 * speed01;
     var maxYaw = STEER_RATE * steerScale * tireFeel * surface;
-    var latDemand = Math.abs(steer) * r.speed * 0.155;
+    var latDemand = Math.abs(steer) * Math.abs(r.speed) * 0.155;
     var maxLat = MAX_LAT * tireFeel * surface;
     if (latDemand > maxLat && Math.abs(steer) > 0.05) {
       var slip = (latDemand - maxLat) / Math.max(6, maxLat);
@@ -719,7 +803,7 @@
     if (r.tires < TIRE_FLOOR) r.tires = TIRE_FLOOR;
     if (tire < 0.45) r.slide += (Math.random() - 0.5) * 4.2 * dt;
 
-    r.heading += steer * maxYaw * dt;
+    r.heading += steer * maxYaw * dt * (r.speed < 0 ? -1 : 1);
     r.x += Math.cos(r.heading) * r.speed * dt;
     r.z += Math.sin(r.heading) * r.speed * dt;
     r.x += -Math.sin(r.heading) * r.slide * dt;
@@ -731,8 +815,12 @@
     r.mesh.rotation.z = clamp(-steer * 0.1 - r.slide * 0.02, -0.18, 0.18);
     var wheels = r.mesh.userData.wheels;
     if (wheels) {
-      var spin = r.speed * dt * 1.55;
-      for (var i = 0; i < wheels.length; i++) wheels[i].rotation.z -= spin;
+      var spin = r.speed * dt * 2.4;
+      var turn = steer * 0.42;
+      for (var i = 0; i < wheels.length; i++) {
+        wheels[i].spinner.rotation.z -= spin;
+        wheels[i].holder.rotation.y = wheels[i].front ? turn : 0;
+      }
     }
   }
 
@@ -756,7 +844,7 @@
 
   function updateCpu(r, dt) {
     if (r.finished) {
-      applyMotion(r, 0, false, true, dt, false);
+      applyMotion(r, 0, false, true, false, dt, false);
       return;
     }
     var proj = projectTrack(r.x, r.z);
@@ -776,27 +864,64 @@
     var want = MAX_SPEED * (r.name === "Hall Monitor" ? 0.8 : 0.74);
     want *= 1 - clamp(curve.worst, 0, 0.64);
     if (curve.tight) want = Math.min(want, 19);
-    applyMotion(r, steer, r.speed < want, r.speed > want + 3.5, dt, false);
+    applyMotion(r, steer, r.speed < want, r.speed > want + 3.5, false, dt, false);
     updateLaps(r);
   }
 
-  function separateCars(a, b) {
+  function bashCars(a, b) {
     var dx = b.x - a.x;
     var dz = b.z - a.z;
-    var d2 = dx * dx + dz * dz;
-    var min = 2.4;
-    if (d2 < min * min && d2 > 0.0001) {
-      var d = Math.sqrt(d2);
-      var push = (min - d) * 0.5;
-      dx /= d;
-      dz /= d;
-      a.x -= dx * push;
-      a.z -= dz * push;
-      b.x += dx * push;
-      b.z += dz * push;
-      a.speed *= 0.96;
-      b.speed *= 0.96;
+    var d = Math.hypot(dx, dz);
+    if (d < 0.0001) {
+      dx = 1;
+      dz = 0;
+      d = 1;
     }
+    if (d >= HIT_RADIUS) return;
+    var nx = dx / d;
+    var nz = dz / d;
+    var push = (HIT_RADIUS - d) * 0.5;
+    a.x -= nx * push;
+    a.z -= nz * push;
+    b.x += nx * push;
+    b.z += nz * push;
+
+    var avx = Math.cos(a.heading) * a.speed + -Math.sin(a.heading) * a.slide;
+    var avz = Math.sin(a.heading) * a.speed + Math.cos(a.heading) * a.slide;
+    var bvx = Math.cos(b.heading) * b.speed + -Math.sin(b.heading) * b.slide;
+    var bvz = Math.sin(b.heading) * b.speed + Math.cos(b.heading) * b.slide;
+    var rel = (avx - bvx) * nx + (avz - bvz) * nz;
+    if (rel >= 0) {
+      poseCar(a);
+      poseCar(b);
+      return;
+    }
+    var j = -rel * 0.72;
+    avx += j * nx;
+    avz += j * nz;
+    bvx -= j * nx;
+    bvz -= j * nz;
+    var impact = Math.abs(rel);
+    a.speed = Math.hypot(avx, avz) * (a.speed < 0 ? -1 : 1) * 0.82;
+    b.speed = Math.hypot(bvx, bvz) * (b.speed < 0 ? -1 : 1) * 0.82;
+    if (Math.hypot(avx, avz) > 0.6) a.heading = Math.atan2(avz, avx);
+    if (Math.hypot(bvx, bvz) > 0.6) b.heading = Math.atan2(bvz, bvx);
+    var spin = clamp(impact * 0.045, 0, 0.9);
+    a.heading += (Math.random() - 0.5) * spin;
+    b.heading -= (Math.random() - 0.5) * spin;
+    a.slide += -nz * impact * 0.18;
+    b.slide += nz * impact * 0.18;
+    if (impact > 10) {
+      a.speed *= 0.7;
+      b.speed *= 0.7;
+    }
+    poseCar(a);
+    poseCar(b);
+  }
+
+  function poseCar(r) {
+    r.mesh.position.set(r.x, 0, r.z);
+    r.mesh.rotation.y = -r.heading;
   }
 
   function playerInput() {
@@ -804,31 +929,91 @@
     var down = keys.ArrowDown || keys.KeyS;
     var left = keys.ArrowLeft || keys.KeyA;
     var right = keys.ArrowRight || keys.KeyD;
-    var space = keys.Space;
     var steer = 0;
     if (left) steer += 1;
     if (right) steer -= 1;
-    return { steer: steer, throttle: !!up, brake: !!down, space: !!space };
+    return {
+      steer: steer,
+      throttle: !!up,
+      reverse: !!down,
+      brake: !!keys.Space,
+    };
   }
 
   function setScreen(which) {
     hud.title.classList.toggle("hidden", which !== "title");
-    hud.countdown.classList.toggle("hidden", which !== "countdown");
+    hud.countdown.classList.toggle("hidden", which !== "start");
     hud.finish.classList.toggle("hidden", which !== "finish");
     hud.root.classList.toggle("hidden", which === "title");
+    hud.revWrap.classList.toggle("hidden", which !== "start");
   }
 
-  function startCountdown() {
+  function paintLights(n, blue) {
+    var i;
+    for (i = 0; i < 5; i++) {
+      hud.lights[i].classList.toggle("on", i < n);
+      if (gantryReds[i]) gantryReds[i].material.color.set(i < n ? 0xff1a1a : 0x3a1010);
+    }
+    var flash = blue && Math.floor(performance.now() / 160) % 2 === 0;
+    for (i = 0; i < gantryBlues.length; i++) {
+      gantryBlues[i].material.color.set(flash ? 0x44c8ff : 0x1a3040);
+    }
+    hud.countdown.classList.toggle("blue-flash", !!blue);
+  }
+
+  function ensureAudio() {
+    if (audio.ctx || !window.AudioContext && !window.webkitAudioContext) return;
+    var AC = window.AudioContext || window.webkitAudioContext;
+    audio.ctx = new AC();
+    audio.osc = audio.ctx.createOscillator();
+    audio.gain = audio.ctx.createGain();
+    audio.osc.type = "sawtooth";
+    audio.gain.gain.value = 0;
+    audio.osc.connect(audio.gain);
+    audio.gain.connect(audio.ctx.destination);
+    audio.osc.start();
+  }
+
+  function setRevSound(on) {
+    if (!audio.ctx) return;
+    audio.osc.frequency.setValueAtTime(72 + revs * 260, audio.ctx.currentTime);
+    audio.gain.gain.setTargetAtTime(on ? 0.035 + revs * 0.05 : 0, audio.ctx.currentTime, 0.05);
+  }
+
+  function applyLaunch() {
+    if (jumped) {
+      launchMul = 0.32;
+      launchT = 2.4;
+      jumpT = 2.4;
+      return;
+    }
+    if (revs < 0.48) {
+      launchMul = 0.42;
+      launchT = 1.5;
+    } else if (revs > 0.88) {
+      launchMul = 0.5;
+      launchT = 1.4;
+      player.slide += (Math.random() - 0.5) * 10;
+    } else {
+      launchMul = 1.18;
+      launchT = 1.2;
+    }
+  }
+
+  function startSequence() {
     resetGrid();
-    state = "countdown";
-    countLeft = 3.2;
-    countShown = "";
-    setScreen("countdown");
+    state = "start";
+    setScreen("start");
+    hud.startMsg.textContent = "PRE-START";
+    hud.startMsg.className = "start-msg";
+    paintLights(0, true);
+    ensureAudio();
   }
 
   function finishRace() {
     state = "finished";
     setScreen("finish");
+    setRevSound(false);
     hud.finishTime.textContent = formatTime(player.finishTime || raceTime);
     hud.finishPit.textContent = didPit
       ? "Pit stop: yes — you took the box"
@@ -844,7 +1029,7 @@
   function updateHud() {
     hud.lap.textContent = player.lap + "/" + LAPS;
     hud.time.textContent = formatTime(raceTime);
-    hud.speed.textContent = String(Math.round(player.speed * 3.15));
+    hud.speed.textContent = String(Math.round(Math.abs(player.speed) * 3.15));
     var fuel = clamp(player.fuel, 0, 100);
     var tires = clamp(player.tires, 0, 100);
     hud.fuelFill.style.transform = "scaleX(" + fuel / 100 + ")";
@@ -853,19 +1038,22 @@
     hud.tireNum.textContent = String(Math.round(tires));
     hud.fuelFill.style.background = fuel < 28 ? "linear-gradient(90deg,#7a1010,#ff4d4d)" : "";
     hud.tireFill.style.background = tires < 40 ? "linear-gradient(90deg,#8a5a10,#ffd36a)" : "";
+    hud.revFill.style.width = Math.round(revs * 100) + "%";
 
     var boxed = state === "racing" && inPitBox(player);
     var pct = Math.min(100, Math.round((pitTimer / PIT_HOLD) * 100));
     hud.pitting.classList.toggle("hidden", !boxed && pitFlash <= 0);
     if (pitFlash > 0) hud.pitting.textContent = "SERVICED";
-    else if (boxed && keys.Space) hud.pitting.textContent = "PITTING  " + pct + "%";
-    else if (boxed && pitTimer > 0) hud.pitting.textContent = "HOLD SPACE  " + pct + "%";
-    else if (boxed) hud.pitting.textContent = "HOLD SPACE";
+    else if (boxed && pitUsedVisit) hud.pitting.textContent = "SERVICED — pull out";
+    else if (boxed && Math.abs(player.speed) < 2.4) hud.pitting.textContent = "PITTING  " + pct + "%";
+    else if (boxed) hud.pitting.textContent = "STOP IN THE BOX";
 
     var warn = "";
-    if (state === "racing" && player.fuel <= 0) warn = "EMPTY — LIMP HOME";
+    if (jumpT > 0) warn = "JUMP START — sit tight";
+    else if (state === "start" && jumped) warn = "JUMP START — wait for lights out";
+    else if (state === "racing" && player.fuel <= 0) warn = "EMPTY — LIMP HOME";
     else if (state === "racing" && player.tires < 40) warn = "TIRES LOOSE — don't carry the sweeper";
-    else if (state === "racing" && player.fuel < 38) warn = "PIT WINDOW — teal box, hold Space";
+    else if (state === "racing" && player.fuel < 38) warn = "PIT WINDOW — peel LEFT off the straight";
     hud.warn.textContent = warn;
     hud.warn.classList.toggle("hidden", !warn);
   }
@@ -887,55 +1075,114 @@
     camera.lookAt(36, 8, -22);
   }
 
+  function tickStart(dt) {
+    var input = playerInput();
+    if (input.throttle) revs = clamp(revs + dt * 0.7, 0, 1);
+    else revs = clamp(revs - dt * 0.45, 0, 1);
+    setRevSound(true);
+    hud.revFill.style.width = Math.round(revs * 100) + "%";
+
+    if (revs > 0.9) {
+      player.speed = 1.4;
+      applyMotion(player, 0, false, false, false, dt, true);
+    } else {
+      player.speed = 0;
+      applyMotion(player, 0, false, true, false, dt, true);
+    }
+    if (!jumped && (Math.abs(player.x + 14) > 3.2 || Math.abs(player.z - (SF_Z - 2.7)) > 2.4)) {
+      jumped = true;
+    }
+
+    startT -= dt;
+    if (startPhase === "prestart") {
+      hud.startMsg.textContent = "PRE-START";
+      hud.startMsg.className = "start-msg";
+      paintLights(0, true);
+      if (startT <= 0) {
+        startPhase = "reds";
+        startT = 1;
+        redsOn = 1;
+      }
+    } else if (startPhase === "reds") {
+      hud.startMsg.textContent = "LIGHTS";
+      hud.startMsg.className = "start-msg reds";
+      paintLights(redsOn, false);
+      if (startT <= 0) {
+        redsOn += 1;
+        if (redsOn >= 5) {
+          redsOn = 5;
+          startPhase = "hold";
+          startT = holdDelay;
+        } else {
+          startT = 1;
+        }
+      }
+    } else if (startPhase === "hold") {
+      hud.startMsg.textContent = "LIGHTS";
+      hud.startMsg.className = "start-msg reds";
+      paintLights(5, false);
+      if (startT <= 0) {
+        paintLights(0, false);
+        hud.startMsg.textContent = "GO";
+        hud.startMsg.className = "start-msg go";
+        applyLaunch();
+        state = "racing";
+        setScreen("racing");
+        setRevSound(false);
+      }
+    }
+    applyMotion(cpus[0], 0, false, true, false, dt, false);
+    applyMotion(cpus[1], 0, false, true, false, dt, false);
+    chaseCamera(dt);
+  }
+
   function tick(ts) {
     var dt = lastTs ? (ts - lastTs) / 1000 : 0.016;
     lastTs = ts;
     dt = clamp(dt, 0, 0.05);
     if (pitFlash > 0) pitFlash -= dt;
+    if (launchT > 0) launchT -= dt;
+    if (jumpT > 0) jumpT -= dt;
 
     if (state === "title") {
       titleCamera(dt);
-    } else if (state === "countdown") {
-      countLeft -= dt;
-      var n = countLeft > 2.1 ? "3" : countLeft > 1.1 ? "2" : countLeft > 0.15 ? "1" : "GO";
-      if (n !== countShown) {
-        countShown = n;
-        hud.countNum.textContent = n;
-      }
-      chaseCamera(dt);
-      if (countLeft <= 0) {
-        state = "racing";
-        setScreen("racing");
-      }
+      setRevSound(false);
+    } else if (state === "start") {
+      tickStart(dt);
     } else if (state === "racing") {
       raceTime += dt;
+      revs = 0;
       var input = playerInput();
       var boxed = inPitBox(player);
       if (!boxed) {
         pitTimer = 0;
-      } else if (input.space) {
+        pitUsedVisit = false;
+      } else if (!pitUsedVisit && Math.abs(player.speed) < 2.4) {
         pitTimer += dt;
-        input.brake = true;
-        input.throttle = false;
         if (pitTimer >= PIT_HOLD) {
           player.fuel = 100;
           player.tires = 100;
           didPit = true;
+          pitUsedVisit = true;
           pitTimer = 0;
           pitFlash = 1.2;
         }
       }
-      applyMotion(player, input.steer, input.throttle, input.brake, dt, true);
+      applyMotion(player, input.steer, input.throttle, input.brake, input.reverse, dt, true);
       updateLaps(player);
       updateCpu(cpus[0], dt);
       updateCpu(cpus[1], dt);
-      separateCars(player, cpus[0]);
-      separateCars(player, cpus[1]);
-      separateCars(cpus[0], cpus[1]);
+      bashCars(player, cpus[0]);
+      bashCars(player, cpus[1]);
+      bashCars(cpus[0], cpus[1]);
+      bashCars(player, cpus[0]);
+      bashCars(player, cpus[1]);
+      bashCars(cpus[0], cpus[1]);
       chaseCamera(dt);
       if (player.finished) finishRace();
     } else {
       chaseCamera(dt);
+      setRevSound(false);
     }
 
     updateHud();
@@ -945,8 +1192,9 @@
 
   function onKey(e, down) {
     keys[e.code] = down;
+    if (down) ensureAudio();
     if (down && (e.code === "Space" || e.code === "Enter")) {
-      if (state === "title" || state === "finished") startCountdown();
+      if (state === "title" || state === "finished") startSequence();
       e.preventDefault();
     }
     if (
@@ -968,6 +1216,7 @@
   });
   window.addEventListener("blur", function () {
     keys = Object.create(null);
+    // pitTimer stays. Only leaving the box zeros it.
   });
   window.addEventListener("resize", function () {
     renderer.setSize(window.innerWidth, window.innerHeight);

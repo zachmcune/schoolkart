@@ -47,8 +47,17 @@
             <span id="tire-num">100</span>
           </div>
         </div>
-        <div class="hint">WASD / arrows · stab the 90 · peel left onto the paved teal box · hold Space 2.5s</div>
+        <div class="hint">W gas · Space brake · S reverse · peel LEFT into the pits · stop in the box</div>
       </div>
+    </div>
+
+    <div id="rev-wrap" class="hidden">
+      <div class="rev-label">REVS</div>
+      <div class="rev-track">
+        <i id="rev-sweet"></i>
+        <b id="rev-fill"></b>
+      </div>
+      <div id="rev-hint">Hold W — sweet spot, then dump at lights out</div>
     </div>
 
     <div id="callouts">
@@ -61,17 +70,24 @@
       <h1>SCHOOLKART</h1>
       <p class="sub">Campus Loop · 5 laps · Car #7</p>
       <ul class="tips">
-        <li><strong>Brake or you run wide.</strong> Stab the 90, slow for the hairpin, carry the sweeper only if tires are fresh.</li>
-        <li><strong>Fuel is the clock.</strong> It ticks even if you coast. One box in 5 laps — skip it and limp home.</li>
-        <li><strong>Tires are handling.</strong> Push and they go loose, not shredded. Grass is a crawl with extra wear — not a shortcut, not a beach.</li>
-        <li><strong>Peel LEFT</strong> onto the paved teal box (connected to the main straight). Hold <kbd>Space</kbd> 2.5s. Pick lap 2 or 3.</li>
+        <li><strong>W</strong> gas · <strong>Space</strong> brake · <strong>S</strong> reverse · A/D steer. Brake or you run wide.</li>
+        <li><strong>Fuel is the clock.</strong> Ticks even if you coast. One box in 5 laps — skip it and limp home.</li>
+        <li><strong>Peel LEFT</strong> into a real pit lane (off the racing line). Stop in the teal box — service is automatic. Then pull back out.</li>
+        <li><strong>Lights start:</strong> blue PRE-START, five reds, random hold, lights out = GO. Hold W for revs. Don't jump.</li>
       </ul>
-      <p class="go">Press <kbd>Space</kbd> or <kbd>Enter</kbd> to race</p>
+      <p class="go">Press <kbd>Enter</kbd> or <kbd>Space</kbd> to grid up</p>
       <p class="credit">Creative lead: Zachary McUne · Feel: Pit Crew Designer</p>
     </div>
 
     <div id="countdown" class="screen hidden">
-      <div id="count-num">3</div>
+      <p id="start-msg" class="start-msg">PRE-START</p>
+      <div id="light-row" class="light-row">
+        <i class="start-light" id="rl0"></i>
+        <i class="start-light" id="rl1"></i>
+        <i class="start-light" id="rl2"></i>
+        <i class="start-light" id="rl3"></i>
+        <i class="start-light" id="rl4"></i>
+      </div>
     </div>
 
     <div id="finish-screen" class="screen hidden">
@@ -80,7 +96,7 @@
       <p class="result-time" id="finish-time">0:00.00</p>
       <p class="result-line" id="finish-pit">Pit stop: no</p>
       <p class="result-line" id="finish-place"></p>
-      <p class="go">Press <kbd>Space</kbd> to race again</p>
+      <p class="go">Press <kbd>Enter</kbd> to race again</p>
     </div>
   </div>
 
@@ -90,6 +106,6 @@
       document.write('<script src="https://unpkg.com/three@0.160.1/build/three.min.js"><\/script>');
     }
   </script>
-  <script src="js/game.js?v=pit-exit-blur"></script>
+  <script src="js/game.js?v=f1-cut2"></script>
 </body>
 </html>

@@ -28,20 +28,18 @@ Then visit `http://localhost:8080`.
 | Fuel | The **clock**. Ticks even while coasting. One forced box in 5 laps. Skip it and limp home. |
 | Tires | **Handling**, not a second clock. Push and they go loose — not shredded. |
 | Grass | A **crawl** plus extra wear. Never faster than asphalt, never parked at 0. Miss the peel and you can still roll back on. Holding W on the lawn loses. |
-| Pit | Peel **LEFT**. Paved pit lane + open painted **teal** box, connected to the main straight (no grass gap). No wall, no clamp. Drive in, **hold Space 2.5s** to refill fuel **and** reset tires. The stop costs enough that you pick **when** (lap 2 vs 3), not whether. |
+| Pit | Real pull-off: peel **LEFT** into a separate pit lane (IN), stop in the teal **BOX**, then pull **OUT** onto the straight. Service is automatic when you are nearly stopped ~2.5s. One service per visit. Space is **brake**, not pit hold. Blur does not zero the timer; leaving the box does. |
 
-Controls: **WASD** or arrows. Space starts the race, and later holds the pit.
+**Controls:** W / ↑ throttle (also revs on the grid) · **Space = brake** · **S / ↓ reverse** · A D / ← → steer · Enter or Space on the title to grid up.
+
+**Start:** skip formation lap. Blue PRE-START flash (~2s arcade; 2026 F1 uses ~5s), then five reds one-by-one (~1s each), then a random hold (0.2–3s) with all five ON, then lights out = GO. Hold W — sweet-spot revs dump harder; too high wheelspins. Move before lights out and you jump (short stop-go).
+
+**Hits:** cars bash — shove, spin, no ghosting through each other.
 
 Car **#7** is white/teal. Campus is golden-hour brick with **one** clock tower. Original IP only.
 
 ## GitHub Pages
 
-Repo is a static site (HTML + CSS + JS + Three.js from CDN). Workflow: `.github/workflows/pages.yml`.
-
-If the URL 404s, a repo admin enables Pages once:
-
-1. GitHub → **Settings → Pages**
-2. Source: **GitHub Actions**
-3. Merge this branch to `main` (or run the workflow)
+Repo is a static site (HTML + CSS + JS + Three.js from CDN). Public Pages currently deploys from this branch (`cursor/campus-loop-playable-f645`). Hard-refresh after a push.
 
 No bundler. Keyboard only. Light enough for school Chrome / integrated graphics.
