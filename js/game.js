@@ -354,6 +354,7 @@
     a: "s",
     s: "s",
     L: "S",
+    l: "S",
     S: "S",
     R: "r",
     r: "r",
@@ -725,7 +726,9 @@
 
   function parseMap(code) {
     var pieces = [];
-    if (!code || code.charAt(0) !== "M") return pieces;
+    if (!code) return pieces;
+    var head = code.charAt(0);
+    if (head !== "M" && head !== "m") return pieces;
     var i;
     for (i = 1; i + 3 < code.length; i += 4) {
       var t = canonType(code.charAt(i));
@@ -2161,6 +2164,8 @@
 
   function applyTrack(code, persist, force) {
     code = cleanTrack(code);
+    var packed = parseMap(code);
+    if (packed.length) code = encodeMap(packed);
     if (!force && code === trackCode && trackRoot) {
       if (persist !== false) persistTrackCode();
       if (net) net.track = trackCode;
@@ -2633,41 +2638,23 @@
 
   function rotatePiece(x, y) {
     var pieces = parseMap(trackCode);
-    var hit = pieceAt(x, y, pieces);
+    var hit = null;
+    var i;
+    for (i = 0; i < pieces.length; i++) {
+      if (pieces[i].x === x && pieces[i].y === y) {
+        hit = pieces[i];
+        break;
+      }
+    }
+    if (!hit) hit = pieceAt(x, y, pieces);
     if (!hit) return;
     var tryR = (hit.r + 1) & 3;
     var others = pieces.filter(function (p) {
       return p !== hit;
     });
     var next = { t: hit.t, x: hit.x, y: hit.y, r: tryR };
-    if (!canSit(next, others)) {
-      var nudge = [
-        [0, 0],
-        [-1, 0],
-        [0, -1],
-        [1, 0],
-        [0, 1],
-        [-1, -1],
-        [1, -1],
-        [-1, 1],
-        [1, 1],
-      ];
-      var ni;
-      var fitted = null;
-      for (ni = 0; ni < nudge.length; ni++) {
-        var cand = { t: hit.t, x: hit.x + nudge[ni][0], y: hit.y + nudge[ni][1], r: tryR };
-        if (canSit(cand, others)) {
-          fitted = cand;
-          break;
-        }
-      }
-      if (!fitted) return;
-      next = fitted;
-    }
-    hit.t = next.t;
-    hit.x = next.x;
-    hit.y = next.y;
-    hit.r = next.r;
+    if (!canSit(next, others)) return;
+    hit.r = tryR;
     tileSel = mapKey(hit.x, hit.y);
     commitTrack(encodeMap(pieces));
   }
@@ -6301,6 +6288,8 @@
   if (btnTrackCopy) {
     btnTrackCopy.addEventListener("click", function () {
       var s = trackCode || "";
+      var packed = parseMap(s);
+      if (packed.length) s = encodeMap(packed);
       if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(s).catch(function () {});
       }

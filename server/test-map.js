@@ -79,7 +79,7 @@ var code = [
   "var HIT_RADIUS = 3.45;",
   "var WALLS = [];",
   "var TYPE_ENC = { s: 'A', S: 'L', r: 'R', w: 'W', H: 'H', C: 'C', F: 'F', P: 'P', t: 'T' };",
-  "var TYPE_DEC = { A:'s', a:'s', s:'s', L:'S', S:'S', R:'r', r:'r', W:'w', w:'w', H:'H', h:'H', C:'C', c:'C', F:'F', f:'F', P:'P', p:'P', T:'t', t:'t' };",
+  "var TYPE_DEC = { A:'s', a:'s', s:'s', L:'S', l:'S', S:'S', R:'r', r:'r', W:'w', w:'w', H:'H', h:'H', C:'C', c:'C', F:'F', f:'F', P:'P', p:'P', T:'t', t:'t' };",
   sliceFn("canonType"),
   sliceFn("clamp"),
   sliceFn("inRect"),
@@ -701,6 +701,36 @@ assert(
   }).length === 2,
   "long and sweeper survive uppercase share-string"
 );
+var seven = [
+  { t: "r", x: 1, y: 1, r: 3 },
+  { t: "r", x: 2, y: 1, r: 3 },
+  { t: "r", x: 2, y: 2, r: 3 },
+  { t: "r", x: 1, y: 2, r: 3 },
+  { t: "S", x: 3, y: 1, r: 0 },
+  { t: "C", x: 3, y: 2, r: 0 },
+  { t: "s", x: 4, y: 2, r: 0 },
+];
+var sevenCode = sim.encodeMap(seven);
+assert(sevenCode.indexOf("L") !== -1, "share-string encodes long S as L");
+assert(sevenCode.indexOf("C") !== -1, "share-string encodes chicane");
+assert(sevenCode.indexOf("A") !== -1, "share-string encodes short straight");
+assert(sim.parseMap(sevenCode).length === 7, "7-piece board with an S round-trips");
+var sevenLow = sevenCode.toLowerCase();
+assert(sim.parseMap(sevenLow).length === 7, "lowercase share keeps long + chicane + straights, got " + sim.parseMap(sevenLow).length);
+assert(
+  sim.parseMap(sevenLow).filter(function (p) {
+    return p.t === "S";
+  }).length === 1,
+  "lowercase l is a long straight, not dropped"
+);
+assert(
+  sim.parseMap(sevenLow).filter(function (p) {
+    return p.t === "C";
+  }).length === 1,
+  "lowercase c is still a chicane"
+);
+assert(sim.parseMap("m" + sevenCode.slice(1)).length === 7, "lowercase m prefix still parses a full board");
+assert(sim.lockRacePath("MR220R321R332R233"), "locked yell rectangle still Solos as custom");
 var messyDrive = driveWorld(messyPieces, 2.2, "messy layout", false);
 
 sim.lockRacePath(sim.encodeMap(rectPieces()));
@@ -1641,6 +1671,8 @@ function proveTurnIcons() {
   assert(src.indexOf("function tileArt") !== -1, "palette and board paint from tileArt");
   assert(src.indexOf('pal[pi].style.backgroundImage = "url(" + tileArt(pt, 0, 160) + ")"') !== -1, "palette chips get the preview");
   assert(src.indexOf("background-image:url(") !== -1 && src.indexOf("tileArt(p.t, p.r, 160)") !== -1, "placed pieces get the same preview");
+  assert(src.indexOf("if (pieces[i].x === x && pieces[i].y === y)") !== -1, "rotate finds only the selected origin");
+  assert(src.indexOf("if (!canSit(next, others)) return;") !== -1, "rotate does not nudge the piece onto neighbors");
 }
 
 sim.lockRacePath("");
