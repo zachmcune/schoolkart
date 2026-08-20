@@ -6,7 +6,8 @@
    carry the sweeper only if tires are fresh.
    Fuel is the CLOCK: one forced box in 5 laps; coasting still ticks fuel;
    skip the box = limp home.
-   Tires are the HANDLING: loose if you push, not shredded. Grass = slow + extra wear.
+   Tires are the HANDLING: loose if you push, not shredded.
+   Grass is a CRAWL + extra wear — never a highway, never a hard stop.
    Pit: open painted TEAL box — no wall, no clamp. Hold Space 2.5s.
    A stop costs enough you pick WHEN (lap 2 vs 3), not whether.
    Look: white/teal car #7, golden-hour brick campus, one clock tower.
@@ -35,6 +36,9 @@
   var THROTTLE_FUEL = 0.24;
   var PIT_HOLD = 2.5;
   var ASPHALT = 8.6;
+  var GRASS_MAX = 8.5;
+  var GRASS_ROLL = 4;
+  var GRASS_DUMP = 40;
   var TIRE_FLOOR = 22;
   var TEAL = 0x2ec8c3;
   var TEAL_DEEP = 0x148f8c;
@@ -74,6 +78,14 @@
   renderer.setClearColor(0xff9a54, 1);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
 
+  // lookAt + Y-up puts world-left (+Z on the eastbound straight) on screen-right.
+  // Flip NDC X so peel LEFT, A/←, and the teal box are the same side.
+  function layoutCamera() {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    camera.projectionMatrix.elements[0] *= -1;
+  }
+
   var scene = new THREE.Scene();
   scene.fog = new THREE.Fog(0xffb072, 85, 250);
 
@@ -83,6 +95,7 @@
     0.4,
     420
   );
+  layoutCamera();
 
   var hud = {
     root: document.getElementById("hud"),
@@ -276,13 +289,13 @@
     geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
     geo.setIndex(idx);
     geo.computeVertexNormals();
-    return new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ color: color }));
+    return new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ color: color, side: THREE.DoubleSide }));
   }
 
   function addBox(x, y, z, w, h, d, color, parent) {
     var mesh = new THREE.Mesh(
       new THREE.BoxGeometry(w, h, d),
-      new THREE.MeshLambertMaterial({ color: color })
+      new THREE.MeshLambertMaterial({ color: color, side: THREE.DoubleSide })
     );
     mesh.position.set(x, y, z);
     (parent || scene).add(mesh);
@@ -296,14 +309,18 @@
     var ctx = c.getContext("2d");
     ctx.fillStyle = bg;
     ctx.fillRect(0, 0, 256, 128);
+    ctx.save();
+    ctx.translate(256, 0);
+    ctx.scale(-1, 1);
     ctx.fillStyle = fg;
     ctx.font = "bold 48px Trebuchet MS, sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillText(text, 128, 64);
+    ctx.restore();
     var mesh = new THREE.Mesh(
       new THREE.PlaneGeometry(w, h),
-      new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(c) })
+      new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(c), side: THREE.DoubleSide })
     );
     return mesh;
   }
@@ -326,7 +343,7 @@
 
     var pitLane = new THREE.Mesh(
       new THREE.BoxGeometry(PIT_LANE.x1 - PIT_LANE.x0, 0.1, PIT_LANE.z1 - PIT_LANE.z0),
-      new THREE.MeshLambertMaterial({ color: 0x32302c })
+      new THREE.MeshLambertMaterial({ color: 0x32302c, side: THREE.DoubleSide })
     );
     pitLane.position.set(
       (PIT_LANE.x0 + PIT_LANE.x1) * 0.5,
@@ -346,7 +363,7 @@
 
     var pit = new THREE.Mesh(
       new THREE.BoxGeometry(PIT_BOX.x1 - PIT_BOX.x0, 0.12, PIT_BOX.z1 - PIT_BOX.z0),
-      new THREE.MeshLambertMaterial({ color: TEAL })
+      new THREE.MeshLambertMaterial({ color: TEAL, side: THREE.DoubleSide })
     );
     pit.position.set(
       (PIT_BOX.x0 + PIT_BOX.x1) * 0.5,
@@ -378,7 +395,7 @@
 
     var stripe = new THREE.Mesh(
       new THREE.BoxGeometry(1.5, 0.14, ASPHALT * 2),
-      new THREE.MeshLambertMaterial({ color: 0xf4efe6 })
+      new THREE.MeshLambertMaterial({ color: 0xf4efe6, side: THREE.DoubleSide })
     );
     stripe.position.set(0, 0.1, SF_Z);
     scene.add(stripe);
@@ -430,7 +447,7 @@
     for (var f = 0; f < 2; f++) {
       var face = new THREE.Mesh(
         new THREE.PlaneGeometry(3.4, 3.4),
-        new THREE.MeshBasicMaterial({ map: clockTex })
+        new THREE.MeshBasicMaterial({ map: clockTex, side: THREE.DoubleSide })
       );
       face.position.set(towerX + (f ? 3.65 : -3.65), 18.4, towerZ);
       face.rotation.y = f ? Math.PI * 0.5 : -Math.PI * 0.5;
@@ -452,13 +469,13 @@
       var tz = t < 5 ? 48 : -118;
       var trunk = new THREE.Mesh(
         new THREE.CylinderGeometry(0.4, 0.5, 3, 5),
-        new THREE.MeshLambertMaterial({ color: 0x6a4020 })
+        new THREE.MeshLambertMaterial({ color: 0x6a4020, side: THREE.DoubleSide })
       );
       trunk.position.set(tx, 1.5, tz);
       scene.add(trunk);
       var leaf = new THREE.Mesh(
         new THREE.ConeGeometry(2.4, 4.6, 6),
-        new THREE.MeshLambertMaterial({ color: 0x3f7a30 })
+        new THREE.MeshLambertMaterial({ color: 0x3f7a30, side: THREE.DoubleSide })
       );
       leaf.position.set(tx, 4.8, tz);
       scene.add(leaf);
@@ -472,20 +489,24 @@
     var ctx = c.getContext("2d");
     ctx.fillStyle = "#148f8c";
     ctx.fillRect(0, 0, 64, 64);
+    ctx.save();
+    ctx.translate(64, 0);
+    ctx.scale(-1, 1);
     ctx.fillStyle = "#ffffff";
     ctx.font = "bold 46px Trebuchet MS, sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillText(String(n), 32, 34);
+    ctx.restore();
     return new THREE.CanvasTexture(c);
   }
 
   function makeCar(bodyColor, wingColor, num) {
     var g = new THREE.Group();
-    var body = new THREE.MeshLambertMaterial({ color: bodyColor });
-    var wing = new THREE.MeshLambertMaterial({ color: wingColor || TEAL_DEEP });
-    var black = new THREE.MeshLambertMaterial({ color: 0x1a1a1a });
-    var halo = new THREE.MeshLambertMaterial({ color: 0xe8e4dc });
+    var body = new THREE.MeshLambertMaterial({ color: bodyColor, side: THREE.DoubleSide });
+    var wing = new THREE.MeshLambertMaterial({ color: wingColor || TEAL_DEEP, side: THREE.DoubleSide });
+    var black = new THREE.MeshLambertMaterial({ color: 0x1a1a1a, side: THREE.DoubleSide });
+    var halo = new THREE.MeshLambertMaterial({ color: 0xe8e4dc, side: THREE.DoubleSide });
 
     var nose = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.28, 0.42), body);
     nose.position.set(1.55, 0.38, 0);
@@ -515,7 +536,7 @@
       var tex = numberDecal(num);
       var side = new THREE.Mesh(
         new THREE.PlaneGeometry(0.55, 0.4),
-        new THREE.MeshBasicMaterial({ map: tex })
+        new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide })
       );
       side.position.set(-0.15, 0.62, 0.38);
       g.add(side);
@@ -525,7 +546,7 @@
       g.add(side2);
       var rear = new THREE.Mesh(
         new THREE.PlaneGeometry(0.42, 0.32),
-        new THREE.MeshBasicMaterial({ map: tex })
+        new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide })
       );
       rear.position.set(-1.72, 0.95, 0);
       rear.rotation.y = Math.PI * 0.5;
@@ -555,7 +576,7 @@
 
     var blob = new THREE.Mesh(
       new THREE.CircleGeometry(1.15, 10),
-      new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.25 })
+      new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.25, side: THREE.DoubleSide })
     );
     blob.rotation.x = -Math.PI * 0.5;
     blob.position.y = 0.03;
@@ -668,11 +689,16 @@
     else r.speed -= COAST * dt;
 
     if (info.grass) {
-      r.speed -= 16 * dt;
-      if (isPlayer && r.speed > 8) r.tires -= 6.2 * dt;
+      if (r.speed > GRASS_MAX) {
+        r.speed -= GRASS_DUMP * dt;
+        if (r.speed < GRASS_MAX) r.speed = GRASS_MAX;
+      }
+      if (r.speed > GRASS_MAX) r.speed = GRASS_MAX;
+      if (r.speed < GRASS_ROLL) r.speed = GRASS_ROLL;
+      if (isPlayer) r.tires -= 6.2 * dt;
+    } else {
+      r.speed = clamp(r.speed, 0, maxV);
     }
-    r.speed = clamp(r.speed, 0, maxV);
-    if (info.grass && throttle && !brake) r.speed = Math.max(r.speed, empty ? 3 : 5);
 
     var speed01 = r.speed / MAX_SPEED;
     var steerScale = 1 - 0.58 * speed01;
@@ -942,9 +968,8 @@
     keys = Object.create(null);
   });
   window.addEventListener("resize", function () {
-    camera.aspect = window.innerWidth / window.innerHeight;
-    camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
+    layoutCamera();
   });
 
   addWorld();
