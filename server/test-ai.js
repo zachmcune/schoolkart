@@ -118,6 +118,8 @@ var code = [
   sliceFn("skipLeftBarrier"),
   sliceFn("wallKindFor"),
   sliceFn("wallCutsRibbon"),
+  sliceFn("joinColinearWall"),
+  sliceFn("mergeColinearWalls"),
   sliceFn("placeWalls"),
   sliceFn("inPitLane"),
   sliceFn("inPitGrab"),
