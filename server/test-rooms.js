@@ -115,7 +115,7 @@ waitHealth()
         assert(html.indexOf('rel="manifest"') !== -1, "web app manifest link");
         assert(html.indexOf("apple-mobile-web-app-capable") !== -1, "iOS home screen capable");
         assert(html.indexOf('apple-mobile-web-app-title" content="SchoolKart"') !== -1, "iOS title");
-        assert(html.indexOf('SK_BUILD = "mp55"') !== -1, "cache bump mp55");
+        assert(html.indexOf('SK_BUILD = "mp56"') !== -1, "cache bump mp56");
         assert(html.indexOf('maxlength="240"') !== -1, "share-string fits a full board");
         assert(html.indexOf('id="title-track"') !== -1, "title label matches Solo load");
         assert(html.indexOf('autocapitalize="off"') !== -1, "share-string does not eat W/T via autocapitalize");
@@ -147,7 +147,7 @@ waitHealth()
           .then(function (sr) {
             return sr.text().then(function (sw) {
               assert(sr.status === 200, "sw 200");
-              assert(sw.indexOf('BUILD = "mp55"') !== -1, "SW build matches cache");
+              assert(sw.indexOf('BUILD = "mp56"') !== -1, "SW build matches cache");
               assert(/cache:\s*"no-store"/.test(sw), "network-first no-store");
               assert(sw.indexOf("websocket") !== -1, "SW leaves websocket alone");
             });
@@ -177,6 +177,8 @@ waitHealth()
                   assert(js.indexOf("var ACCEL = 16") !== -1 && js.indexOf("var COAST = 2.4") !== -1, "slow wind-up; lift keeps rolling");
                   assert(js.indexOf("var BRAKE_DECEL = 20") !== -1, "Space is a planned squeeze for the 180");
                   assert(js.indexOf("env *= env") !== -1, "chicane S is flat at the ports so ribbons meet on the edge");
+                  assert(js.indexOf("var amp = MAP_CELL * 0.1") !== -1, "chicane S is shrunk so the ribbon stays in-cell");
+                  assert(js.indexOf("pieceSegs(artPiece)") !== -1, "editor preview uses the same segs as the 3D race");
                   assert(js.indexOf("function steerWheelYaw") !== -1 && js.indexOf("return -steer * 0.42") !== -1, "A points fronts left, D points right");
                   assert(js.indexOf("function attachNameTag") !== -1 && js.indexOf("function layoutNameTags") !== -1, "halo nametags");
                   assert(!/function attachNameTag\([\s\S]{0,500}new THREE\.Sprite/.test(js), "nametags are mesh billboards, not X-flip-killed sprites");

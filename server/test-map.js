@@ -1039,14 +1039,36 @@ var chi = { t: "C", x: 2, y: 2, r: 0 };
 assert(sim.ribbonFitsFootprint(chi), "lone chicane S lives inside its cell");
 var chiPts = sim.chicanePts(2, 2, 0);
 assert(chiPts.length >= 16, "chicane is a smooth S, not a 3-line stack");
+var wPort = sim.edgeMid(2, 2, 2);
+var ePort = sim.edgeMid(2, 2, 0);
+assert(Math.hypot(chiPts[0].x - wPort.x, chiPts[0].z - wPort.z) < 0.05, "chicane enter is flush on the mid-edge");
+assert(
+  Math.hypot(chiPts[chiPts.length - 1].x - ePort.x, chiPts[chiPts.length - 1].z - ePort.z) < 0.05,
+  "chicane exit is flush on the mid-edge"
+);
 var d0x = chiPts[1].x - chiPts[0].x;
 var d0z = chiPts[1].z - chiPts[0].z;
 assert(Math.abs(d0z) < Math.abs(d0x) * 0.22, "chicane meets the port square, not as a stacked diagonal");
+var cfx = ePort.x - wPort.x;
+var cfz = ePort.z - wPort.z;
+var cfl = Math.hypot(cfx, cfz) || 1;
+var clx = -cfz / cfl;
+var clz = cfx / cfl;
+var maxS = 0;
+var ci;
+for (ci = 0; ci < chiPts.length; ci++) {
+  var off = (chiPts[ci].x - wPort.x) * clx + (chiPts[ci].z - wPort.z) * clz;
+  if (Math.abs(off) > maxS) maxS = Math.abs(off);
+}
+assert(maxS < 10, "S was shrunk, not a fat zig-zag, amp=" + maxS.toFixed(1));
+assert(maxS + 8.6 < sim.MAP_CELL * 0.5 - 2, "centerline + asphalt stay inside the cell, reach=" + (maxS + 8.6).toFixed(1));
 var neighbor = { t: "s", x: 3, y: 2, r: 0 };
 assert(!sim.ribbonsStack(chi, neighbor), "chicane does not spill onto the next straight");
 var chi2 = { t: "C", x: 3, y: 2, r: 0 };
 assert(!sim.ribbonsStack(chi, chi2), "two chicanes in a row do not stack");
 assert(sim.ribbonFitsFootprint(chi2), "second chicane also stays in its cell");
+var sideChi = { t: "C", x: 2, y: 3, r: 0 };
+assert(!sim.ribbonsStack(chi, sideChi), "side-by-side chicanes do not occupy the same ground");
 var closed90s = [
   { t: "r", x: 2, y: 2, r: 0 },
   { t: "r", x: 3, y: 2, r: 0 },
@@ -1054,6 +1076,8 @@ var closed90s = [
 assert(!sim.ribbonsStack(closed90s[0], closed90s[1]), "incompatible 90s do not interpenetrate");
 assert(src.indexOf("Math.sin(t * Math.PI * 2)") !== -1, "chicane S is a sine inside the cell");
 assert(src.indexOf("env *= env") !== -1, "chicane S is flat at the ports");
+assert(src.indexOf("var amp = MAP_CELL * 0.1") !== -1, "zig-zag amplitude is small enough to keep the ribbon in-cell");
+assert(src.indexOf("pieceSegs(artPiece)") !== -1, "editor preview is the same segs as the 3D race");
 
 sim.lockRacePath("");
 assert(src.indexOf("var ACCEL = 16") !== -1, "wind-up is slow (arcade, not a snap)");

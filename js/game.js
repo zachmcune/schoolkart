@@ -799,11 +799,11 @@
     fz /= fl;
     var lx = -fz;
     var lz = fx;
-    // Smooth S inside the cell. Flat at both ports so the ribbon meets
-    // the neighbor on the shared edge — a raw sine left at 45° and the
-    // fat asphalt stacked on the next piece. Sharp 3-line zig-zag also
-    // folded the tube over itself.
-    var amp = MAP_CELL * 0.24;
+    // Small S inside the cell. Flat at both ports so they sit flush on
+    // the mid-edges. A fat zig-zag leaked asphalt into the next tile
+    // and stacked on the neighbor (that was the overlap / half-spin).
+    // Do not grow the cell — keep the amplitude inside half-cell minus ribbon.
+    var amp = MAP_CELL * 0.1;
     var pts = [w];
     var n = 16;
     var i;
@@ -946,26 +946,32 @@
     if (!segs.length) return true;
     var box = footprintBox(p);
     var ports = portList(p);
+    var kind = MAP_TYPES[p.t].kind;
     var i;
     var u;
     var pi;
     for (i = 0; i < segs.length; i++) {
-      for (u = 0; u <= 1.001; u += 0.2) {
+      for (u = 0; u <= 1.001; u += 0.1) {
         var pt = pointOnSeg(segs[i], u > 1 ? 1 : u);
         var near = false;
+        var nearDist = kind === "chicane" ? 4 : 14;
         for (pi = 0; pi < ports.length; pi++) {
           var pm = edgeMid(ports[pi].x, ports[pi].y, ports[pi].dir);
-          if (Math.hypot(pt.x - pm.x, pt.z - pm.z) < 14) {
+          if (Math.hypot(pt.x - pm.x, pt.z - pm.z) < nearDist) {
             near = true;
             break;
           }
         }
-        var pad = near ? ASPHALT + 0.8 : 0.9;
+        // Centerline stays in the cell. Ribbon too, except the flush
+        // port join (90s sit on an edge). A chicane may not use a fat
+        // port pad — that hid S leaking into the next tile.
+        var linePad = 0.25;
+        var ribPad = near ? (kind === "chicane" ? 0.55 : ASPHALT + 0.5) : 0.35;
         var nx = -Math.sin(pt.h);
         var nz = Math.cos(pt.h);
-        if (!pointInBox(pt.x, pt.z, box, pad)) return false;
-        if (!pointInBox(pt.x + nx * ASPHALT, pt.z + nz * ASPHALT, box, pad)) return false;
-        if (!pointInBox(pt.x - nx * ASPHALT, pt.z - nz * ASPHALT, box, pad)) return false;
+        if (!pointInBox(pt.x, pt.z, box, linePad)) return false;
+        if (!pointInBox(pt.x + nx * ASPHALT, pt.z + nz * ASPHALT, box, ribPad)) return false;
+        if (!pointInBox(pt.x - nx * ASPHALT, pt.z - nz * ASPHALT, box, ribPad)) return false;
       }
     }
     return true;
@@ -998,11 +1004,11 @@
     for (i = 0; i < sa.length; i++) {
       for (u = 0; u <= 1.001; u += 0.25) {
         var pa = pointOnSeg(sa[i], u > 1 ? 1 : u);
-        if (port && Math.hypot(pa.x - port.x, pa.z - port.z) < 16) continue;
+        if (port && Math.hypot(pa.x - port.x, pa.z - port.z) < ASPHALT + 3) continue;
         for (j = 0; j < sb.length; j++) {
           for (v = 0; v <= 1.001; v += 0.25) {
             var pb = pointOnSeg(sb[j], v > 1 ? 1 : v);
-            if (port && Math.hypot(pb.x - port.x, pb.z - port.z) < 16) continue;
+            if (port && Math.hypot(pb.x - port.x, pb.z - port.z) < ASPHALT + 3) continue;
             if (Math.hypot(pa.x - pb.x, pa.z - pb.z) < ASPHALT * 1.7) return true;
           }
         }
@@ -2174,80 +2180,41 @@
     ctx.fillRect(0, 0, w, h);
     function trackPath() {
       ctx.beginPath();
-      var k = MAP_TYPES[type] && MAP_TYPES[type].kind;
-      var u = unit;
       if (type === "t") return;
-      if (k === "flat" || k === "chicane") {
-        ctx.save();
-        ctx.translate(u * 0.5, u * 0.5);
-        ctx.rotate((rot || 0) * Math.PI * 0.5);
-        ctx.translate(-u * 0.5, -u * 0.5);
-        if (k === "chicane") {
-          ctx.moveTo(0, u * 0.5);
-          var ci;
-          for (ci = 1; ci <= 16; ci++) {
-            var ct = ci / 16;
-            var cenv = Math.sin(ct * Math.PI);
-            cenv *= cenv;
-            ctx.lineTo(ct * u, u * 0.5 - Math.sin(ct * Math.PI * 2) * cenv * u * 0.24);
+      var artPiece = { t: type, x: 0, y: 0, r: rot || 0 };
+      var segs = pieceSegs(artPiece);
+      if (!segs.length) return;
+      var box = footprintBox(artPiece);
+      var scale = unit / MAP_CELL;
+      var si;
+      var started = false;
+      for (si = 0; si < segs.length; si++) {
+        var seg = segs[si];
+        if (seg.type === "line") {
+          var ax = (seg.ax - box.x0) * scale;
+          var az = (seg.az - box.z0) * scale;
+          var bx = (seg.bx - box.x0) * scale;
+          var bz = (seg.bz - box.z0) * scale;
+          if (!started) {
+            ctx.moveTo(ax, az);
+            started = true;
+          } else {
+            ctx.lineTo(ax, az);
           }
+          ctx.lineTo(bx, bz);
         } else {
-          ctx.moveTo(0, u * 0.5);
-          ctx.lineTo(u, u * 0.5);
-        }
-        ctx.restore();
-        return;
-      }
-      if (k === "corner") {
-        ctx.save();
-        ctx.translate(u * 0.5, u * 0.5);
-        ctx.rotate((rot || 0) * Math.PI * 0.5);
-        ctx.translate(-u * 0.5, -u * 0.5);
-        ctx.moveTo(u, u * 0.5);
-        ctx.arc(u, u, u * 0.5, -Math.PI * 0.5, -Math.PI, true);
-        ctx.restore();
-        return;
-      }
-      if (k === "long") {
-        if (rot & 1) {
-          ctx.moveTo(u * 0.5, 0);
-          ctx.lineTo(u * 0.5, h);
-        } else {
-          ctx.moveTo(0, u * 0.5);
-          ctx.lineTo(w, u * 0.5);
-        }
-        return;
-      }
-      if (k === "hairpin") {
-        if (rot === 0) {
-          ctx.moveTo(u * 0.5, u);
-          ctx.arc(u, u, u * 0.5, Math.PI, 0, false);
-        } else if (rot === 1) {
-          ctx.moveTo(0, u * 0.5);
-          ctx.arc(0, u, u * 0.5, -Math.PI * 0.5, Math.PI * 0.5, false);
-        } else if (rot === 2) {
-          ctx.moveTo(u * 0.5, 0);
-          ctx.arc(u, 0, u * 0.5, Math.PI, 0, true);
-        } else {
-          ctx.moveTo(u, u * 0.5);
-          ctx.arc(u, u, u * 0.5, -Math.PI * 0.5, Math.PI * 0.5, true);
-        }
-        return;
-      }
-      if (k === "sweep") {
-        var R = u * 1.5;
-        if (rot === 0) {
-          ctx.moveTo(w, u * 0.5);
-          ctx.arc(w, h, R, -Math.PI * 0.5, -Math.PI, true);
-        } else if (rot === 1) {
-          ctx.moveTo(u * 1.5, h);
-          ctx.arc(0, h, R, 0, -Math.PI * 0.5, true);
-        } else if (rot === 2) {
-          ctx.moveTo(0, u * 1.5);
-          ctx.arc(0, 0, R, Math.PI * 0.5, 0, true);
-        } else {
-          ctx.moveTo(u * 0.5, 0);
-          ctx.arc(w, 0, R, Math.PI, Math.PI * 0.5, true);
+          var ccx = (seg.cx - box.x0) * scale;
+          var ccz = (seg.cz - box.z0) * scale;
+          var rr = seg.r * scale;
+          var sx = ccx + Math.cos(seg.a0) * rr;
+          var sy = ccz + Math.sin(seg.a0) * rr;
+          if (!started) {
+            ctx.moveTo(sx, sy);
+            started = true;
+          } else {
+            ctx.lineTo(sx, sy);
+          }
+          ctx.arc(ccx, ccz, rr, seg.a0, seg.a1, seg.a1 >= seg.a0);
         }
       }
     }
@@ -2255,7 +2222,7 @@
       ctx.lineCap = "butt";
       ctx.lineJoin = "round";
       ctx.setLineDash([]);
-      var ribbon = unit * 0.2;
+      var ribbon = unit * ((ASPHALT * 2) / MAP_CELL);
       ctx.strokeStyle = "#8d97a6";
       ctx.lineWidth = ribbon * 1.75;
       trackPath();
