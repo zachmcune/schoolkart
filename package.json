@@ -1,7 +1,7 @@
 {
   "name": "schoolkart",
   "private": true,
-  "description": "SchoolKart Campus Loop — Chromebook arcade F1. Static Pages client + in-memory WebSocket rooms.",
+  "description": "SchoolKart Campus Loop — Chromebook arcade F1. One Node host serves the game and in-memory WebSocket rooms.",
   "scripts": {
     "start": "node server/index.js",
     "test": "node server/test-rooms.js"

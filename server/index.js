@@ -2,8 +2,33 @@
    Railway: npm start  |  PORT from env  */
 "use strict";
 
+var fs = require("fs");
 var http = require("http");
+var path = require("path");
 var { WebSocketServer } = require("ws");
+
+var ROOT = path.resolve(__dirname, "..");
+var MIME = {
+  ".html": "text/html; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+};
+
+function safePublicFile(urlPath) {
+  var raw = String(urlPath || "/").split("?")[0].split("#")[0];
+  try {
+    raw = decodeURIComponent(raw);
+  } catch (e) {
+    return null;
+  }
+  if (raw === "/" || raw === "") raw = "/index.html";
+  if (!/^\/(index\.html|js\/[A-Za-z0-9._-]+\.js|css\/[A-Za-z0-9._-]+\.css)$/.test(raw)) {
+    return null;
+  }
+  var abs = path.resolve(ROOT, raw.slice(1));
+  if (abs !== ROOT && abs.indexOf(ROOT + path.sep) !== 0) return null;
+  return abs;
+}
 
 var PORT = Number(process.env.PORT || 8787);
 var MAX = 8;
@@ -283,13 +308,35 @@ function tickLights(room, dt) {
 
 var httpServer = http.createServer(function (req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
-  if (req.url === "/health") {
+  var url = String((req && req.url) || "/");
+  var pathname = url.split("?")[0];
+  if (pathname === "/health") {
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ ok: true, rooms: rooms.size }));
     return;
   }
-  res.writeHead(200, { "Content-Type": "text/plain" });
-  res.end("SchoolKart rooms. Point Pages at this host with ?server=wss://…");
+  var file = safePublicFile(url);
+  if (!file) {
+    res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
+    res.end("Not found");
+    return;
+  }
+  fs.readFile(file, function (err, buf) {
+    if (err) {
+      res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
+      res.end("Not found");
+      return;
+    }
+    var ext = path.extname(file);
+    var headers = { "Content-Type": MIME[ext] || "application/octet-stream" };
+    if (ext === ".html") {
+      headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0";
+    } else {
+      headers["Cache-Control"] = "no-cache";
+    }
+    res.writeHead(200, headers);
+    res.end(buf);
+  });
 });
 
 var wss = new WebSocketServer({ server: httpServer });
@@ -441,5 +488,5 @@ setInterval(function () {
 }, 80);
 
 httpServer.listen(PORT, function () {
-  console.log("SchoolKart rooms on :" + PORT);
+  console.log("SchoolKart game + rooms on :" + PORT);
 });

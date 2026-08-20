@@ -101,6 +101,16 @@ function driveState(extra) {
 
 waitHealth()
   .then(function () {
+    return fetch("http://127.0.0.1:" + PORT + "/").then(function (r) {
+      return r.text().then(function (html) {
+        assert(r.status === 200, "origin 200");
+        assert(/SchoolKart/i.test(html), "origin serves SchoolKart HTML");
+        assert(html.indexOf("Point Pages at this host") === -1, "no Pages stub");
+        assert(html.indexOf("btn-create") !== -1, "lobby on origin");
+      });
+    });
+  })
+  .then(function () {
     return Promise.all([client("hostA"), client("joinB")]);
   })
   .then(function (pair) {

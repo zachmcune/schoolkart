@@ -6,17 +6,15 @@ Creative lead: **Zachary McUne**. Feel spec: Pit Crew Designer.
 
 ## Play
 
-Public URL after GitHub Pages is on:
+**One URL (Railway — use this at school):**
 
-**https://zachmcune.github.io/schoolkart/**
+**https://server-production-d6c9.up.railway.app/**
 
-Local: open `index.html` via any static server (Chrome blocks some module-free file opens depending on school policy). From this folder:
+Same host serves the game and the rooms. No GitHub Pages, no `?server=` required.
 
-```bash
-python3 -m http.server 8080
-```
+GitHub Pages still works as a fallback: https://zachmcune.github.io/schoolkart/ (it talks to the same Railway rooms).
 
-Then visit `http://localhost:8080`.
+Local: `npm start`, then open `http://localhost:8787` (or whatever `PORT` is). Same-origin WSS.
 
 ## Campus Loop (locked feel)
 
@@ -40,53 +38,41 @@ Car **#7** is white/teal. Campus is golden-hour brick with **one** clock tower. 
 
 ## Multiplayer (Chromebook lunch)
 
-Friends open the Pages URL. One **Create room**, others type the 4–6 character code and **Join**. Host hits **Grid up** (or Enter). Max 8 cars. Same handling / fuel / tires as solo — no extra grip, no rubber-band speed.
+Friends open the Railway URL. One **Create room**, others type the 4–6 character code and **Join**. Host hits **Grid up** (or Enter). Max 8 cars. Same handling / fuel / tires as solo — no extra grip, no rubber-band speed.
 
 Late join after lights-out drops them into the live race and **says so** (no silent fail). Refresh **rejoins the same room and the same race** — same clock, fuel, tires, lap, and the other cars. It does not spawn a fresh 0:00 / full-tank solo. A dropped car goes **ghost**; they can come back. Tab blur does not wipe the room. If the server is down, **Solo** still works.
 
-### Point Pages at Railway
+`?server=` still overrides the socket (only needed for odd setups). Pages falls back to this Railway host on its own.
 
-Pages defaults to the live Railway server:
-
-`wss://server-production-d6c9.up.railway.app`
-
-Override anytime with `?server=` (local: `?server=ws://localhost:8787`). If the server is down, Solo still works.
-
-### Run the server locally
+### Run locally
 
 ```bash
 npm install
 npm start
 ```
 
-Listens on `PORT` (default **8787**). Health: `GET /health`.
+Listens on `PORT` (default **8787**). Open `http://localhost:8787`. Health: `GET /health`.
 
-Then open the static game with `?server=ws://localhost:8787` (use two browser windows to create + join).
-
-```bash
-python3 -m http.server 8080
-# http://localhost:8080/?server=ws://localhost:8787
-```
+Two browser windows: Create + Join. Same origin — no second static server.
 
 ### Railway
 
 - **Start command:** `npm start` (or `node server/index.js`)
 - **Env:** `PORT` is set by Railway — do not hardcode it
+- Same process serves `index.html` / `js` / `css` and the WebSocket
 - No database. Rooms live in memory (fine for lunch races)
 - Root `package.json` is the server manifest
 
-Protocol smoke test:
+Protocol smoke test (includes `GET /` returning SchoolKart HTML):
 
 ```bash
 npm test
 ```
 
-## GitHub Pages
+## GitHub Pages (fallback)
 
-Repo is a static site (HTML + CSS + JS + Three.js from CDN). Public Pages currently deploys from this branch (`cursor/campus-loop-playable-f645`).
+Repo is also a static site (HTML + CSS + JS + Three.js from CDN). Public Pages currently deploys from this branch (`cursor/campus-loop-playable-f645`). Use Railway as the school link.
 
-`index.html` is marked `no-store`. JS/CSS are versioned (`?v=mp4`) so a **normal reload** picks up the lobby — Chromebooks should not need a hard-refresh.
-
-After a server change, **redeploy the same Railway service** (`server-production-d6c9`) so late join / refresh get `enter` + `raceTime`. Pages-only cannot restore another machine’s fuel.
+`index.html` is marked `no-store`. JS/CSS are versioned (`?v=mp5`) so a **normal reload** picks up the lobby.
 
 No bundler. Keyboard only. Light enough for school Chrome / integrated graphics.
