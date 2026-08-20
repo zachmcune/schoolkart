@@ -4475,6 +4475,7 @@
     touchCtl.gyroNeedCal = true;
     state = "start";
     setScreen("start");
+    releaseTypeFocus();
     hud.startMsg.textContent = "PRE-START";
     hud.startMsg.className = "start-msg";
     paintLights(0, true);
@@ -5083,6 +5084,7 @@
     touchCtl.gyroNeedCal = true;
     state = "start";
     setScreen("start");
+    releaseTypeFocus();
     hud.startMsg.textContent = "PRE-START";
     hud.startMsg.className = "start-msg";
     paintLights(0, true);
@@ -5098,6 +5100,7 @@
       applyLaunch();
       state = "racing";
       setScreen("racing");
+      releaseTypeFocus();
       setRevSound(false);
     }
   }
@@ -5624,12 +5627,15 @@
   }
 
   function releaseTypeFocus() {
+    // Solo from a share string leaves #track-paste focused (hidden, still
+    // active). W then never reaches the car while fuel keeps ticking.
+    // Blur only when lights/GO start — keep-focus stays in the editor.
     var fields = [hud.trackPaste, hud.nameInput];
     var join = document.getElementById("join-code");
     if (join) fields.push(join);
     var i;
     for (i = 0; i < fields.length; i++) {
-      if (fields[i] && document.activeElement === fields[i]) fields[i].blur();
+      if (fields[i] && fields[i].blur) fields[i].blur();
     }
     var a = document.activeElement;
     if (a && typingField(a) && a.blur) a.blur();
@@ -5980,6 +5986,7 @@
       clearMe();
       if (net) net.leave();
       startSequence();
+      releaseTypeFocus();
     });
   }
   if (btnCreate) {

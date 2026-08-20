@@ -1366,6 +1366,70 @@ function proveGoHoldW(code, label) {
 
 proveGoHoldW(yell, "4-piece MR220R321R332R233");
 
+function typingAt(stateName, doc) {
+  return new Function(
+    "state",
+    "document",
+    sliceFn("typingField") + sliceFn("isTyping") + "; return isTyping();"
+  )(stateName, doc);
+}
+
+var shareEl = { tagName: "INPUT", id: "track-paste", isContentEditable: false };
+var editDoc = {
+  body: { tagName: "BODY" },
+  documentElement: { tagName: "HTML" },
+  activeElement: shareEl,
+};
+assert(typingAt("track", editDoc) === true, "share field keep-focus while editing: R types");
+assert(typingAt("title", editDoc) === true, "share/name field still captures keys on title");
+assert(typingAt("start", editDoc) === false, "lights: focused share box does not eat W");
+assert(typingAt("racing", editDoc) === false, "GO: focused share box does not eat W");
+
+var blurN = 0;
+var bodyEl = { tagName: "BODY" };
+var liveShare = {
+  tagName: "INPUT",
+  id: "track-paste",
+  isContentEditable: false,
+  blur: function () {
+    blurN += 1;
+    liveDoc.activeElement = bodyEl;
+  },
+};
+var liveDoc = {
+  body: bodyEl,
+  documentElement: { tagName: "HTML" },
+  activeElement: liveShare,
+  getElementById: function () {
+    return null;
+  },
+};
+var liveHud = { trackPaste: liveShare, nameInput: null };
+new Function(
+  "document",
+  "hud",
+  sliceFn("typingField") + sliceFn("releaseTypeFocus") + "; releaseTypeFocus();"
+)(liveDoc, liveHud);
+assert(blurN >= 1, "paste then Solo blurs the share box, no extra click, blurs=" + blurN);
+assert(liveDoc.activeElement === bodyEl, "after Solo the share box is not focused");
+assert(sliceFn("startSequence").indexOf("releaseTypeFocus()") !== -1, "startSequence blurs on lights");
+assert(sliceFn("setScreen").indexOf("releaseTypeFocus()") !== -1, "setScreen blurs on start/GO");
+assert(sliceFn("paintTrackEditor").indexOf("releaseTypeFocus") === -1, "editor paint does not steal share focus");
+assert(sliceFn("commitTrack").indexOf("releaseTypeFocus") === -1, "Enter commit does not blur the share box");
+assert(sliceFn("trapTextKeys").indexOf("e.stopPropagation()") !== -1, "while editing, share keys do not Solo");
+assert(sliceFn("onKey").indexOf('state !== "start" && state !== "racing"') !== -1, "onKey only traps text before the race");
+assert(src.indexOf('who.id === "track-paste"') !== -1 && src.indexOf("commitTrack(who.value)") !== -1, "Enter in the share box commits, does not Solo");
+
+sim.lockRacePath("");
+var voidCar = blankCar(720, 640, 0, 4);
+voidCar.voidT = 1;
+var voidHit = sim.projectTrack(voidCar.x, voidCar.z);
+assert(voidHit.dist > 36 && !voidHit.onAsphalt, "void setup is off the ribbon, dist=" + voidHit.dist.toFixed(0));
+assert(sim.recoverIfVoid(voidCar, 0.02), "void recover fires");
+assert(sim.projectTrack(voidCar.x, voidCar.z).onAsphalt, "void recover lands on asphalt");
+assert(voidCar.speed >= 28, "void recover is at pace, not 13 kph, speed=" + voidCar.speed.toFixed(1));
+assert(firstNamedS("hairpin") > 0, "180 still exists after a void recover");
+
 var pitRect = rectPieces();
 pitRect[2] = { t: "P", x: 3, y: 1, r: 0 };
 sim.setTrack(sim.encodeMap(pitRect));
