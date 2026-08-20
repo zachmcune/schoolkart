@@ -2243,7 +2243,7 @@
   var _tileArt = {};
 
   function tileIconPts(type, rot, w, h) {
-    // Cheap in-square silhouettes. World pieceSegs + ctx.arc drew the
+    // Cheap in-square silhouettes. World ribbon + ctx.arc drew the
     // long way around and clipped 90/sweeper/hairpin to a blank grey square.
     var m = Math.min(w, h);
     var pad = m * 0.2;
@@ -2332,118 +2332,160 @@
     return spin();
   }
 
+  function tileIconSvg(type, rot, w, h) {
+    // Inline SVG in the tile. Canvas data-URLs stayed blank grey on
+    // live Chromebooks (only the yellow arrow showed).
+    var m = Math.min(w, h);
+    var ribbon = type === "C" ? m * 0.22 : m * 0.2;
+    var svg =
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' +
+      w +
+      " " +
+      h +
+      '" width="100%" height="100%" preserveAspectRatio="none">';
+    svg += '<rect width="' + w + '" height="' + h + '" fill="#6a655c"/>';
+    if (type === "t") {
+      svg +=
+        '<circle cx="' +
+        w * 0.5 +
+        '" cy="' +
+        h * 0.72 +
+        '" r="' +
+        m * 0.16 +
+        '" fill="#5a4030"/>';
+      svg +=
+        '<rect x="' +
+        w * 0.45 +
+        '" y="' +
+        h * 0.5 +
+        '" width="' +
+        m * 0.1 +
+        '" height="' +
+        m * 0.24 +
+        '" fill="#6a4020"/>';
+      svg +=
+        '<circle cx="' +
+        w * 0.5 +
+        '" cy="' +
+        h * 0.4 +
+        '" r="' +
+        m * 0.2 +
+        '" fill="#3f8a32"/>';
+      svg +=
+        '<circle cx="' +
+        w * 0.4 +
+        '" cy="' +
+        h * 0.36 +
+        '" r="' +
+        m * 0.14 +
+        '" fill="#4ea03c"/>';
+      svg +=
+        '<circle cx="' +
+        w * 0.6 +
+        '" cy="' +
+        h * 0.34 +
+        '" r="' +
+        m * 0.13 +
+        '" fill="#4ea03c"/>';
+      svg += "</svg>";
+      return svg;
+    }
+    var pts = tileIconPts(type, rot, w, h);
+    var d = "";
+    var i;
+    if (pts.length) {
+      d = "M" + pts[0].x.toFixed(2) + "," + pts[0].y.toFixed(2);
+      for (i = 1; i < pts.length; i++) d += "L" + pts[i].x.toFixed(2) + "," + pts[i].y.toFixed(2);
+    }
+    function path(color, width, dash) {
+      return (
+        '<path d="' +
+        d +
+        '" fill="none" stroke="' +
+        color +
+        '" stroke-width="' +
+        width +
+        '" stroke-linecap="round" stroke-linejoin="round"' +
+        (dash ? ' stroke-dasharray="' + dash + '"' : "") +
+        "/>"
+      );
+    }
+    svg += path("#8d97a6", ribbon * 1.55);
+    svg += path("#ff2038", ribbon * 1.2);
+    svg += path("#fff6ee", ribbon * 1.2, m * 0.07 + " " + m * 0.07);
+    svg += path("#3a3e46", ribbon);
+    if (pts.length > 1) {
+      var a = pts[pts.length - 2];
+      var b = pts[pts.length - 1];
+      var ang = Math.atan2(b.y - a.y, b.x - a.x);
+      var aw = m * 0.05;
+      var x1 = b.x + Math.cos(ang) * m * 0.02;
+      var y1 = b.y + Math.sin(ang) * m * 0.02;
+      var lx = Math.cos(ang + 2.4) * aw;
+      var ly = Math.sin(ang + 2.4) * aw;
+      var rx = Math.cos(ang - 2.4) * aw;
+      var ry = Math.sin(ang - 2.4) * aw;
+      svg +=
+        '<polygon points="' +
+        x1.toFixed(1) +
+        "," +
+        y1.toFixed(1) +
+        " " +
+        (b.x + lx).toFixed(1) +
+        "," +
+        (b.y + ly).toFixed(1) +
+        " " +
+        (b.x + rx).toFixed(1) +
+        "," +
+        (b.y + ry).toFixed(1) +
+        '" fill="#ffe566"/>';
+    }
+    if (type === "P") {
+      svg +=
+        '<rect x="' +
+        w * 0.22 +
+        '" y="' +
+        h * 0.08 +
+        '" width="' +
+        w * 0.56 +
+        '" height="' +
+        h * 0.16 +
+        '" fill="#2ec8c3"/>';
+    }
+    if (type === "F") {
+      svg +=
+        '<rect x="' +
+        w * 0.42 +
+        '" y="' +
+        h * 0.22 +
+        '" width="' +
+        w * 0.05 +
+        '" height="' +
+        h * 0.56 +
+        '" fill="#fff6ee"/>';
+      svg +=
+        '<rect x="' +
+        w * 0.54 +
+        '" y="' +
+        h * 0.22 +
+        '" width="' +
+        w * 0.05 +
+        '" height="' +
+        h * 0.56 +
+        '" fill="#fff6ee"/>';
+    }
+    svg += "</svg>";
+    return svg;
+  }
+
   function tileArt(type, rot, size) {
     var key = type + rot + ":" + size;
     if (_tileArt[key]) return _tileArt[key];
-    var unit = size || 160;
+    var unit = size || 80;
     var span = pieceSpan(type, rot || 0);
     var w = unit * span.cols;
     var h = unit * span.rows;
-    var c = document.createElement("canvas");
-    c.width = w;
-    c.height = h;
-    var ctx = c.getContext("2d");
-    ctx.fillStyle = "#6a655c";
-    ctx.fillRect(0, 0, w, h);
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(0, 0, w, h);
-    ctx.clip();
-    var bevel = ctx.createLinearGradient(0, 0, w, h);
-    bevel.addColorStop(0, "rgba(255,255,255,0.12)");
-    bevel.addColorStop(0.45, "rgba(255,255,255,0)");
-    bevel.addColorStop(1, "rgba(0,0,0,0.2)");
-    ctx.fillStyle = bevel;
-    ctx.fillRect(0, 0, w, h);
-    function iconPath() {
-      var pts = tileIconPts(type, rot || 0, w, h);
-      ctx.beginPath();
-      if (!pts.length) return;
-      ctx.moveTo(pts[0].x, pts[0].y);
-      var i;
-      for (i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
-    }
-    function strokeTrack() {
-      ctx.lineCap = "round";
-      ctx.lineJoin = "round";
-      ctx.setLineDash([]);
-      var m = Math.min(w, h);
-      var ribbon = type === "C" ? m * 0.2 : m * 0.18;
-      ctx.save();
-      ctx.strokeStyle = "#8d97a6";
-      ctx.lineWidth = ribbon * 1.5;
-      iconPath();
-      ctx.stroke();
-      ctx.restore();
-      ctx.save();
-      ctx.strokeStyle = "#ff2038";
-      ctx.lineWidth = ribbon * 1.15;
-      iconPath();
-      ctx.stroke();
-      ctx.restore();
-      ctx.save();
-      ctx.strokeStyle = "#fff6ee";
-      ctx.lineWidth = ribbon * 1.15;
-      ctx.setLineDash([m * 0.07, m * 0.07]);
-      iconPath();
-      ctx.stroke();
-      ctx.restore();
-      ctx.save();
-      ctx.strokeStyle = "#3a3e46";
-      ctx.lineWidth = ribbon;
-      iconPath();
-      ctx.stroke();
-      ctx.restore();
-    }
-    if (type === "t") {
-      ctx.fillStyle = "#5a4030";
-      ctx.beginPath();
-      ctx.arc(unit * 0.5, unit * 0.72, unit * 0.16, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = "#6a4020";
-      ctx.fillRect(unit * 0.45, unit * 0.5, unit * 0.1, unit * 0.24);
-      ctx.fillStyle = "#3f8a32";
-      ctx.beginPath();
-      ctx.arc(unit * 0.5, unit * 0.4, unit * 0.2, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = "#4ea03c";
-      ctx.beginPath();
-      ctx.arc(unit * 0.4, unit * 0.36, unit * 0.14, 0, Math.PI * 2);
-      ctx.arc(unit * 0.6, unit * 0.34, unit * 0.13, 0, Math.PI * 2);
-      ctx.fill();
-    } else {
-      strokeTrack();
-      if (type !== "t") {
-        ctx.save();
-        ctx.translate(unit * 0.5, unit * 0.5);
-        ctx.rotate((rot || 0) * Math.PI * 0.5);
-        ctx.fillStyle = "#ffe566";
-        ctx.beginPath();
-        ctx.moveTo(unit * 0.34, -unit * 0.04);
-        ctx.lineTo(unit * 0.46, 0);
-        ctx.lineTo(unit * 0.34, unit * 0.04);
-        ctx.closePath();
-        ctx.fill();
-        ctx.restore();
-      }
-      if (type === "P" || type === "F") {
-        ctx.save();
-        ctx.translate(unit * 0.5, unit * 0.5);
-        ctx.rotate((rot || 0) * Math.PI * 0.5);
-        ctx.translate(-unit * 0.5, -unit * 0.5);
-        if (type === "P") {
-          ctx.fillStyle = "#2ec8c3";
-          ctx.fillRect(unit * 0.22, unit * 0.08, unit * 0.56, unit * 0.18);
-        } else {
-          ctx.fillStyle = "#fff6ee";
-          ctx.fillRect(unit * 0.42, unit * 0.22, unit * 0.04, unit * 0.56);
-          ctx.fillRect(unit * 0.54, unit * 0.22, unit * 0.04, unit * 0.56);
-        }
-        ctx.restore();
-      }
-    }
-    ctx.restore();
-    _tileArt[key] = c.toDataURL();
+    _tileArt[key] = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(tileIconSvg(type, rot || 0, w, h));
     return _tileArt[key];
   }
 
@@ -2469,8 +2511,8 @@
       for (pi = 0; pi < pal.length; pi++) {
         var pt = pal[pi].getAttribute("data-tile");
         pal[pi].classList.toggle("picked", pt === tilePick);
-        pal[pi].style.backgroundImage = "url(" + tileArt(pt, 0, 160) + ")";
-        pal[pi].textContent = "";
+        pal[pi].style.backgroundImage = "";
+        pal[pi].innerHTML = tileIconSvg(pt, 0, pt === "H" || pt === "S" ? 112 : 72, 72);
         pal[pi].setAttribute("aria-label", TILE_LABEL[pt] || pt);
       }
     }
@@ -2520,9 +2562,8 @@
             (miny + 1) +
             " / span " +
             (maxy - miny + 1) +
-            ";background-image:url(" +
-            tileArt(p.t, p.r, 160) +
-            ')">';
+            '">' +
+            tileIconSvg(p.t, p.r, 80 * (maxx - minx + 1), 80 * (maxy - miny + 1));
           if (sel) {
             html += '<button type="button" class="tile-rot-handle" tabindex="-1" data-rot-handle="1" aria-label="Rotate 90 degrees">↻</button>';
           }
@@ -4008,7 +4049,8 @@
   }
 
   function hitCarFeel(r, vx, vz, nx, nz, impact) {
-    // n points from the other car toward us.
+    // n points from the other car toward us. Rear-quarter side hit
+    // yaws that way and can spin out. Wall graze stays a slide.
     var c = Math.cos(r.heading);
     var s = Math.sin(r.heading);
     var fwd = c * nx + s * nz;
@@ -4019,7 +4061,14 @@
     var hip = 1 - Math.abs(fwd);
     r.speed = vx * c + vz * s;
     r.slide = -vx * s + vz * c;
-    if (impact < 8 && tail > 0.4) {
+    if (tail > 0.25 && hip > 0.28) {
+      r.speed *= 0.7;
+      r.heading += dir * clamp(impact * 0.03 * (0.4 + hip), 0.14, 0.82);
+      r.slide += dir * clamp(impact * 0.26, 3, 14);
+      r.hitYawT = 0.3;
+      return;
+    }
+    if (impact < 8 && tail > 0.5) {
       r.slide += dir * clamp(impact * 0.18, 0.4, 2.4);
       r.heading += dir * clamp(impact * 0.003, 0, 0.035);
       r.hitYawT = 0.08;
@@ -6222,10 +6271,10 @@
     if (hit.kind === "cell" && !hit.ch) return;
     var ghost = document.createElement("div");
     ghost.className = "tile-ghost";
-    ghost.style.backgroundImage = "url(" + tileArt(hit.ch, hit.rot || 0, 160) + ")";
     var span = pieceSpan(hit.ch, hit.rot || 0);
     ghost.style.width = 40 * span.cols + "px";
     ghost.style.height = 40 * span.rows + "px";
+    ghost.innerHTML = tileIconSvg(hit.ch, hit.rot || 0, 40 * span.cols, 40 * span.rows);
     document.body.appendChild(ghost);
     ghost.style.left = e.clientX + "px";
     ghost.style.top = e.clientY + "px";

@@ -1202,10 +1202,11 @@ assert(src.indexOf("Math.sin(t * Math.PI * 2)") !== -1, "chicane S is a sine ins
 assert(src.indexOf("env *= env") !== -1, "chicane S is flat at the ports");
 assert(src.indexOf("var amp = MAP_CELL * 0.1") !== -1, "zig-zag amplitude is small enough to keep the ribbon in-cell");
 assert(src.indexOf("function tileArt") !== -1, "editor still paints chips");
-assert(src.indexOf("function tileIconPts") !== -1, "90/sweeper/hairpin/chicane are in-square silhouettes");
-var artSrc = src.slice(src.indexOf("function tileArt"), src.indexOf("function paintTrackEditor"));
-assert(artSrc.indexOf("pieceSegs") === -1, "chips are not clipped world-ribbon");
-assert(artSrc.indexOf("tileIconPts") !== -1, "tileArt strokes the in-square silhouette");
+assert(src.indexOf("function tileIconPts") !== -1 && src.indexOf("function tileIconSvg") !== -1, "90/sweeper/hairpin/chicane are in-square SVG silhouettes");
+var artSrc = src.slice(src.indexOf("function tileIconPts"), src.indexOf("function paintTrackEditor"));
+assert(artSrc.indexOf("pieceSegs(") === -1, "chips are not clipped world-ribbon");
+assert(artSrc.indexOf("createElement(\"canvas\")") === -1, "chips are SVG in the tile, not a canvas data-URL");
+assert(artSrc.indexOf("tileIconSvg") !== -1, "palette injects SVG into the square");
 
 sim.lockRacePath("");
 assert(src.indexOf("var ACCEL = 16") !== -1, "wind-up is slow (arcade, not a snap)");
@@ -1666,14 +1667,26 @@ function proveCarHits() {
   sim.lockRacePath("");
   sim.placeWalls();
   var p = sim.centerlinePoint(40);
-  var victim = blankCar(p.x + 2.4, p.z, p.h, 18);
+  var hx = Math.cos(p.h);
+  var hz = Math.sin(p.h);
+  var sx = -hz;
+  var sz = hx;
+  var victim = blankCar(p.x + hx * 2.4, p.z + hz * 2.4, p.h, 18);
   var bumper = blankCar(p.x, p.z, p.h, 26);
   victim.fuel = bumper.fuel = 100;
   victim.tires = bumper.tires = 100;
   var hV = victim.heading;
   sim.bashCars(bumper, victim);
   var tap = Math.abs(angDiff(victim.heading, hV));
-  assert(tap < 0.12, "rear-quarter tap is a wiggle, dH=" + tap.toFixed(4));
+  assert(tap < 0.12, "straight rear tap is a wiggle, dH=" + tap.toFixed(4));
+  var qVic = blankCar(p.x, p.z, p.h, 16);
+  qVic.fuel = 100;
+  qVic.tires = 100;
+  var hQ = qVic.heading;
+  var qn = Math.hypot(hx * 0.5 + sx * 0.86, hz * 0.5 + sz * 0.86) || 1;
+  sim.hitCarFeel(qVic, hx * 14, hz * 14, (hx * 0.5 + sx * 0.86) / qn, (hz * 0.5 + sz * 0.86) / qn, 18);
+  var quarter = Math.abs(angDiff(qVic.heading, hQ));
+  assert(quarter > 0.14, "rear-quarter side hit yaws / can spin, dH=" + quarter.toFixed(4));
   var side = blankCar(p.x, p.z, p.h + Math.PI * 0.5, 32);
   var prey = blankCar(p.x + 2.2, p.z, p.h, 16);
   side.fuel = prey.fuel = 100;
@@ -1685,7 +1698,8 @@ function proveCarHits() {
 }
 
 function proveTileIcons() {
-  var icon = new Function(sliceFn("tileIconPts") + "; return tileIconPts;")();
+  var pair = new Function(sliceFn("tileIconPts") + ";" + sliceFn("tileIconSvg") + "; return { pts: tileIconPts, svg: tileIconSvg };")();
+  var icon = pair.pts;
   function inside(type, rot, w, h, label) {
     var pts = icon(type, rot, w, h);
     assert(pts.length >= 8, label + " has a silhouette, n=" + pts.length);
@@ -1703,6 +1717,9 @@ function proveTileIcons() {
     }
     var span = Math.hypot(maxX - minX, maxY - minY);
     assert(span > Math.min(w, h) * 0.35, label + " fills the chip, span=" + span.toFixed(1));
+    var svg = pair.svg(type, rot, w, h);
+    assert(svg.indexOf("<path") !== -1 && svg.indexOf("#3a3e46") !== -1, label + " SVG paints asphalt in the square");
+    assert(svg.indexOf("M") !== -1, label + " SVG has a silhouette path");
     return { minX: minX, maxX: maxX, minY: minY, maxY: maxY, pts: pts };
   }
   var r90 = inside("r", 0, 160, 160, "90");
