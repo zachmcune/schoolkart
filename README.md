@@ -46,17 +46,11 @@ Late join and refresh rejoin the same code. A dropped car goes **ghost**; they c
 
 ### Point Pages at Railway
 
-After you deploy the server, either:
+Pages defaults to the live Railway server:
 
-1. Edit `js/config.js`:
+`wss://server-production-d6c9.up.railway.app`
 
-```js
-window.SCHOOLKART_SERVER = "wss://YOUR-APP.up.railway.app";
-```
-
-2. Or share a query param (no rebuild):
-
-`https://zachmcune.github.io/schoolkart/?server=wss://YOUR-APP.up.railway.app`
+Override anytime with `?server=` (local: `?server=ws://localhost:8787`). If the server is down, Solo still works.
 
 ### Run the server locally
 
