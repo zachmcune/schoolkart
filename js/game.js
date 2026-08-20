@@ -114,6 +114,7 @@
   var WING_SWATCHES = [0x148f8c, 0x1a1a1a, 0xf4efe6, 0xff2a44, 0xffe566, 0x3d8cff];
   var trackCode = "";
   var trackRoot = null;
+  var campusRoot = null;
   var stampTrees = [];
   try {
     var pb = parseInt(localStorage.getItem("sk_body"), 10);
@@ -910,19 +911,59 @@
     else addArc(seg.cx, seg.cz, seg.r, seg.a0, seg.a1, seg.name);
   }
 
+  function segStart(seg) {
+    if (seg.type === "line") return { x: seg.ax, z: seg.az };
+    return { x: seg.cx + Math.cos(seg.a0) * seg.r, z: seg.cz + Math.sin(seg.a0) * seg.r };
+  }
+
+  function segEnd(seg) {
+    if (seg.type === "line") return { x: seg.bx, z: seg.bz };
+    return { x: seg.cx + Math.cos(seg.a1) * seg.r, z: seg.cz + Math.sin(seg.a1) * seg.r };
+  }
+
+  function flipSegs(segs) {
+    segs.reverse();
+    var i;
+    for (i = 0; i < segs.length; i++) segs[i] = reverseSeg(segs[i]);
+    return segs;
+  }
+
   function segsFromEnter(p, fromDir, fromX, fromY) {
     var segs = pieceSegs(p).slice();
+    if (!segs.length) return segs;
     var ports = portList(p);
-    var i;
+    if (!ports.length) return segs;
     var enter = 0;
+    var i;
     for (i = 0; i < ports.length; i++) {
-      if (ports[i].dir === fromDir && ports[i].x === fromX && ports[i].y === fromY) enter = i;
+      if (fromDir != null && ports[i].dir === fromDir && ports[i].x === fromX && ports[i].y === fromY) enter = i;
     }
-    if (enter === 1) {
-      segs.reverse();
-      for (i = 0; i < segs.length; i++) segs[i] = reverseSeg(segs[i]);
+    var startPt = edgeMid(ports[enter].x, ports[enter].y, ports[enter].dir);
+    var a = segStart(segs[0]);
+    var b = segEnd(segs[segs.length - 1]);
+    if (Math.hypot(a.x - startPt.x, a.z - startPt.z) > Math.hypot(b.x - startPt.x, b.z - startPt.z) + 0.5) {
+      flipSegs(segs);
     }
     return segs;
+  }
+
+  function exitPortAfter(p, segs) {
+    var ports = portList(p);
+    if (!ports.length) return null;
+    if (!segs || !segs.length) return ports[0];
+    var end = segEnd(segs[segs.length - 1]);
+    var best = ports[0];
+    var bestD = 1e9;
+    var i;
+    for (i = 0; i < ports.length; i++) {
+      var m = edgeMid(ports[i].x, ports[i].y, ports[i].dir);
+      var d = Math.hypot(m.x - end.x, m.z - end.z);
+      if (d < bestD) {
+        bestD = d;
+        best = ports[i];
+      }
+    }
+    return best;
   }
 
   function placePitFromPiece(p) {
@@ -1020,7 +1061,7 @@
     }
     if (!start) start = track[0];
     var startPorts = portList(start);
-    var fromPort = startPorts.length > 1 ? startPorts[1] : startPorts[0];
+    var fromPort = startPorts[0];
     var visited = {};
     var cur = start;
     var hadPit = false;
@@ -1038,9 +1079,7 @@
         placePitFromPiece(cur);
         hadPit = true;
       }
-      var ports = portList(cur);
-      var out = ports[0];
-      if (fromPort && ports[0].dir === fromPort.dir && ports[0].x === fromPort.x && ports[0].y === fromPort.y) out = ports[1];
+      var out = exitPortAfter(cur, segs);
       lastOut = out;
       if (!out) break;
       var nx = out.x + MAP_DXY[out.dir][0];
@@ -1362,7 +1401,8 @@
   }
 
   function courseBand(half, y, color, onlyNames, uvStep, offset) {
-    if (MAP_SURF.length) return makeSurfRibbon(MAP_SURF, half, y, color, onlyNames, uvStep, offset);
+    // One continuous thin ribbon from the race PATH. Per-piece MAP_SURF
+    // strips stacked a second collider on every shared edge.
     return makeRibbon(half, y, color, onlyNames, uvStep, offset);
   }
 
@@ -1523,15 +1563,15 @@
     }
 
     var start = centerlinePoint(0);
+    var customMap = isDriveableLoop();
     var stripe = new THREE.Mesh(
-      new THREE.BoxGeometry(1.6, 0.14, ASPHALT * 2),
+      new THREE.BoxGeometry(1.6, customMap ? 0.02 : 0.14, ASPHALT * 2),
       new THREE.MeshLambertMaterial({ color: 0xffffff, side: THREE.DoubleSide })
     );
-    stripe.position.set(isDriveableLoop() ? start.x : 0, 0.1, isDriveableLoop() ? start.z : SF_Z);
-    stripe.rotation.y = isDriveableLoop() ? -start.h : 0;
+    stripe.position.set(customMap ? start.x : 0, customMap ? 0.065 : 0.1, customMap ? start.z : SF_Z);
+    stripe.rotation.y = customMap ? -start.h : 0;
     trackRoot.add(stripe);
 
-    var customMap = isDriveableLoop();
     if (!customMap) {
       var gxs = [-6, -14, -22];
       var gzs = [SF_Z + 2.7, SF_Z - 2.7, SF_Z + 2.7];
@@ -1549,13 +1589,23 @@
         gantryReds.push(addBox(-2.4 + li * 1.2, 6.55, gy, 0.7, 0.7, 0.4, 0x3a1010, trackRoot));
       }
     } else {
-      var gx = start.x - Math.sin(start.h) * (ASPHALT + 1.2);
-      var gz = start.z + Math.cos(start.h) * (ASPHALT + 1.2);
-      addBox(gx, 6.4, gz, 12, 0.35, 0.35, 0x2a2018, trackRoot);
-      gantryBlues.push(addBox(gx - 4.4, 6.55, gz, 1.1, 0.7, 0.4, 0x1a3040, trackRoot));
-      gantryBlues.push(addBox(gx + 4.4, 6.55, gz, 1.1, 0.7, 0.4, 0x1a3040, trackRoot));
+      var nx = -Math.sin(start.h);
+      var nz = Math.cos(start.h);
+      var gx = start.x - nx * (ASPHALT + 1.2);
+      var gz = start.z - nz * (ASPHALT + 1.2);
+      var fx = Math.cos(start.h);
+      var fz = Math.sin(start.h);
+      var beam = addBox(gx, 6.4, gz, 12, 0.35, 0.35, 0x2a2018, trackRoot);
+      beam.rotation.y = -start.h;
+      function gantryLight(along, wy, wz, color) {
+        var m = addBox(gx + fx * along, wy, gz + fz * along, wz, 0.7, 0.4, color, trackRoot);
+        m.rotation.y = -start.h;
+        return m;
+      }
+      gantryBlues.push(gantryLight(-4.4, 6.55, 1.1, 0x1a3040));
+      gantryBlues.push(gantryLight(4.4, 6.55, 1.1, 0x1a3040));
       for (var li = 0; li < 5; li++) {
-        gantryReds.push(addBox(gx - 2.4 + li * 1.2, 6.55, gz, 0.7, 0.7, 0.4, 0x3a1010, trackRoot));
+        gantryReds.push(gantryLight(-2.4 + li * 1.2, 6.55, 0.7, 0x3a1010));
       }
     }
 
@@ -1604,6 +1654,7 @@
 
     placeWalls();
     drawWalls();
+    syncCampusDressing();
   }
 
   function wallSeg(ax, az, bx, bz, thick, kind, silent) {
@@ -1675,6 +1726,18 @@
       if (lastR) wallSeg(lastR.x, lastR.z, rx, rz, 0.5, lastR.kind, false);
       lastR = { x: rx, z: rz, kind: kR };
     }
+    var keep = [];
+    var wi;
+    for (wi = 0; wi < WALLS.length; wi++) {
+      var w = WALLS[wi];
+      var mx = (w.ax + w.bx) * 0.5;
+      var mz = (w.az + w.bz) * 0.5;
+      var hit = projectTrack(mx, mz);
+      if (hit.dist < ASPHALT + 1.6) continue;
+      keep.push(w);
+    }
+    WALLS.length = 0;
+    for (wi = 0; wi < keep.length; wi++) WALLS.push(keep[wi]);
   }
 
   function drawWalls() {
@@ -1738,20 +1801,31 @@
     shade.position.set(-55, 16, 48);
     scene.add(shade);
 
-    addBox(-40, -0.2, 80, 1100, 0.4, 900, 0x6a655c);
+    var dirt = new THREE.Mesh(
+      new THREE.PlaneGeometry(1400, 1200),
+      new THREE.MeshLambertMaterial({ color: 0x6a655c, side: THREE.DoubleSide })
+    );
+    dirt.rotation.x = -Math.PI * 0.5;
+    dirt.position.set(-40, -0.06, 80);
+    scene.add(dirt);
+
+    campusRoot = new THREE.Group();
+    campusRoot.name = "campusDressing";
+    scene.add(campusRoot);
+
     addTrackMesh();
 
-    addBox(8, 4.2, SF_Z - 17, 36, 6.4, 7, 0x8a4030);
-    addBox(8, 7.6, SF_Z - 17, 38, 0.8, 8, 0xd8b48a);
+    addBox(8, 4.2, SF_Z - 17, 36, 6.4, 7, 0x8a4030, campusRoot);
+    addBox(8, 7.6, SF_Z - 17, 38, 0.8, 8, 0xd8b48a, campusRoot);
     for (var row = -2; row <= 2; row++) {
-      addBox(8 + row * 6, 4.4, SF_Z - 14.2, 5, 0.16, 0.16, 0xf4efe6);
+      addBox(8 + row * 6, 4.4, SF_Z - 14.2, 5, 0.16, 0.16, 0xf4efe6, campusRoot);
     }
 
-    addBox(-8, 5.4, -32, 16, 10.8, 12, 0xb4532e);
-    addBox(-8, 11.2, -32, 18, 1, 14, 0x8a3a22);
-    addBox(28, 4.8, -36, 14, 9.6, 16, 0xa34628);
-    addBox(28, 10, -36, 16, 0.9, 18, 0x7a301c);
-    addBox(-36, 3.8, -28, 18, 7.6, 10, 0xc4683a);
+    addBox(-8, 5.4, -32, 16, 10.8, 12, 0xb4532e, campusRoot);
+    addBox(-8, 11.2, -32, 18, 1, 14, 0x8a3a22, campusRoot);
+    addBox(28, 4.8, -36, 14, 9.6, 16, 0xa34628, campusRoot);
+    addBox(28, 10, -36, 16, 0.9, 18, 0x7a301c, campusRoot);
+    addBox(-36, 3.8, -28, 18, 7.6, 10, 0xc4683a, campusRoot);
     var grassMat = new THREE.MeshBasicMaterial({ color: 0x7aee58, side: THREE.DoubleSide });
     var hallFoot = [
       { x0: -17, x1: 1, z0: -39, z1: -25 },
@@ -1775,20 +1849,20 @@
       var h = 0.48;
       var mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), grassMat);
       mesh.position.set(x, 0.2 + h * 0.5, z);
-      scene.add(mesh);
+      campusRoot.add(mesh);
     }
     campusQuad(10.5, -40.5, 18, 15);
     campusQuad(-21.5, -30.5, 9, 13);
     campusQuad(58, -47, 40, 14);
-    addBox(-48, 4.4, 96, 22, 8.8, 14, 0xa34628);
-    addBox(-48, 9.2, 96, 24, 0.8, 16, 0x7a301c);
+    addBox(-48, 4.4, 96, 22, 8.8, 14, 0xa34628, campusRoot);
+    addBox(-48, 9.2, 96, 24, 0.8, 16, 0x7a301c, campusRoot);
 
     var towerX = 8;
     var towerZ = -28;
-    addBox(towerX, 11, towerZ, 7.2, 22, 7.2, 0x9a3f2a);
-    addBox(towerX, 22.6, towerZ, 8.4, 1.4, 8.4, 0xd8b48a);
-    addBox(towerX, 25.2, towerZ, 3.2, 4.2, 3.2, 0x8a3a22);
-    addBox(towerX, 28.2, towerZ, 0.5, 2.4, 0.5, 0x2a2018);
+    addBox(towerX, 11, towerZ, 7.2, 22, 7.2, 0x9a3f2a, campusRoot);
+    addBox(towerX, 22.6, towerZ, 8.4, 1.4, 8.4, 0xd8b48a, campusRoot);
+    addBox(towerX, 25.2, towerZ, 3.2, 4.2, 3.2, 0x8a3a22, campusRoot);
+    addBox(towerX, 28.2, towerZ, 0.5, 2.4, 0.5, 0x2a2018, campusRoot);
     var clock = document.createElement("canvas");
     clock.width = 128;
     clock.height = 128;
@@ -1814,7 +1888,7 @@
       );
       face.position.set(towerX + (f ? 3.65 : -3.65), 18.4, towerZ);
       face.rotation.y = f ? Math.PI * 0.5 : -Math.PI * 0.5;
-      scene.add(face);
+      campusRoot.add(face);
     }
 
     for (var t = 0; t < 14; t++) {
@@ -1825,16 +1899,21 @@
         new THREE.MeshLambertMaterial({ color: 0x6a4020, side: THREE.DoubleSide })
       );
       trunk.position.set(tx, 1.5, tz);
-      scene.add(trunk);
+      campusRoot.add(trunk);
       var leaf = new THREE.Mesh(
         new THREE.ConeGeometry(2.4, 4.6, 6),
         new THREE.MeshLambertMaterial({ color: 0x3f7a30, side: THREE.DoubleSide })
       );
       leaf.position.set(tx, 4.8, tz);
-      scene.add(leaf);
+      campusRoot.add(leaf);
     }
 
     addSkyBits();
+    syncCampusDressing();
+  }
+
+  function syncCampusDressing() {
+    if (campusRoot) campusRoot.visible = !isDriveableLoop();
   }
 
   function isCustomCircuit() {
@@ -2990,50 +3069,30 @@
     r.launchT = 0;
     r.launchArmed = false;
     r.aiT = 0;
-    r.mesh.position.set(x, 0, z);
+    r.mesh.position.set(x, rideHeight(), z);
     r.mesh.rotation.set(0, -heading, 0);
   }
 
+  function rideHeight() {
+    return isDriveableLoop() ? 0.08 : 0;
+  }
+
+  function slotOnPath(s, side) {
+    var p = centerlinePoint(s);
+    var nx = -Math.sin(p.h);
+    var nz = Math.cos(p.h);
+    return { x: p.x + nx * 2.7 * side, z: p.z + nz * 2.7 * side, h: p.h, s: s };
+  }
+
   function customGridPose() {
-    if (!isDriveableLoop()) return null;
-    var pieces = parseMap(trackCode);
-    var pick = null;
-    var i;
-    for (i = 0; i < pieces.length; i++) {
-      if (pieces[i].t === "F") {
-        pick = pieces[i];
-        break;
-      }
+    if (!isDriveableLoop() || TRACK_LEN < 80) return null;
+    var p = slotOnPath(TRACK_LEN - 14, -1);
+    var line = projectTrack(p.x, p.z);
+    if (!line.onAsphalt) {
+      var c = centerlinePoint(TRACK_LEN - 14);
+      p = { x: c.x, z: c.z, h: c.h, s: TRACK_LEN - 14 };
     }
-    if (!pick) {
-      for (i = 0; i < pieces.length; i++) {
-        if (pieces[i].t === "s" || pieces[i].t === "S" || pieces[i].t === "P") {
-          pick = pieces[i];
-          break;
-        }
-      }
-    }
-    if (!pick) {
-      for (i = 0; i < pieces.length; i++) {
-        if (pieces[i].t !== "t") {
-          pick = pieces[i];
-          break;
-        }
-      }
-    }
-    if (!pick) return null;
-    var segs = pieceSegs(pick);
-    if (!segs.length) return null;
-    var mid;
-    if (segs[0].type === "line") {
-      mid = { x: (segs[0].ax + segs[0].bx) * 0.5, z: (segs[0].az + segs[0].bz) * 0.5 };
-    } else {
-      var a = (segs[0].a0 + segs[0].a1) * 0.5;
-      mid = { x: segs[0].cx + Math.cos(a) * segs[0].r, z: segs[0].cz + Math.sin(a) * segs[0].r };
-    }
-    var race = projectTrack(mid.x, mid.z);
-    var h = race && isFinite(race.h) ? race.h : 0;
-    return { x: mid.x, z: mid.z, h: h };
+    return p;
   }
 
   var cpuGrid = [
@@ -3057,16 +3116,12 @@
 
   function resetGrid() {
     var pose = applyCustomGrid();
-    var hx = pose ? Math.cos(pose.h) : 1;
-    var hz = pose ? Math.sin(pose.h) : 0;
-    var lx = pose ? -hz : 0;
-    var lz = pose ? hx : 1;
     resetRacer(player, playerGridX, playerGridZ, gridHeading, TRACK_LEN - 14);
     if (pose) {
-      cpuGrid[0] = { x: pose.x - hx * 8 + lx * 2.7, z: pose.z - hz * 8 + lz * 2.7, h: pose.h };
-      cpuGrid[1] = { x: pose.x - hx * 16 + lx * 2.7, z: pose.z - hz * 16 + lz * 2.7, h: pose.h };
-      resetRacer(cpus[0], cpuGrid[0].x, cpuGrid[0].z, pose.h, TRACK_LEN - 6);
-      resetRacer(cpus[1], cpuGrid[1].x, cpuGrid[1].z, pose.h, TRACK_LEN - 22);
+      cpuGrid[0] = slotOnPath(TRACK_LEN - 6, 1);
+      cpuGrid[1] = slotOnPath(TRACK_LEN - 22, 1);
+      resetRacer(cpus[0], cpuGrid[0].x, cpuGrid[0].z, cpuGrid[0].h, TRACK_LEN - 6);
+      resetRacer(cpus[1], cpuGrid[1].x, cpuGrid[1].z, cpuGrid[1].h, TRACK_LEN - 22);
     } else {
       cpuGrid[0] = { x: -6, z: SF_Z + 2.7, h: 0 };
       cpuGrid[1] = { x: -22, z: SF_Z + 2.7, h: 0 };
@@ -3285,7 +3340,7 @@
     r.z += Math.cos(r.heading) * r.slide * dt;
     r.slide *= Math.pow(0.07, dt);
 
-    r.mesh.position.set(r.x, 0, r.z);
+    r.mesh.position.set(r.x, rideHeight(), r.z);
     r.mesh.rotation.set(0, -r.heading, 0);
     r.mesh.rotation.x = 0;
     r.mesh.rotation.z = 0;
@@ -3895,7 +3950,7 @@
   }
 
   function poseCar(r) {
-    r.mesh.position.set(r.x, 0, r.z);
+    r.mesh.position.set(r.x, rideHeight(), r.z);
     r.mesh.rotation.set(0, -r.heading, 0);
     r.mesh.rotation.x = 0;
     r.mesh.rotation.z = 0;
@@ -4125,8 +4180,6 @@
     if (net && net.active && mpMode) return;
     mpMode = false;
     lateJoinT = 0;
-    playerGridX = GRID_P2_X;
-    playerGridZ = GRID_P2_Z;
     clearRemotes();
     clearHostBots();
     applyGameSpeed(1);

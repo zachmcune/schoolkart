@@ -100,6 +100,7 @@ var code = [
   sliceFn("rebuildPath"),
   sliceFn("projectOn"),
   sliceFn("projectTrack"),
+  sliceFn("rideHeight"),
   sliceFn("applyMotion"),
   sliceFn("updateLaps"),
   sliceFn("inPitLane"),
@@ -111,6 +112,7 @@ var code = [
   sliceFn("isCustomCircuit"),
   sliceFn("menuTrackName"),
   sliceFn("speedKph"),
+  sliceFn("slotOnPath"),
   sliceFn("customGridPose"),
   sliceFn("pointOnSeg"),
   sliceFn("centerlinePoint"),
@@ -139,6 +141,8 @@ var code = [
   "  cleanTrack: cleanTrack,",
   "  cellsInBoard: cellsInBoard,",
   "  customGridPose: customGridPose,",
+  "  centerlinePoint: centerlinePoint,",
+  "  slotOnPath: slotOnPath,",
   "  placeWalls: placeWalls,",
   "  bashAllWalls: bashAllWalls,",
   "  bashCars: bashCars,",
@@ -656,7 +660,101 @@ assert(Math.hypot(aCar.x - bCar.x, aCar.z - bCar.z) >= 3.2, "bots/player cannot 
 var loopCarSpd = blankCar(0, -80, 0, 30);
 assert(sim.speedKph(loopCarSpd) === Math.round(30 * 3.15), "speedo matches velocity, not a stuck 0");
 
+function pathJoinGap() {
+  var i;
+  var worst = 0;
+  for (i = 0; i < sim.PATH.length; i++) {
+    var a = sim.PATH[i];
+    var b = sim.PATH[(i + 1) % sim.PATH.length];
+    var ae = a.type === "line" ? { x: a.bx, z: a.bz } : sim.centerlinePoint(a.startS + a.len - 0.001);
+    var bs = b.type === "line" ? { x: b.ax, z: b.az } : sim.centerlinePoint(b.startS + 0.001);
+    var g = Math.hypot(ae.x - bs.x, ae.z - bs.z);
+    if (g > worst) worst = g;
+  }
+  return worst;
+}
+
+function wallClear(x, z) {
+  var best = 999;
+  var i;
+  for (i = 0; i < sim.WALLS.length; i++) {
+    var w = sim.WALLS[i];
+    var dx = w.bx - w.ax;
+    var dz = w.bz - w.az;
+    var len2 = dx * dx + dz * dz || 1;
+    var t = ((x - w.ax) * dx + (z - w.az) * dz) / len2;
+    if (t < 0) t = 0;
+    if (t > 1) t = 1;
+    var d = Math.hypot(x - (w.ax + dx * t), z - (w.az + dz * t));
+    if (d < best) best = d;
+  }
+  return best;
+}
+
+function proveGrid(pieces, label) {
+  var code = sim.encodeMap(pieces);
+  sim.setTrack(code);
+  assert(sim.lockRacePath(code), label + " is a driveable loop");
+  sim.placeWalls();
+  var pose = sim.customGridPose();
+  assert(pose, label + " has a grid pose");
+  var along = sim.centerlinePoint(sim.TRACK_LEN - 14);
+  var dh = angDiff(pose.h, along.h);
+  assert(Math.abs(dh) < 0.25, label + " grid faces race direction, dh=" + dh);
+  var line = sim.projectTrack(pose.x, pose.z);
+  assert(line.onAsphalt, label + " player sits on S/F asphalt, dist=" + line.dist);
+  assert(wallClear(pose.x, pose.z) > 5, label + " player is not in a wall, d=" + wallClear(pose.x, pose.z));
+  var p0 = sim.slotOnPath(sim.TRACK_LEN - 6, 1);
+  var p1 = sim.slotOnPath(sim.TRACK_LEN - 22, 1);
+  assert(sim.projectTrack(p0.x, p0.z).onAsphalt, label + " pole sits on asphalt");
+  assert(sim.projectTrack(p1.x, p1.z).onAsphalt, label + " P3 sits on asphalt");
+  assert(wallClear(p0.x, p0.z) > 5, label + " pole is not in a wall");
+  assert(wallClear(p1.x, p1.z) > 5, label + " P3 is not in a wall");
+  assert(Math.hypot(pose.x - p0.x, pose.z - p0.z) > 6, label + " cars do not interpenetrate");
+  assert(pathJoinGap() < 2.5, label + " PATH joins are one edge, gap=" + pathJoinGap());
+  var parked = blankCar(pose.x, pose.z, pose.h, 0);
+  parked.fuel = 100;
+  var xHold = parked.x;
+  var zHold = parked.z;
+  var fuelHold = parked.fuel;
+  var tHold;
+  for (tHold = 0; tHold < 0.6; tHold += 1 / 60) {
+    parked.speed = 0;
+    parked.x = pose.x;
+    parked.z = pose.z;
+    parked.heading = pose.h;
+  }
+  assert(parked.x === xHold && parked.z === zHold, label + " locked grid does not hop at PRE-START");
+  assert(fuelHold === 100, label + " PRE-START fuel stays 100");
+  return pose;
+}
+
+var y0Rect = [
+  { t: "r", x: 1, y: 0, r: 0 },
+  { t: "F", x: 2, y: 0, r: 0 },
+  { t: "s", x: 3, y: 0, r: 0 },
+  { t: "r", x: 4, y: 0, r: 1 },
+  { t: "s", x: 4, y: 1, r: 1 },
+  { t: "r", x: 4, y: 2, r: 2 },
+  { t: "s", x: 3, y: 2, r: 0 },
+  { t: "s", x: 2, y: 2, r: 0 },
+  { t: "r", x: 1, y: 2, r: 3 },
+  { t: "s", x: 1, y: 1, r: 1 },
+];
+proveGrid(rectPieces(), "closed rectangle");
+proveGrid(y0Rect, "S/F on campus-band row");
+
+sim.lockRacePath("");
+sim.placeWalls();
+assert(!sim.customGridPose(), "Campus Loop does not use custom grid");
+var campusCar = blankCar(-14, -80 - 2.7, 0, 0);
+assert(sim.projectTrack(0, -80).onAsphalt, "Campus S/F asphalt stays clean");
+assert(wallClear(-14, -80 - 2.7) > 5, "Campus grid is not inside a wall");
+assert(Math.abs(sim.TRACK_LEN - 1978.98) < 2, "Campus Loop length unchanged after custom grid prove");
+
 assert(src.indexOf("lockRacePath") !== -1 && src.indexOf("isDriveableLoop") !== -1, "open/junk boards refuse and bounce to Loop");
+assert(src.indexOf("exitPortAfter") !== -1 && src.indexOf("campusRoot") !== -1, "PATH exits the piece it actually traverses; campus volumes hide on custom");
+assert(src.indexOf("slotOnPath") !== -1 && src.indexOf("rideHeight") !== -1, "custom grid sits on the ribbon, wheels above it");
 assert(src.indexOf('lock("landscape")') !== -1 && src.indexOf("portraitRaceBlock") !== -1, "race is landscape-only");
 assert(src.indexOf('lock("portrait")') === -1, "never lock portrait");
 assert(sliceFn("portraitRaceBlock").indexOf("isPhoneLike") === -1, "portrait gate ignores phone/keyboard/Chromebook");
