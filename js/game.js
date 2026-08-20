@@ -6,8 +6,8 @@
    Pit: peel LEFT onto a split lane. Halfway in, the car is grabbed
    and serviced ~2.5s, then released to drive out. One service per visit.
    Start: PRE-START blue flash, five reds at 1s, hold 0.2–3s all ON,
-   lights out = GO. Fuel starts then. Space plants the marks. W revs.
-   Dump W without Space and the car can roll = JUMP + 1.5s dead, still race. */
+   lights out = GO. Fuel starts then. Car is locked to the grid until GO.
+   W is a timing game — land the needle in the green for a launch. */
 (function () {
   "use strict";
 
@@ -35,7 +35,8 @@
   var IDLE_FUEL = 0.46;
   var THROTTLE_FUEL = 0.12;
   var PIT_HOLD = 2.5;
-  var JUMP_DEAD = 1.5;
+  var REV_SWEET_LO = 0.58;
+  var REV_SWEET_HI = 0.8;
   var ASPHALT = 8.6;
   var GRASS_MAX = 8.5;
   var GRASS_ROLL = 4;
@@ -63,17 +64,20 @@
     return { x: -6 - i * 8, z: SF_Z + (i % 2 ? -2.7 : 2.7) };
   }
 
-  // Split pit: peels LEFT off the south straight. Grab only HALFWAY IN the lane —
-  // clipping the entry ramp does not count.
-  var PIT_LANE = { x0: 14, x1: 72, z0: -66.2, z1: -57.6 };
-  var PIT_GRAB = { x0: 43, x1: 58, z0: -66.0, z1: -57.8 };
+  // F1 bypass, LEFT of the south S/F straight (infield / +Z).
+  // Racing line stays at z=SF_Z. This peels OFF, runs parallel, rejoins.
+  // Grab only HALFWAY IN the side lane — clipping the entry does not count.
+  var PIT_LANE = { x0: 18, x1: 88, z0: -56.6, z1: -48.2 };
+  var PIT_GRAB = { x0: 53, x1: 72, z0: -56.6, z1: -48.2 };
   var PIT_PAVE = [
-    { x0: 6, x1: 26, z0: -76.6, z1: -58.0 },
-    { x0: 12, x1: 32, z0: -70.0, z1: -57.2 },
+    { x0: -16, x1: 16, z0: -72.2, z1: -62.0 },
+    { x0: 2, x1: 28, z0: -66.0, z1: -51.5 },
+    { x0: 12, x1: 36, z0: -60.0, z1: -48.2 },
     PIT_LANE,
     PIT_GRAB,
-    { x0: 54, x1: 74, z0: -70.0, z1: -57.2 },
-    { x0: 60, x1: 78, z0: -76.6, z1: -58.0 },
+    { x0: 70, x1: 96, z0: -60.0, z1: -48.2 },
+    { x0: 82, x1: 110, z0: -66.0, z1: -51.5 },
+    { x0: 94, x1: 124, z0: -72.2, z1: -62.0 },
   ];
 
   var keys = Object.create(null);
@@ -94,8 +98,8 @@
   var revs = 0;
   var launchMul = 1;
   var launchT = 0;
-  var jumped = false;
-  var jumpT = 0;
+  var launchCall = "";
+  var launchCallT = 0;
   var audio = { ctx: null, osc: null, gain: null };
   var gantryReds = [];
   var gantryBlues = [];
@@ -156,6 +160,8 @@
     finishPlace: document.getElementById("finish-place"),
     revWrap: document.getElementById("rev-wrap"),
     revFill: document.getElementById("rev-fill"),
+    revNeedle: document.getElementById("rev-needle"),
+    revHint: document.getElementById("rev-hint"),
     lobby: document.getElementById("lobby-screen"),
     roomCode: document.getElementById("room-code"),
     roster: document.getElementById("roster"),
@@ -532,20 +538,23 @@
     paveRect(PIT_GRAB, 0.12, TEAL);
     addBox((PIT_LANE.x0 + PIT_LANE.x1) * 0.5, 0.115, PIT_LANE.z0, PIT_LANE.x1 - PIT_LANE.x0, 0.03, 0.34, 0xffe566);
     addBox((PIT_LANE.x0 + PIT_LANE.x1) * 0.5, 0.115, PIT_LANE.z1, PIT_LANE.x1 - PIT_LANE.x0, 0.03, 0.34, 0x7cffd4);
+    // Pit wall between the racing line and the bypass — this is a side lane.
+    addBox(50, 0.82, -61.4, 52, 1.55, 0.62, 0x2a2018);
+    addBox(50, 1.62, -61.4, 52, 0.12, 0.7, TEAL);
     var pitDecal = labelPlane("PIT", 7.2, 2.8, "#0a2a28", "#2ec8c3");
     pitDecal.rotation.x = -Math.PI * 0.5;
-    pitDecal.position.set(44, 0.16, -61.8);
+    pitDecal.position.set(62, 0.16, -52.4);
     scene.add(pitDecal);
     var inDecal = labelPlane("IN", 5.4, 2.2, "#102018", "#ffe566");
     inDecal.rotation.x = -Math.PI * 0.5;
-    inDecal.position.set(16, 0.16, -68);
+    inDecal.position.set(6, 0.16, -64);
     scene.add(inDecal);
     var outDecal = labelPlane("OUT", 5.8, 2.2, "#102018", "#7cffd4");
     outDecal.rotation.x = -Math.PI * 0.5;
-    outDecal.position.set(66, 0.16, -68);
+    outDecal.position.set(104, 0.16, -64);
     scene.add(outDecal);
-    for (var hsh = 0; hsh < 4; hsh++) {
-      addBox(38 + hsh * 3.6, 0.14, -61.8, 1.15, 0.02, 7.2, 0xffffff);
+    for (var hsh = 0; hsh < 5; hsh++) {
+      addBox(54 + hsh * 3.6, 0.14, -52.4, 1.15, 0.02, 7.4, 0xffffff);
     }
 
     var stripe = new THREE.Mesh(
@@ -1150,8 +1159,8 @@
     revs = 0;
     launchMul = 1;
     launchT = 0;
-    jumped = false;
-    jumpT = 0;
+    launchCall = "";
+    launchCallT = 0;
     startPhase = "prestart";
     startT = 2;
     redsOn = 0;
@@ -1449,25 +1458,31 @@
     audio.gain.gain.setTargetAtTime(on ? 0.035 + revs * 0.05 : 0, audio.ctx.currentTime, 0.05);
   }
 
+  function paintRevs() {
+    var pct = Math.round(revs * 100);
+    if (hud.revFill) hud.revFill.style.width = pct + "%";
+    if (hud.revNeedle) hud.revNeedle.style.left = pct + "%";
+    if (hud.revWrap) {
+      hud.revWrap.classList.toggle("sweet", revs >= REV_SWEET_LO && revs <= REV_SWEET_HI);
+    }
+  }
+
   function applyLaunch() {
-    if (jumped) {
-      launchMul = 1;
-      launchT = 0;
-      player.speed = 0;
-      player.slide = 0;
-      return;
-    }
-    if (revs < 0.48) {
-      launchMul = 0.42;
-      launchT = 1.5;
-    } else if (revs > 0.88) {
-      launchMul = 0.5;
-      launchT = 1.4;
-      player.slide += (Math.random() - 0.5) * 10;
+    if (revs >= REV_SWEET_LO && revs <= REV_SWEET_HI) {
+      launchMul = 1.22;
+      launchT = 1.15;
+      launchCall = "LAUNCH";
+    } else if (revs > REV_SWEET_HI) {
+      launchMul = 0.48;
+      launchT = 1.35;
+      player.slide += (Math.random() - 0.5) * 12;
+      launchCall = "WHEELSPIN";
     } else {
-      launchMul = 1.18;
-      launchT = 1.2;
+      launchMul = 0.4;
+      launchT = 1.55;
+      launchCall = "SLUGGISH";
     }
+    launchCallT = 1.3;
   }
 
   function persistMe() {
@@ -1593,7 +1608,7 @@
     hud.tireNum.textContent = String(Math.round(tires));
     hud.fuelFill.style.background = fuel < 28 ? "linear-gradient(90deg,#7a1010,#ff4d4d)" : "";
     hud.tireFill.style.background = tires < 40 ? "linear-gradient(90deg,#8a5a10,#ffd36a)" : "";
-    hud.revFill.style.width = Math.round(revs * 100) + "%";
+    paintRevs();
 
     var pitting = state === "racing" && (pitServicing || inPitLane(player));
     var pct = Math.min(100, Math.round((pitTimer / PIT_HOLD) * 100));
@@ -1605,7 +1620,7 @@
 
     var warn = "";
     if (lateJoinT > 0) warn = "RACE ALREADY GOING — you dropped in mid-race";
-    else if (jumpT > 0 || (state === "start" && jumped)) warn = "JUMP";
+    else if (launchCallT > 0) warn = launchCall;
     else if (state === "racing" && player.fuel <= 0) warn = "EMPTY — LIMP HOME";
     else if (state === "racing" && player.tires < 40) warn = "TIRES LOOSE — don't carry the sweeper";
     else if (state === "racing" && player.fuel < 38) warn = "PIT WINDOW — peel LEFT off the straight";
@@ -1734,26 +1749,12 @@
     if (input.throttle) revs = clamp(revs + dt * 0.7, 0, 1);
     else revs = clamp(revs - dt * 0.45, 0, 1);
     setRevSound(true);
-    hud.revFill.style.width = Math.round(revs * 100) + "%";
+    paintRevs();
 
-    // Do NOT hard-pin. Space plants. W revs. W without Space can roll.
-    // Fuel stays off — applyMotion only ticks the clock while racing.
-    if (jumpT > 0) {
-      applyMotion(player, 0, false, true, false, dt, true);
-    } else {
-      applyMotion(player, input.steer, input.throttle && !input.brake, input.brake, input.reverse, dt, true);
-    }
-    if (
-      !jumped &&
-      (Math.abs(player.x - playerGridX) > 0.85 ||
-        Math.abs(player.z - playerGridZ) > 0.85 ||
-        player.speed > 0.75)
-    ) {
-      jumped = true;
-      jumpT = JUMP_DEAD;
-    }
+    // Locked to the grid until lights-out. W only moves the rev needle.
+    pinGrid(player, playerGridX, playerGridZ);
     var wheels = player.mesh.userData.wheels;
-    if (wheels && Math.abs(player.speed) < 0.4) {
+    if (wheels) {
       var spin = revs * dt * 16;
       for (var w = 0; w < wheels.length; w++) wheels[w].spinner.rotation.z -= spin;
     }
@@ -2061,7 +2062,7 @@
     dt = clamp(dt, 0, 0.05);
     if (pitFlash > 0) pitFlash -= dt;
     if (launchT > 0) launchT -= dt;
-    if (jumpT > 0) jumpT -= dt;
+    if (launchCallT > 0) launchCallT -= dt;
     if (lateJoinT > 0) lateJoinT -= dt;
 
     if (state === "title" || state === "lobby") {
@@ -2077,11 +2078,6 @@
       raceTime += dt;
       revs = 0;
       var input = playerInput();
-      if (jumpT > 0) {
-        input = { steer: 0, throttle: false, reverse: false, brake: true };
-        player.speed = 0;
-        player.slide = 0;
-      }
       if (!inPitLane(player) && !pitServicing) {
         pitTimer = 0;
         pitUsedVisit = false;

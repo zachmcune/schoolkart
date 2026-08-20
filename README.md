@@ -26,11 +26,11 @@ Local: `npm start`, then open `http://localhost:8787` (or whatever `PORT` is). S
 | Fuel | The **clock**. Ticks even while coasting. Burn is tuned so **5 laps still force one box** — never a second stop. Skip it and limp home. |
 | Tires | **Handling** (sloppy, run wide) — never a speed cap. Worn tires can still crawl to the box. Only **empty fuel** limps. |
 | Grass | A **crawl** plus extra wear. Never faster than asphalt, never parked at 0. Miss the peel and you can still roll back on. Holding W on the lawn loses. Readable green / sandy runoff — not a black void. |
-| Pit | Peel **LEFT** onto a lane that splits off the south straight. Drive **halfway IN the lane** — then the car is grabbed and serviced (~2.5s, fuel + tires) and released. Clipping the entry ramp does **not** count. No Space, no sit-still. One service per visit. |
+| Pit | Peel **LEFT** off the south straight onto a real side lane (bypass) that runs parallel and merges back. Drive **halfway IN that lane** — then the car is grabbed and serviced (~2.5s, fuel + tires) and you drive out. Clipping the entry ramp does **not** count. One service per visit. |
 
 **Controls:** W / ↑ throttle (also revs on the grid) · **Space = brake** · **S / ↓ reverse** · A D / ← → steer · Enter or Space on the title to grid up.
 
-**Start:** skip formation lap. Blue PRE-START flash, five reds one-by-one (~1s), random hold (0.2–3s) with all five ON, lights out = GO. Fuel clock starts at lights-out. **Space plants** the marks. **W revs** (no creep if Space is held). Dump W without Space and the car can roll = flash **JUMP**, dead ~1.5s, still race (no DNF). Stay on Space for a clean start.
+**Start:** skip formation lap. Blue PRE-START flash, five reds one-by-one (~1s), random hold (0.2–3s) with all five ON, lights out = GO. Fuel clock starts at lights-out. The car is **locked to the grid** until GO — no creep, no jump-roll. **W** is a timing game: hold it to park the needle in the green sweet-spot. Hit it at lights-out = launch. Miss low = sluggish. Miss high = wheelspin. Space is brake after GO.
 
 **Hits:** cars bash — shove, spin, no ghosting through each other.
 
@@ -73,6 +73,6 @@ npm test
 
 Repo is also a static site (HTML + CSS + JS + Three.js from CDN). Public Pages currently deploys from this branch (`cursor/campus-loop-playable-f645`). Use Railway as the school link.
 
-`index.html` is marked `no-store`. JS/CSS are versioned (`?v=mp11`) so a **normal reload** picks up the lobby.
+`index.html` is marked `no-store`. JS/CSS are versioned (`?v=mp14`) so a **normal reload** picks up the lobby.
 
 No bundler. Keyboard only. Light enough for school Chrome / integrated graphics.

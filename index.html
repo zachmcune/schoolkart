@@ -6,11 +6,11 @@
   <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <!-- sk-build mp13: designer feel lock + readable sky -->
+  <!-- sk-build mp14: F1 pit bypass + locked grid launch -->
   <meta name="theme-color" content="#1a120e" />
   <title>SchoolKart — Campus Loop</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect fill='%231a120e' width='64' height='64'/><rect fill='%232ec8c3' x='8' y='28' width='48' height='10'/><rect fill='%23f4efe6' x='22' y='16' width='20' height='8'/></svg>" />
-  <link rel="stylesheet" href="css/style.css?v=mp13" />
+  <link rel="stylesheet" href="css/style.css?v=mp14" />
 </head>
 <body>
   <div id="game">
@@ -61,8 +61,9 @@
       <div class="rev-track">
         <i id="rev-sweet"></i>
         <b id="rev-fill"></b>
+        <span id="rev-needle"></span>
       </div>
-      <div id="rev-hint">Hold Space to plant · W revs · dump W without Space = jump</div>
+      <div id="rev-hint">Hold W — land the needle in the green at lights-out</div>
     </div>
 
     <div id="callouts">
@@ -77,8 +78,8 @@
       <ul class="tips">
         <li><strong>W</strong> gas · <strong>Space</strong> brake · <strong>S</strong> reverse · A/D steer. Wind the straights. Late into the hairpin = dump. Lift in the chicane. Fresh tires to carry the sweeper.</li>
         <li><strong>Fuel is the clock.</strong> Ticks even if you coast. One box in 5 laps — skip it and limp home.</li>
-        <li><strong>Peel LEFT</strong> into the pit lane. Halfway <em>in the lane</em> the crew grabs you (not the entry clip), services, then lets you drive out.</li>
-        <li><strong>Lights start:</strong> blue PRE-START, five reds, random hold, lights out = GO. Hold <strong>Space</strong> to plant, <strong>W</strong> to rev. Dump W without Space and you roll — JUMP, sit ~1.5s, still race.</li>
+        <li><strong>Peel LEFT</strong> off the straight into a side pit lane (bypass). Halfway <em>in that lane</em> the crew grabs you, services, then you drive out and merge back.</li>
+        <li><strong>Lights start:</strong> the car is locked until GO. Hold <strong>W</strong> to park the needle in the green — hit it at lights-out for a launch. Miss low = sluggish. Miss high = wheelspin. Space is brake after GO, not a plant.</li>
       </ul>
       <div class="lobby-row">
         <button type="button" class="lobby-btn solo" id="btn-solo">Solo</button>
@@ -128,7 +129,7 @@
   </div>
 
   <script>
-    window.SK_BUILD = "mp13";
+    window.SK_BUILD = "mp14";
     try {
       if (window.caches) {
         caches.keys().then(function (keys) {
@@ -145,8 +146,8 @@
       document.write('<script src="https://unpkg.com/three@0.160.1/build/three.min.js"><\/script>');
     }
   </script>
-  <script src="js/config.js?v=mp13"></script>
-  <script src="js/net.js?v=mp13"></script>
-  <script src="js/game.js?v=mp13"></script>
+  <script src="js/config.js?v=mp14"></script>
+  <script src="js/net.js?v=mp14"></script>
+  <script src="js/game.js?v=mp14"></script>
 </body>
 </html>
