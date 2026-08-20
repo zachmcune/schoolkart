@@ -723,16 +723,32 @@ kbd {
 #rotate-hint {
   position: absolute;
   inset: 0;
-  z-index: 16;
+  z-index: 20;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(26, 18, 14, 0.72);
+  background: #1a120e;
   color: var(--text);
   letter-spacing: 0.14em;
   text-transform: uppercase;
   font-size: 22px;
-  pointer-events: none;
+  pointer-events: auto;
+}
+
+html.race-portrait #view,
+html.race-portrait #hud,
+html.race-portrait #rev-wrap,
+html.race-portrait #touch-layer,
+html.race-portrait #mobile-hint {
+  visibility: hidden;
+}
+
+html.race-portrait #rotate-hint {
+  z-index: 40;
+}
+
+html.race-portrait #tilt-btn {
+  z-index: 41;
 }
 
 .garage {

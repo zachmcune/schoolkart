@@ -657,6 +657,8 @@ var loopCarSpd = blankCar(0, -80, 0, 30);
 assert(sim.speedKph(loopCarSpd) === Math.round(30 * 3.15), "speedo matches velocity, not a stuck 0");
 
 assert(src.indexOf("lockRacePath") !== -1 && src.indexOf("isDriveableLoop") !== -1, "open/junk boards refuse and bounce to Loop");
+assert(src.indexOf('lock("landscape")') !== -1 && src.indexOf("portraitRaceBlock") !== -1, "race is landscape-only");
+assert(src.indexOf('lock("portrait")') === -1, "never lock portrait");
 assert(src.indexOf("_rotLock") !== -1, "rotate is debounced so one tap is 90 not 180");
 assert(src.indexOf("rotateSelected();") !== -1 && !/tileRot\.addEventListener\("click"[\s\S]{0,80}rotateSelected/.test(src), "Rotate button does not double-fire");
 assert(src.indexOf("title-track") !== -1, "title menu label is live");

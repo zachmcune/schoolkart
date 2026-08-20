@@ -115,7 +115,7 @@ waitHealth()
         assert(html.indexOf('rel="manifest"') !== -1, "web app manifest link");
         assert(html.indexOf("apple-mobile-web-app-capable") !== -1, "iOS home screen capable");
         assert(html.indexOf('apple-mobile-web-app-title" content="SchoolKart"') !== -1, "iOS title");
-        assert(html.indexOf('SK_BUILD = "mp44"') !== -1, "cache bump mp44");
+        assert(html.indexOf('SK_BUILD = "mp45"') !== -1, "cache bump mp45");
         assert(html.indexOf('maxlength="240"') !== -1, "share-string fits a full board");
         assert(html.indexOf('id="title-track"') !== -1, "title label matches Solo load");
         assert(html.indexOf('autocapitalize="off"') !== -1, "share-string does not eat W/T via autocapitalize");
@@ -147,7 +147,7 @@ waitHealth()
           .then(function (sr) {
             return sr.text().then(function (sw) {
               assert(sr.status === 200, "sw 200");
-              assert(sw.indexOf('BUILD = "mp44"') !== -1, "SW build matches cache");
+              assert(sw.indexOf('BUILD = "mp45"') !== -1, "SW build matches cache");
               assert(/cache:\s*"no-store"/.test(sw), "network-first no-store");
               assert(sw.indexOf("websocket") !== -1, "SW leaves websocket alone");
             });
@@ -163,6 +163,10 @@ waitHealth()
                   assert(js.indexOf("TRACK_CODE_MAX") !== -1, "full-board share-string");
                   assert(js.indexOf("TYPE_ENC") !== -1 && js.indexOf("_rotLock") !== -1, "share W/T + 90 rotate locks");
                   assert(js.indexOf("lockRacePath") !== -1, "open boards bounce to Campus Loop");
+                  assert(js.indexOf('lock("landscape")') !== -1, "race locks landscape when the browser allows");
+                  assert(js.indexOf('lock("portrait")') === -1, "never lock or default to portrait");
+                  assert(js.indexOf("portraitRaceBlock") !== -1, "portrait race is gated, not a vertical drive");
+                  assert(js.indexOf("isChromeOS") !== -1 && js.indexOf("if (!isPhoneLike()) return") !== -1, "Chromebooks skip orientation lock");
                   assert(js.indexOf("#ff2038") !== -1 && js.indexOf("#3a3e46") !== -1, "asphalt + kerb piece art");
                 });
               }),
@@ -172,6 +176,7 @@ waitHealth()
                   assert(css.indexOf("tile-rot-handle") !== -1, "fat rotate handle style");
                   assert(css.indexOf("palette-slot") !== -1, "piece tray slots");
                   assert(css.indexOf("overflow-y: auto") !== -1, "title menu scrolls on Chromebook/phone");
+                  assert(css.indexOf("race-portrait") !== -1, "portrait race hides the vertical driving view");
                 });
               }),
             ]);

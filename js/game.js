@@ -3918,6 +3918,9 @@
         brake: !!keys.Space,
       };
     }
+    if (portraitRaceBlock()) {
+      return { steer: 0, throttle: false, reverse: false, brake: false };
+    }
     var keySteer = !!(left || right);
     return {
       steer: keySteer ? steer : touchCtl.steer || 0,
@@ -3936,6 +3939,8 @@
     hud.root.classList.toggle("hidden", which === "title" || which === "lobby" || which === "track");
     hud.revWrap.classList.toggle("hidden", which !== "start");
     if (which === "title" || which === "track") refreshMenuTrackLabel();
+    if (which === "start" || which === "racing") lockLandscape();
+    else unlockOrientation();
     syncMobileUi();
   }
 
@@ -4854,6 +4859,21 @@
     if (launchCallT > 0) launchCallT -= dt;
     if (lateJoinT > 0) lateJoinT -= dt;
 
+    if (portraitRaceBlock()) {
+      lastTs = ts;
+      lastDt = 0.016;
+      touchCtl.steer = 0;
+      setRevSound(false);
+      lockLandscape();
+      syncMobileUi();
+      updateSky(dt);
+      layoutNameTags();
+      updateHud();
+      renderer.render(scene, camera);
+      requestAnimationFrame(tick);
+      return;
+    }
+
     if (state === "title" || state === "lobby") {
       titleCamera(dt);
       setRevSound(false);
@@ -4986,6 +5006,29 @@
     return window.innerWidth >= window.innerHeight;
   }
 
+  function portraitRaceBlock() {
+    return isPhoneLike() && (state === "start" || state === "racing") && window.innerHeight > window.innerWidth;
+  }
+
+  function lockLandscape() {
+    if (!isPhoneLike()) return;
+    var so = window.screen && screen.orientation;
+    if (!so || typeof so.lock !== "function") return;
+    try {
+      var p = so.lock("landscape");
+      if (p && typeof p.catch === "function") p.catch(function () {});
+    } catch (err) {}
+  }
+
+  function unlockOrientation() {
+    if (!isPhoneLike()) return;
+    var so = window.screen && screen.orientation;
+    if (!so || typeof so.unlock !== "function") return;
+    try {
+      so.unlock();
+    } catch (err2) {}
+  }
+
   function needsTiltTap() {
     return (
       typeof window.DeviceOrientationEvent !== "undefined" &&
@@ -5014,10 +5057,17 @@
   function syncMobileUi() {
     var phone = isPhoneLike();
     var drive = state === "start" || state === "racing";
+    var blocked = portraitRaceBlock();
     if (!phone) clearTouchDrive();
-    if (hud.touchLayer) hud.touchLayer.classList.toggle("hidden", !(phone && drive));
+    if (blocked) {
+      touchCtl.steer = 0;
+      clearTouchDrive();
+      touchCtl.gyroNeedCal = true;
+    }
+    document.documentElement.classList.toggle("race-portrait", blocked);
+    if (hud.touchLayer) hud.touchLayer.classList.toggle("hidden", !(phone && drive && !blocked));
     if (hud.rotateHint) {
-      hud.rotateHint.classList.toggle("hidden", !(phone && drive && !isLandscape()));
+      hud.rotateHint.classList.toggle("hidden", !blocked);
     }
     if (hud.tiltBtn) {
       hud.tiltBtn.classList.toggle("hidden", !(phone && drive && needsTiltTap()));
@@ -5025,7 +5075,9 @@
     if (hud.revHint && phone) {
       hud.revHint.textContent = "HOLD the right half to climb — lift to catch the green. Past the mark dumps.";
     }
-    if (phone && !touchCtl.hintShown) showFirstMobileHint();
+    if (drive && phone) lockLandscape();
+    else if (!phone || state === "title" || state === "track") unlockOrientation();
+    if (phone && !touchCtl.hintShown && !blocked) showFirstMobileHint();
   }
 
   function screenAngle() {
@@ -5037,11 +5089,16 @@
   }
 
   function tiltRaw(e) {
-    var ang = screenAngle();
-    if (ang === 90) return Number(e.beta) || 0;
-    if (ang === -90 || ang === 270) return -(Number(e.beta) || 0);
-    if (ang === 180) return -(Number(e.gamma) || 0);
-    return Number(e.gamma) || 0;
+    var beta = Number(e.beta) || 0;
+    var gamma = Number(e.gamma) || 0;
+    var ang = ((screenAngle() % 360) + 360) % 360;
+    // Steer axis is landscape-held roll. Do not follow an OS portrait flip —
+    // that is what made tilt fight the layout rotation.
+    if (ang === 90) return beta;
+    if (ang === 270) return -beta;
+    if (ang === 180) return -gamma;
+    if (Math.abs(gamma) > 40) return gamma > 0 ? -beta : beta;
+    return gamma;
   }
 
   function applyGyro(raw) {
@@ -5065,7 +5122,7 @@
   function onOrient(e) {
     if (!isPhoneLike()) return;
     if (state !== "start" && state !== "racing") return;
-    if (!isLandscape()) {
+    if (portraitRaceBlock()) {
       touchCtl.steer = 0;
       return;
     }
@@ -5086,6 +5143,7 @@
           if (touchCtl.tiltGranted) {
             window.addEventListener("deviceorientation", onOrient, true);
             touchCtl.gyroNeedCal = true;
+            lockLandscape();
           }
           syncMobileUi();
         })
@@ -5098,6 +5156,7 @@
     touchCtl.tiltGranted = true;
     window.addEventListener("deviceorientation", onOrient, true);
     touchCtl.gyroNeedCal = true;
+    lockLandscape();
     syncMobileUi();
   }
 
@@ -5274,6 +5333,11 @@
   window.addEventListener("resize", function () {
     renderer.setSize(window.innerWidth, window.innerHeight);
     layoutCamera();
+    if (state === "start" || state === "racing") lockLandscape();
+    syncMobileUi();
+  });
+  window.addEventListener("orientationchange", function () {
+    if (state === "start" || state === "racing") lockLandscape();
     syncMobileUi();
   });
 
