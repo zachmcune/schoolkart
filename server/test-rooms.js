@@ -115,7 +115,7 @@ waitHealth()
         assert(html.indexOf('rel="manifest"') !== -1, "web app manifest link");
         assert(html.indexOf("apple-mobile-web-app-capable") !== -1, "iOS home screen capable");
         assert(html.indexOf('apple-mobile-web-app-title" content="SchoolKart"') !== -1, "iOS title");
-        assert(html.indexOf('SK_BUILD = "mp87"') !== -1, "cache bump mp87");
+        assert(html.indexOf('SK_BUILD = "mp88"') !== -1, "cache bump mp88");
         assert(html.indexOf('maxlength="240"') !== -1, "share-string fits a full board");
         assert(html.indexOf('id="title-track"') !== -1, "title label matches Solo load");
         assert(html.indexOf('aria-label="90"') !== -1 && html.indexOf('aria-label="sweeper"') !== -1, "palette has 90 and sweeper chips");
@@ -149,7 +149,7 @@ waitHealth()
           .then(function (sr) {
             return sr.text().then(function (sw) {
               assert(sr.status === 200, "sw 200");
-              assert(sw.indexOf('BUILD = "mp87"') !== -1, "SW build matches cache");
+              assert(sw.indexOf('BUILD = "mp88"') !== -1, "SW build matches cache");
               assert(/cache:\s*"no-store"/.test(sw), "network-first no-store");
               assert(sw.indexOf("websocket") !== -1, "SW leaves websocket alone");
             });
@@ -222,7 +222,8 @@ waitHealth()
                   assert(js.indexOf("ribbonFitsFootprint") !== -1 && js.indexOf("ribbonsStack") !== -1, "modules fit; chicane S does not stack");
                   assert(js.indexOf("var ACCEL = 16") !== -1 && js.indexOf("var COAST = 5") !== -1, "slow wind-up; coast bleeds");
                   assert(js.indexOf("var BRAKE_DECEL = 20") !== -1, "Space is a planned squeeze for the 180");
-                  assert(js.indexOf("function inChicaneS") !== -1, "chicane dump is the S, not the approach");
+                  assert(js.indexOf("function inChicaneS") !== -1, "chicane S is the S, not the approach");
+                  assert(js.indexOf("inChicaneS(info) && r.speed") === -1, "S never speed-dumps or steer-locks");
                   assert(js.indexOf('info.name === "hairpin" || info.name === "chicane"') === -1, "name alone does not lock A/D before the S");
                   assert(js.indexOf('pathArc(12, 88, "the90")') !== -1, "Loop 88 before the S steers like a 90");
                   assert(js.indexOf("env *= env") !== -1, "chicane S is flat at the ports so ribbons meet on the edge");
