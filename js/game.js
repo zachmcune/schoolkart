@@ -4038,7 +4038,7 @@
   }
 
   var _prey = { r: null, d: 999, fwd: 0, lat: 0 };
-  var _hunt = { on: false, tx: 0, tz: 0, want: 0, noLift: false, dive: false, catchUp: false };
+  var _hunt = { on: false, tx: 0, tz: 0, want: 0, noLift: false, dive: false, catchUp: false, block: false, cover: 0 };
 
   function pickPrey(hunter) {
     _prey.r = null;
@@ -4059,6 +4059,8 @@
       var score = d;
       if (fwd < -8) score += 24;
       if (o.kind === "player" && fwd > -12) score -= 22;
+      // Lead on the player: defend the pass before hunting someone else.
+      if (o.kind === "player" && fwd < 2.2 && fwd > -22 && d < 26) score -= 40;
       if (score < best) {
         best = score;
         _prey.r = o;
@@ -4075,12 +4077,23 @@
     _hunt.noLift = false;
     _hunt.dive = false;
     _hunt.catchUp = false;
+    _hunt.block = false;
+    _hunt.cover = 0;
     _hunt.want = want;
     if (!p.hunter) return _hunt;
     var prey = pickPrey(r);
     if (!prey.r) return _hunt;
-    var ahead = prey.fwd > 2.2;
-    if (ahead && prey.d > 16) {
+    if (prey.fwd < 2.2) {
+      // Ahead of them / door-to-door. Cover the lane. Aiming at their
+      // XY yaws 180 and rams — that's a U-turn, not a block.
+      _hunt.block = true;
+      var cover = prey.lat * 0.9;
+      if (Math.abs(cover) < 0.4) cover = 0;
+      _hunt.cover = clamp(cover, -2.8, 2.8);
+      _hunt.want = Math.min(MAX_SPEED, Math.max(want, (prey.r.speed || 0) + 2));
+      return _hunt;
+    }
+    if (prey.d > 16) {
       // Far lead: stay on the ribbon and wind. Cutting across dumps.
       _hunt.catchUp = true;
       _hunt.want = Math.min(MAX_SPEED, Math.max(want, (prey.r.speed || 0) + 10));
@@ -4095,7 +4108,7 @@
     if (close < want) close = want;
     _hunt.want = close;
     _hunt.on = true;
-    if (prey.fwd > -2.2 && prey.fwd < 18 && Math.abs(prey.lat) < 4.6) {
+    if (prey.fwd > 2.2 && prey.fwd < 18 && Math.abs(prey.lat) < 4.6) {
       _hunt.tx = prey.r.x;
       _hunt.tz = prey.r.z;
       _hunt.noLift = true;
@@ -4198,6 +4211,9 @@
     if (hunt.catchUp && scan.dHair > 42 && scan.dTight > 26) {
       want = Math.max(want, hunt.want);
     }
+    if (hunt.block && scan.dHair > 36 && scan.dTight > 22) {
+      want = Math.max(want, hunt.want);
+    }
 
     var target = centerlinePoint(r.s + look);
     var nx = -Math.sin(target.h);
@@ -4205,6 +4221,7 @@
     var off = p.lineOff;
     if (p.hunter && scan.dTight > 22 && scan.dTight < 70) off -= 0.45;
     if (p.wideEntry && scan.dTight > 14 && scan.dTight < 52) off -= 1.45;
+    if (hunt.block) off = hunt.cover;
     var tx = target.x + nx * off;
     var tz = target.z + nz * off;
     if (hunt.on) {
@@ -4258,7 +4275,7 @@
 
     var desiredH = Math.atan2(tz - r.z, tx - r.x);
     var err = Math.atan2(Math.sin(desiredH - r.heading), Math.cos(desiredH - r.heading));
-    var steer = clamp(err * (hunt.on ? 2.05 : p.hunter ? 1.72 : 1.5), -1, 1);
+    var steer = clamp(err * (hunt.on ? 2.05 : hunt.block ? 1.9 : p.hunter ? 1.72 : 1.5), -1, 1);
     var recover = proj.grass || proj.dist > 4.6;
     var keepHit = p.hunter && hunt.on && hunt.noLift && !proj.grass;
     if (recover && !peeling && !keepHit) {
