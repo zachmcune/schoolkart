@@ -38,6 +38,7 @@ var code = [
   "var ASPHALT = 8.6;",
   "var RUNOFF = 3.8;",
   "var KERB_NAMES = ['the90', 'hairpin', 'chicane', 'sweeper', 'kink'];",
+  "var KERB_RAISE = 0.055;",
   "var GRASS_MAX = 8.5;",
   "var GRASS_ROLL = 4;",
   "var GRASS_DUMP = 40;",
@@ -310,7 +311,16 @@ function blankCar(x, z, h, spd) {
     finishTime: 0,
     mesh: {
       position: { set: function (x, y, z) { this.x = x; this.y = y; this.z = z; } },
-      rotation: { set: function () {}, x: 0, y: 0, z: 0 },
+      rotation: {
+        set: function (x, y, z) {
+          this.x = x;
+          this.y = y;
+          this.z = z;
+        },
+        x: 0,
+        y: 0,
+        z: 0,
+      },
       userData: {},
     },
   };
@@ -842,6 +852,38 @@ assert(src.indexOf("Speed-weighted inelastic crash") !== -1, "max-speed ram plow
 assert(sliceFn("bashCars").indexOf("rel * 0.72") === -1, "car-car is not the old equal-mass bounce");
 assert(src.indexOf("var KERB_RAISE = 0.055") !== -1 && src.indexOf("function makeRaisedKerbBand") !== -1, "kerbs are raised steps, not flat ribbons");
 assert(src.indexOf("function sampleWheelKerbs") !== -1, "kerb feel samples all four wheels");
+assert(sliceFn("applyMotion").indexOf("-bump * 3.4") === -1, "kerb dive does not world-pitch the car");
+assert(sliceFn("applyMotion").indexOf("rotation.set(0, -r.heading, 0)") !== -1, "kerb pose is yaw only, not a ramp");
+assert(sliceFn("applyMotion").indexOf("Math.pow(0.1, dt) + bumpTarget") === -1, "kerb bump eases, does not slam");
+assert(sliceFn("applyMotion").indexOf("Dive wiggles, not a ramp") !== -1, "kerb feel stays a wiggle");
+
+sim.lockRacePath("");
+var kerbHit = null;
+var knames = ["the90", "hairpin", "chicane", "sweeper", "kink"];
+var ks;
+for (ks = 0; ks < sim.TRACK_LEN && !kerbHit; ks += 4) {
+  var kp = sim.centerlinePoint(ks);
+  if (knames.indexOf(kp.name) === -1) continue;
+  var knx = -Math.sin(kp.h);
+  var knz = Math.cos(kp.h);
+  var kinfo = sim.projectTrack(kp.x + knx * 9.0, kp.z + knz * 9.0);
+  if (kinfo.kerb) kerbHit = { p: kp, nx: knx, nz: knz };
+}
+assert(kerbHit, "named-corner kerb is on Campus Loop");
+var kPark = blankCar(kerbHit.p.x + kerbHit.nx * 9.0, kerbHit.p.z + kerbHit.nz * 9.0, kerbHit.p.h, 0);
+sim.applyMotion(kPark, 0, false, false, false, 1 / 60, true);
+assert((kPark.kerbBump || 0) < 0.01, "first frame eases onto the step, does not slam, bump=" + (kPark.kerbBump || 0));
+assert(Math.abs(kPark.mesh.rotation.x) < 1e-6 && Math.abs(kPark.mesh.rotation.z) < 1e-6, "parked kerb clip has no pitch/roll bounce");
+var kCar = blankCar(kerbHit.p.x + kerbHit.nx * 9.0, kerbHit.p.z + kerbHit.nz * 9.0, kerbHit.p.h, 28);
+var kH0 = kCar.heading;
+var kI;
+for (kI = 0; kI < 20; kI++) sim.applyMotion(kCar, 0, true, false, false, 1 / 60, true);
+assert(kCar.speed > 24, "kerb clip keeps pace, does not bounce off, spd=" + kCar.speed.toFixed(2));
+assert(Math.abs(kCar.mesh.rotation.x) < 1e-6, "moving kerb clip does not world-pitch, rx=" + kCar.mesh.rotation.x);
+assert(Math.abs(kCar.mesh.rotation.z) < 1e-6, "moving kerb clip does not roll-bounce, rz=" + kCar.mesh.rotation.z);
+assert((kCar.kerbBump || 0) <= 0.055 + 1e-6, "kerb sit is the step height, not an overshoot hop");
+assert(Math.abs(kCar.heading - kH0) < 0.35, "kerb is a wiggle, not a yaw bounce, dh=" + Math.abs(kCar.heading - kH0).toFixed(3));
+
 assert(src.indexOf("var impact = Math.max(rel, 0, pace * 0.34, 2.6)") !== -1, "overlap at a crawl still yaws");
 assert(src.indexOf("if (impact < 1.1 && pace < 3)") === -1, "slow side-by-side does not skip feel");
 assert(/function pinGrid\([\s\S]{0,400}faceRaceAt/.test(src), "grid pin faces the ribbon, not leftover yaw");
