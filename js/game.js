@@ -1551,6 +1551,7 @@
         h: Math.atan2(seg.bz - seg.az, seg.bx - seg.ax),
         name: seg.name,
         r: 999,
+        left: 0,
       };
     }
     var a = seg.a0 + (seg.a1 - seg.a0) * u;
@@ -1560,12 +1561,13 @@
       h: seg.a1 >= seg.a0 ? a + Math.PI * 0.5 : a - Math.PI * 0.5,
       name: seg.name,
       r: seg.r,
+      left: seg.a1 >= seg.a0 ? 1 : -1,
     };
   }
 
   function centerlinePoint(s) {
     if (!PATH.length || TRACK_LEN <= 0) {
-      return { x: 0, z: SF_Z, h: 0, name: "start", r: 999 };
+      return { x: 0, z: SF_Z, h: 0, name: "start", r: 999, left: 0 };
     }
     s = ((s % TRACK_LEN) + TRACK_LEN) % TRACK_LEN;
     for (var i = 0; i < PATH.length; i++) {
@@ -2665,17 +2667,14 @@
       return out;
     }
     if (type === "r") {
-      // East mid → south mid, radius half-cell. Square chip, so spin.
       arcPoly(w, h, cell * 0.5, -Math.PI * 0.5, -Math.PI);
       return spin();
     }
     if (type === "w") {
-      // Wide 90 on the 2×2: east mid of the NE cell → south mid of the SW cell.
       arcPoly(w, h, cell * 0.75, -Math.PI * 0.5, -Math.PI);
       return spin();
     }
     if (type === "H") {
-      // 180 U whose two ports sit on the open side, one per cell.
       if (r0 === 0) arcPoly(w * 0.5, h, w * 0.25, Math.PI, Math.PI * 2);
       else if (r0 === 1) arcPoly(0, h * 0.5, h * 0.25, -Math.PI * 0.5, Math.PI * 0.5);
       else if (r0 === 2) arcPoly(w * 0.5, 0, w * 0.25, Math.PI, 0);
@@ -2695,7 +2694,6 @@
       return spin();
     }
     if (type === "S") {
-      // Long piece is 2×1 — do not spin a vertical canvas or it goes sideways.
       if (r0 & 1) {
         add(w * 0.5, 0);
         add(w * 0.5, h);
@@ -2710,9 +2708,9 @@
     return spin();
   }
 
-  function tileIconSvg(type, rot, w, h) {
-    // Inline SVG in the tile. Canvas data-URLs stayed blank grey on
-    // live Chromebooks (only the yellow arrow showed).
+  function tileIconSvg(type, rot, w, h, onBoard) {
+    // Filled road in the tile. A stroked centerline looked like the
+    // old inset cartoon. Canvas data-URLs stayed blank on Chromebooks.
     var r0 = (rot || 0) & 3;
     var cols = 1;
     var rows = 1;
@@ -2724,14 +2722,14 @@
       else cols = 2;
     }
     var cell = Math.min(w / cols, h / rows);
-    var ribbon = cell * 0.28;
+    var hw = cell * 0.18;
     var svg =
       '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' +
       w +
       " " +
       h +
       '" width="100%" height="100%" preserveAspectRatio="none">';
-    svg += '<rect width="' + w + '" height="' + h + '" fill="#6a655c"/>';
+    if (!onBoard) svg += '<rect width="' + w + '" height="' + h + '" fill="#6a655c"/>';
     if (type === "t") {
       svg +=
         '<circle cx="' +
@@ -2781,7 +2779,7 @@
     var pts = tileIconPts(type, rot, w, h);
     var draw = pts.slice();
     if (draw.length > 1) {
-      var pad = 2;
+      var pad = onBoard ? 3 : 0.5;
       var ax = draw[0].x - draw[1].x;
       var ay = draw[0].y - draw[1].y;
       var al = Math.hypot(ax, ay) || 1;
@@ -2791,12 +2789,6 @@
       var by = draw[n1].y - draw[n1 - 1].y;
       var bl = Math.hypot(bx, by) || 1;
       draw[n1] = { x: draw[n1].x + (bx / bl) * pad, y: draw[n1].y + (by / bl) * pad };
-    }
-    var d = "";
-    var i;
-    if (draw.length) {
-      d = "M" + draw[0].x.toFixed(2) + "," + draw[0].y.toFixed(2);
-      for (i = 1; i < draw.length; i++) d += "L" + draw[i].x.toFixed(2) + "," + draw[i].y.toFixed(2);
     }
     function along(t) {
       if (pts.length < 2) return { x: pts[0] ? pts[0].x : 0, y: pts[0] ? pts[0].y : 0, ang: 0 };
@@ -2821,27 +2813,99 @@
       }
       return { x: pts[pts.length - 1].x, y: pts[pts.length - 1].y, ang: 0 };
     }
-    function path(color, width, dash) {
-      return (
-        '<path d="' +
-        d +
-        '" fill="none" stroke="' +
-        color +
-        '" stroke-width="' +
-        width +
-        '" stroke-linecap="butt" stroke-linejoin="round"' +
-        (dash ? ' stroke-dasharray="' + dash + '"' : "") +
-        "/>"
-      );
+    function sideNorms(line) {
+      var nrm = [];
+      var i;
+      for (i = 0; i < line.length; i++) {
+        var dx;
+        var dy;
+        if (i === 0) {
+          dx = line[1].x - line[0].x;
+          dy = line[1].y - line[0].y;
+        } else if (i === line.length - 1) {
+          dx = line[i].x - line[i - 1].x;
+          dy = line[i].y - line[i - 1].y;
+        } else {
+          var axn = line[i].x - line[i - 1].x;
+          var ayn = line[i].y - line[i - 1].y;
+          var bxn = line[i + 1].x - line[i].x;
+          var byn = line[i + 1].y - line[i].y;
+          var la = Math.hypot(axn, ayn) || 1;
+          var lb = Math.hypot(bxn, byn) || 1;
+          dx = axn / la + bxn / lb;
+          dy = ayn / la + byn / lb;
+        }
+        var L = Math.hypot(dx, dy) || 1;
+        nrm.push({ x: -dy / L, y: dx / L });
+      }
+      return nrm;
     }
-    svg += path("#8d97a6", ribbon * 1.5);
-    svg += path("#ff2038", ribbon * 1.18);
-    svg += path("#3a3e46", ribbon);
-    svg += path("#d7dbe2", ribbon * 0.08);
+    function shift(line, amt) {
+      var nrm = sideNorms(line);
+      var out = [];
+      var i;
+      for (i = 0; i < line.length; i++) {
+        out.push({ x: line[i].x + nrm[i].x * amt, y: line[i].y + nrm[i].y * amt });
+      }
+      return out;
+    }
+    function poly(ring, fill) {
+      if (!ring.length) return "";
+      var d = "M" + ring[0].x.toFixed(2) + "," + ring[0].y.toFixed(2);
+      var i;
+      for (i = 1; i < ring.length; i++) d += "L" + ring[i].x.toFixed(2) + "," + ring[i].y.toFixed(2);
+      return '<path d="' + d + 'Z" fill="' + fill + '" stroke="none"/>';
+    }
+    function band(a, b) {
+      return a.concat(b.slice().reverse());
+    }
+    function bricks(inner, outer, step) {
+      if (inner.length < 2 || outer.length < 2) return "";
+      var acc = 0;
+      var flip = 0;
+      var out = "";
+      var i;
+      for (i = 1; i < inner.length && i < outer.length; i++) {
+        var seg = Math.hypot(inner[i].x - inner[i - 1].x, inner[i].y - inner[i - 1].y);
+        acc += seg;
+        if (acc < step && i < inner.length - 1) continue;
+        out += poly(
+          [inner[i - 1], inner[i], outer[i], outer[i - 1]],
+          flip ? "#fff6ee" : "#ff2038"
+        );
+        flip = 1 - flip;
+        acc = 0;
+      }
+      return out;
+    }
+    if (draw.length > 1) {
+      var runI = shift(draw, hw * 1.55);
+      var runO = shift(draw, -hw * 1.55);
+      var kerbI = shift(draw, hw * 1.18);
+      var kerbO = shift(draw, -hw * 1.18);
+      var roadI = shift(draw, hw);
+      var roadO = shift(draw, -hw);
+      svg += poly(band(runI, runO), "#8d97a6");
+      svg += poly(band(kerbI, kerbO), "#ff2038");
+      svg += bricks(roadI, kerbI, cell * 0.16);
+      svg += bricks(kerbO, roadO, cell * 0.16);
+      svg += poly(band(roadI, roadO), "#3a3e46");
+      var mid = "";
+      var mi;
+      for (mi = 0; mi < draw.length; mi++) {
+        mid += (mi ? "L" : "M") + draw[mi].x.toFixed(2) + "," + draw[mi].y.toFixed(2);
+      }
+      svg +=
+        '<path d="' +
+        mid +
+        '" fill="none" stroke="#d7dbe2" stroke-width="' +
+        (cell * 0.025).toFixed(2) +
+        '" stroke-linecap="butt"/>';
+    }
     if (pts.length > 1) {
       var mark = along(0.62);
-      var aw = cell * 0.07;
-      var tip = cell * 0.1;
+      var aw = cell * 0.08;
+      var tip = cell * 0.11;
       var x1 = mark.x + Math.cos(mark.ang) * tip;
       var y1 = mark.y + Math.sin(mark.ang) * tip;
       var lx = Math.cos(mark.ang + 2.45) * aw;
@@ -2872,7 +2936,8 @@
       var bay = cell * 0.22;
       var a0 = along(0.18);
       var a1 = along(0.82);
-      var mid = along(0.5);
+      var pitMid = along(0.5);
+      var off = hw + bay;
       var dPit =
         "M" +
         a0.x.toFixed(1) +
@@ -2883,21 +2948,21 @@
         "," +
         (a0.y + ny * bay).toFixed(1) +
         " " +
-        (mid.x + nx * (ribbon * 0.9 + bay)).toFixed(1) +
+        (pitMid.x + nx * off).toFixed(1) +
         "," +
-        (mid.y + ny * (ribbon * 0.9 + bay)).toFixed(1) +
+        (pitMid.y + ny * off).toFixed(1) +
         " " +
-        (mid.x + nx * (ribbon * 0.9 + bay) + px * cell * 0.08).toFixed(1) +
+        (pitMid.x + nx * off + px * cell * 0.08).toFixed(1) +
         "," +
-        (mid.y + ny * (ribbon * 0.9 + bay) + py * cell * 0.08).toFixed(1) +
+        (pitMid.y + ny * off + py * cell * 0.08).toFixed(1) +
         " L" +
-        (mid.x + nx * (ribbon * 0.9 + bay) - px * cell * 0.08).toFixed(1) +
+        (pitMid.x + nx * off - px * cell * 0.08).toFixed(1) +
         "," +
-        (mid.y + ny * (ribbon * 0.9 + bay) - py * cell * 0.08).toFixed(1) +
+        (pitMid.y + ny * off - py * cell * 0.08).toFixed(1) +
         " C" +
-        (mid.x + nx * (ribbon * 0.9 + bay)).toFixed(1) +
+        (pitMid.x + nx * off).toFixed(1) +
         "," +
-        (mid.y + ny * (ribbon * 0.9 + bay)).toFixed(1) +
+        (pitMid.y + ny * off).toFixed(1) +
         " " +
         (a1.x + nx * bay).toFixed(1) +
         "," +
@@ -2910,7 +2975,7 @@
         '<path d="' +
         dPit +
         '" fill="none" stroke="#2ec8c3" stroke-width="' +
-        (ribbon * 0.72).toFixed(1) +
+        (hw * 1.4).toFixed(1) +
         '" stroke-linecap="round" stroke-linejoin="round"/>';
     }
     if (type === "F" && pts.length > 1) {
@@ -2919,7 +2984,7 @@
       var fy = Math.sin(fin.ang);
       var gx = -fy;
       var gy = fx;
-      var half = ribbon * 0.46;
+      var half = hw * 0.92;
       var gap = cell * 0.045;
       function stripe(off) {
         var sx = fin.x + fx * off;
@@ -3035,7 +3100,7 @@
             " / span " +
             (maxy - miny + 1) +
             '">' +
-            tileIconSvg(p.t, p.r, 80 * (maxx - minx + 1), 80 * (maxy - miny + 1));
+            tileIconSvg(p.t, p.r, 80 * (maxx - minx + 1), 80 * (maxy - miny + 1), true);
           if (sel) {
             html += '<button type="button" class="tile-rot-handle" tabindex="-1" data-rot-handle="1" aria-label="Rotate 90 degrees">↻</button>';
           }
@@ -4099,7 +4164,8 @@
     var spots = [[-1, -1], [-1, 1], [1, -1], [1, 1]];
     var count = 0;
     var depth = 0;
-    for (var wi = 0; wi < spots.length; wi++) {
+    var wi;
+    for (wi = 0; wi < spots.length; wi++) {
       var w = wheelWorld(r, spots[wi][0], spots[wi][1]);
       var winfo = projectTrack(w.x, w.z);
       if (winfo.kerb) {
@@ -4270,21 +4336,21 @@
   }
 
   var AI_AGGRO = {
-    // Wind the longs. Late-brake. Inside line. Same physics cap as you.
+    // Heavy car + washout. Hit the apex, hold the inside. Same cap as you.
     pace: 1,
-    look: 0.94,
-    brake: 0.58,
-    hairpin: 17.4,
-    chicane: 25.5,
-    the90: 31,
-    sweeper: 43,
-    tight: 1,
-    lineOff: -0.32,
+    look: 1.08,
+    brake: 0.94,
+    hairpin: 16.3,
+    chicane: 21,
+    the90: 23,
+    sweeper: 37,
+    tight: 0.92,
+    lineOff: 0.58,
     pitLap: 3,
-    pitFuel: 18,
+    pitFuel: 21,
     pitTires: 26,
     launch: 0.88,
-    wobble: 0.05,
+    wobble: 0,
     overshoot: 1,
     hunter: 1,
   };
@@ -4421,6 +4487,9 @@
     chiLeft: 0,
     sweepLeft: 0,
     d90Left: 0,
+    dBend: 999,
+    bendR: 99,
+    inside: 1,
   };
 
   function aiOf(r) {
@@ -4446,6 +4515,9 @@
     _scan.chiLeft = 0;
     _scan.sweepLeft = 0;
     _scan.d90Left = 0;
+    _scan.dBend = 999;
+    _scan.bendR = 99;
+    _scan.inside = 0;
     var d;
     for (d = 0; d <= meters; d += 6) {
       var p = centerlinePoint(s + d);
@@ -4462,11 +4534,19 @@
         if (d < _scan.d90) _scan.d90 = d;
         if (d <= _scan.d90 + _scan.d90Left + 10) _scan.d90Left = d - _scan.d90;
       } else if (p.name === "kink" && d < _scan.dKink) _scan.dKink = d;
-      if (p.r < 22 && d < _scan.dTight) {
+      if (p.r < 160) {
+        if (!_scan.inside && p.left) _scan.inside = p.left;
+        if (d < _scan.dBend) {
+          _scan.dBend = d;
+          _scan.bendR = p.r;
+        }
+      }
+      if (p.r < 28 && d < _scan.dTight) {
         _scan.dTight = d;
         _scan.tightR = p.r;
       }
     }
+    if (!_scan.inside) _scan.inside = 1;
     return _scan;
   }
 
@@ -4483,6 +4563,32 @@
     if (left >= half) return want;
     var u = 1 - left / half;
     return Math.max(want, apex + (MAX_SPEED - apex) * u * u);
+  }
+
+  function brakeWindow(vNow, vApex, mul) {
+    // Heavy brakes bite ~0.6 of BRAKE_DECEL at speed. Window is the
+    // real stop, not a leftover from the old 20-decel kart.
+    if (!(mul > 0)) mul = 1;
+    var a = Math.max(2.6, BRAKE_DECEL * 0.62);
+    var v0 = Math.max(vApex + 0.5, vNow);
+    var d = (v0 * v0 - vApex * vApex) / (2 * a);
+    if (d < 12) d = 12;
+    return (d + 14) * mul;
+  }
+
+  function apexFromRadius(r, mul) {
+    // Speed the washed-out car can actually yaw around this radius.
+    // Custom 90s are ~44m; Campus's decreasing 90 is ~12m. Same brain.
+    if (!(r > 0) || r > 400) return MAX_SPEED * 0.96;
+    if (!(mul > 0)) mul = 1;
+    var v = Math.min(MAX_SPEED * 0.98, r * 0.72 + 8);
+    var wash = 1 - 0.7 * (v / MAX_SPEED);
+    var yaw = STEER_RATE * wash * 0.9;
+    if (yaw < 0.38) yaw = 0.38;
+    v = r * yaw;
+    if (v < 13) v = 13;
+    if (v > MAX_SPEED * 0.96) v = MAX_SPEED * 0.96;
+    return v * 0.9 * mul;
   }
 
   function eachRival(self, fn) {
@@ -4641,69 +4747,106 @@
       poseCar(r);
       return;
     }
-    if (!r.didPit && !r.wantPit) {
+    if (!r.didPit && !r.wantPit && PIT_META.on) {
       if (r.lap >= p.pitLap || r.fuel < p.pitFuel || r.tires < p.pitTires) r.wantPit = true;
     }
 
-    var gap = 0;
-    if (p.hunter) {
-      var prey = pickPrey(r);
-      if (prey.r && prey.fwd > 2.4) gap = prey.d;
-    }
-    var late = p.brake * (gap > 12 ? 0.78 : 1);
-    var pow = p.hunter ? 1.26 : 2;
-    var scan = scanAhead(r.s, 190 * p.brake);
+    var pow = p.hunter ? 1.7 : 2;
+    var bMul = p.hunter ? 0.7 : p.brake;
+    var scanMeters = p.hunter ? Math.max(260, brakeWindow(MAX_SPEED, 15, 1.15) + 40) : 190 * p.brake;
+    var scan = scanAhead(r.s, scanMeters);
     var look = (12 + r.speed * 0.3) * p.look;
-    if (p.hunter && scan.dTight > 36) look = (15 + r.speed * 0.4) * p.look;
+    if (p.hunter) {
+      look = (18 + r.speed * 0.48) * p.look;
+      if (scan.dBend < 88 && scan.dBend > 16) look = Math.min(look, 11 + scan.dBend * 0.32);
+    }
     if (scan.dTight < 64) look = Math.min(look, 8 + scan.dTight * 0.22);
     if (scan.dChi < 36) look = Math.min(look, 13);
     var want = MAX_SPEED * p.pace;
     if (p.hunter) want = MAX_SPEED;
     var hpApex = p.hairpin;
-    // Dive the 180 when close. Empty-track even laps still commit, not crawl.
-    var hotHair = p.overshoot && ((r.lap % 2) === 0 || (p.hunter && gap > 0 && gap < 14));
-    if (hotHair) hpApex = p.hunter ? 18.4 : 18.8;
-    want = Math.min(want, approachWant(want, scan.dHair, 150 * p.brake, hpApex, pow));
-    if (scan.tightR < 22) {
-      var cap = Math.sqrt(MAX_LAT * scan.tightR) * p.tight;
-      if (hotHair && scan.dHair < 90) cap = Math.max(cap, 18.2);
-      if (cap < 12) cap = 12;
-      want = Math.min(want, approachWant(want, scan.dTight, (48 + scan.tightR * 3.6) * p.brake, cap, pow));
-    }
-    if (scan.dChi > 0 && scan.dChi < 900) {
-      want = Math.min(want, approachWant(want, scan.dChi, 58 * late, p.chicane, pow));
-    }
-    want = Math.min(want, approachWant(want, scan.d90, 68 * late, p.the90, pow));
-    want = Math.min(want, approachWant(want, scan.dSweep, 88 * late, p.sweeper, pow));
-    want = Math.min(want, approachWant(want, scan.dKink, 54 * late, 26, pow));
+    // Empty-track 180: make it. Hot overshoot dumps wide and hands the pass.
+    var hotHair = p.overshoot && !p.hunter && (r.lap % 2) === 0;
+    if (hotHair) hpApex = 18.8;
     if (p.hunter) {
-      want = Math.max(want, unwindWant(want, scan.d90, scan.d90Left, p.the90, 18));
-      want = Math.max(want, unwindWant(want, scan.dSweep, scan.sweepLeft, p.sweeper, 22));
-      want = Math.max(want, unwindWant(want, scan.dChi, scan.chiLeft, p.chicane, 16));
+      var bendV = p.the90;
+      var bendMul = p.tight;
+      if (scan.dHair <= scan.dBend + 10 && scan.dHair < 900) bendMul *= 0.86;
+      if (scan.bendR < 200) bendV = apexFromRadius(scan.bendR, bendMul);
+      if (scan.dHair < 24 && scan.bendR < 20) bendV = Math.min(bendV, hpApex);
+      if (scan.dChi < 900 && scan.dChi <= scan.dBend + 10) bendV = Math.min(bendV, p.chicane);
+      if (scan.dKink < 900 && scan.dKink <= scan.dBend + 8) bendV = Math.min(bendV, 24);
+      if (scan.dBend < 900) {
+        want = Math.min(want, approachWant(want, scan.dBend, brakeWindow(want, bendV, bMul), bendV, pow));
+      }
+      var hairV = scan.bendR < 20 ? hpApex : apexFromRadius(Math.max(scan.bendR, 40), p.tight * 0.86);
+      want = Math.min(want, approachWant(want, scan.dHair, brakeWindow(want, hairV, bMul), hairV, pow));
+      if (scan.tightR < 28) {
+        var cap = apexFromRadius(scan.tightR, p.tight);
+        if (scan.dHair < 80 && scan.tightR < 20) cap = Math.min(cap, hpApex);
+        if (cap < 12) cap = 12;
+        var tWin = brakeWindow(want, cap, bMul);
+        // Decreasing 90: the 13m apex sits after a 40m entry. Don't crawl
+        // the straight for it — slow once the first radius is in the window.
+        if (scan.dBend + 12 < scan.dTight && scan.bendR > scan.tightR + 8) tWin *= 0.5;
+        want = Math.min(want, approachWant(want, scan.dTight, tWin, cap, pow));
+      }
+      want = Math.min(want, approachWant(want, scan.dChi, brakeWindow(want, p.chicane, bMul), p.chicane, pow));
+      var sweepV = apexFromRadius(scan.bendR < 200 ? Math.max(scan.bendR, 80) : 130, 0.9);
+      want = Math.min(want, approachWant(want, scan.dSweep, brakeWindow(want, sweepV, bMul * 0.9), sweepV, pow));
+      want = Math.max(want, unwindWant(want, scan.d90, scan.d90Left, bendV, 20));
+      want = Math.max(want, unwindWant(want, scan.dSweep, scan.sweepLeft, p.sweeper, 24));
+      want = Math.max(want, unwindWant(want, scan.dChi, scan.chiLeft, p.chicane, 14));
+    } else {
+      var late = p.brake;
+      want = Math.min(want, approachWant(want, scan.dHair, 150 * p.brake, hpApex, pow));
+      if (scan.tightR < 22) {
+        var cap2 = Math.sqrt(MAX_LAT * scan.tightR) * p.tight;
+        if (hotHair && scan.dHair < 90) cap2 = Math.max(cap2, 18.5);
+        if (cap2 < 12) cap2 = 12;
+        want = Math.min(want, approachWant(want, scan.dTight, (48 + scan.tightR * 3.6) * p.brake, cap2, pow));
+      }
+      if (scan.dChi > 0 && scan.dChi < 900) {
+        want = Math.min(want, approachWant(want, scan.dChi, 58 * late, p.chicane, pow));
+      }
+      want = Math.min(want, approachWant(want, scan.d90, 68 * late, p.the90, pow));
+      want = Math.min(want, approachWant(want, scan.dSweep, 88 * late, p.sweeper, pow));
+      want = Math.min(want, approachWant(want, scan.dKink, 54 * late, 26, pow));
     }
     if (r.fuel <= 0) want = Math.min(want, LIMP_SPEED);
 
     var hunt = planHunt(r, p, want);
-    if (p.hunter && hunt.on && (scan.dHair < 88 || proj.name === "hairpin")) {
+    if (p.hunter && hunt.on && scan.dTight > 36 && scan.dHair > 50 && scan.dBend > 40) {
       hunt.dive = true;
       hunt.noLift = true;
-      hunt.want = Math.max(hunt.want, 22);
+      hunt.want = Math.max(hunt.want, Math.min(MAX_SPEED, want + 4));
       want = hunt.want;
     }
-    if (hunt.catchUp && scan.dHair > 42 && scan.dTight > 26) {
+    if (p.hunter && hunt.on && (scan.dHair < 50 || scan.dTight < 28 || scan.dBend < 36 || proj.name === "hairpin" || proj.name === "the90")) {
+      // Close enough to bash, still make the corner. A 22-into-180 is a free pass.
+      hunt.noLift = false;
+      hunt.want = Math.min(hunt.want, want);
+      want = hunt.want;
+    }
+    if (hunt.catchUp && scan.dHair > 90 && scan.dTight > 60 && scan.d90 > 80 && scan.dChi > 50 && scan.dBend > 70) {
       want = Math.max(want, hunt.want);
     }
-    if (hunt.block && scan.dHair > 36 && scan.dTight > 22) {
+    if (hunt.block && scan.dHair > 50 && scan.dTight > 36 && scan.d90 > 50) {
       want = Math.max(want, hunt.want);
     }
 
     var target = centerlinePoint(r.s + look);
     var nx = -Math.sin(target.h);
     var nz = Math.cos(target.h);
-    var off = p.lineOff;
-    if (p.hunter && scan.dTight > 22 && scan.dTight < 70) off -= 0.45;
+    var inside = scan.inside || 1;
+    var off = Math.abs(p.lineOff) * (p.hunter ? inside : 1);
+    if (!p.hunter) off = p.lineOff;
+    if (p.hunter && scan.dBend < 86) off += 0.5 * inside;
     if (p.wideEntry && scan.dTight > 14 && scan.dTight < 52) off -= 1.45;
-    if (hunt.block) off = hunt.cover;
+    if (hunt.block) {
+      off = Math.abs(p.lineOff) * inside;
+      if (Math.abs(hunt.cover) > 0.45) off = clamp(off + hunt.cover * 0.62, -2.35, 2.1);
+    }
     var tx = target.x + nx * off;
     var tz = target.z + nz * off;
     if (hunt.on) {
@@ -4775,7 +4918,7 @@
 
     var desiredH = Math.atan2(tz - r.z, tx - r.x);
     var err = Math.atan2(Math.sin(desiredH - r.heading), Math.cos(desiredH - r.heading));
-    var steer = clamp(err * (hunt.on ? 2.05 : hunt.block ? 1.9 : p.hunter ? 1.72 : 1.5), -1, 1);
+    var steer = clamp(err * (hunt.on ? 2.05 : hunt.block ? 2.0 : p.hunter ? 2.18 : 1.5), -1, 1);
     var recover = proj.grass || proj.dist > 4.6;
     var keepHit = p.hunter && hunt.on && hunt.noLift && !proj.grass;
     if (recover && !peeling && !keepHit) {
@@ -4796,8 +4939,8 @@
       var out = Math.cos(r.heading) * (proj.x - r.x) + Math.sin(r.heading) * (proj.z - r.z);
       if (out < -0.15) reverse = true;
     }
-    var slack = p.hunter && want > MAX_SPEED * 0.88 ? 3.1 : 2.2;
-    var throttle = !reverse && r.speed < want - (p.hunter ? 0.06 : 0.4);
+    var slack = p.hunter ? (want > MAX_SPEED * 0.88 ? 2.4 : 1.05) : 2.2;
+    var throttle = !reverse && r.speed < want - (p.hunter ? 0.05 : 0.4);
     var brake = !reverse && r.speed > want + slack;
     if (hunt.on && hunt.noLift) {
       throttle = !reverse;
@@ -4828,36 +4971,27 @@
         r.hitYawT = 0.08;
         return;
       }
-      // Keep the crash shove; spin comes from yaw/slide, not a speed kill.
-      r.speed *= 0.9;
+      r.speed *= 0.68;
       r.heading += dir * clamp(impact * 0.028 * (0.45 + hip), 0.2, 0.85);
       r.slide += dir * clamp(impact * 0.28, 4, 14);
       r.hitYawT = 0.32;
       return;
     }
-    if (tail > 0.55) {
-      // Square rear: already launched along the ram. Small wiggle, no wall.
-      r.heading += dir * clamp(impact * 0.003, 0.004, 0.04);
-      r.slide += dir * clamp(impact * 0.05, 0, 1.8);
-      r.hitYawT = impact < 8 ? 0.08 : 0.12;
-      return;
-    }
     if (nose > 0.5) {
-      // Front shove, not a bounce-back wall. Leave leftover pace on a ram.
-      r.speed *= r.speed > 14 ? 0.91 : 0.8;
+      r.speed *= 0.78;
       r.slide += dir * clamp(impact * 0.08, 0, 2.2);
       r.heading += dir * clamp(impact * 0.002, 0, 0.03);
       r.hitYawT = 0.1;
       return;
     }
     if (impact > 15 && hip > 0.35) {
-      r.speed *= 0.82;
+      r.speed *= 0.62;
       r.heading += dir * clamp(impact * 0.022, 0.18, 0.7);
       r.slide += dir * clamp(impact * 0.28, 4, 12);
       r.hitYawT = 0.32;
       return;
     }
-    r.speed *= 0.9;
+    r.speed *= 0.85;
     r.slide += dir * clamp(impact * 0.1, 0, 2.8);
     r.heading += dir * clamp(impact * 0.005, 0, 0.05);
     r.hitYawT = 0.1;
@@ -4928,9 +5062,6 @@
       cx = dx;
       cz = dz;
     }
-    // SAT MTV is the short unstick. A nose-on-tail ram's smallest
-    // overlap is the width axis, so SAT looks like a side tap and
-    // bounces the faster car. Close along centers / travel instead.
     var cand = [
       [nx, nz],
       [dx, dz],
@@ -5382,9 +5513,9 @@
     var roll = Math.random();
     var kind;
     if (p && p.hunter) {
-      if (roll < 0.08) kind = "DUMP";
-      else if (roll < 0.16) kind = "SLUGGISH";
-      else if (roll < 0.56) kind = "GOOD";
+      if (roll < 0.05) kind = "DUMP";
+      else if (roll < 0.1) kind = "SLUGGISH";
+      else if (roll < 0.45) kind = "GOOD";
       else kind = "GREAT";
     } else if (p && p.launch >= 1) {
       if (roll < 0.1) kind = "SLUGGISH";
