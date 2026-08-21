@@ -2668,7 +2668,7 @@ assert(src.indexOf('who.id === "track-paste"') !== -1 && src.indexOf("commitTrac
 assert(src.indexOf("function recoverIfVoid") === -1, "DUMP does not teleport back onto the ribbon");
 assert(src.indexOf("voidT") === -1, "no void timer snap-back");
 assert(src.indexOf('name = "groundSkirt"') !== -1, "green skirt sits past the dirt plane");
-assert(src.indexOf("PlaneGeometry(4200, 3600)") !== -1, "skirt is larger than the dirt pad");
+assert(src.indexOf("Math.max(4200, dirtW + 1800)") !== -1 && src.indexOf("Math.max(3600, dirtD + 1600)") !== -1, "skirt is larger than the dirt pad");
 assert(src.indexOf("0x3f5c32") !== -1, "skirt is visible grass, not a black void");
 assert(src.indexOf("0x6a655c") !== -1, "course dirt pad stays dirt, not a lawn");
 assert(src.indexOf("var GRASS_ROLL = 4") !== -1, "13 kph grass-roll is the crawl back");
