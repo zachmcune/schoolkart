@@ -135,6 +135,8 @@ var code = [
   sliceFn("pointOnSeg"),
   sliceFn("centerlinePoint"),
   sliceFn("onLongStraight"),
+  sliceFn("pathSegAt"),
+  sliceFn("inChicaneS"),
   sliceFn("wallSeg"),
   sliceFn("skipLeftBarrier"),
   sliceFn("wallKindFor"),
@@ -1281,7 +1283,9 @@ assert(src.indexOf("var ACCEL = 16") !== -1, "wind-up is slow (arcade, not a sna
 assert(src.indexOf("var COAST = 5") !== -1, "coast bleeds speed");
 assert(src.indexOf("var BRAKE_DECEL = 20") !== -1, "Space is a planned squeeze");
 assert(src.indexOf("var MAX_LAT = 28") !== -1, "custom 90s are not glued to hide a spin");
-assert(src.indexOf('info.name === "hairpin" || info.name === "chicane"') !== -1, "hold W through 180 or chicane dumps");
+assert(src.indexOf("function inChicaneS") !== -1, "chicane dump is the S, not the approach slab");
+assert(src.indexOf('info.name === "hairpin" || info.name === "chicane"') === -1, "name alone does not lock A/D on hairpin/chicane");
+assert(src.indexOf('pathArc(12, 88, "the90")') !== -1, "Loop 88 before the S is a 90, not a named chicane");
 assert(src.indexOf("ABS") === -1, "no ABS");
 
 function tickFeel(car, steer, gas, brake, seconds) {
@@ -1571,12 +1575,13 @@ assert(src.indexOf("return -steer * 0.42") !== -1, "A = fronts left, D = fronts 
 assert(src.indexOf("maxYaw *= 1 / (1 + over * 5)") === -1, "chicane dump does not kill A/D yaw");
 assert(src.indexOf('pathLine(150, "chicane")') === -1, "Loop approach slab is not named chicane");
 assert(src.indexOf('pathLine(150, "short")') !== -1, "Loop approach slab steers like a straight");
+assert(src.indexOf("function inChicaneS") !== -1 && src.indexOf("seg.len > 40") !== -1, "S dump does not cover a long approach slab");
 assert(src.indexOf("yawFromSpeed") !== -1, "A/D yaw comes from speed, not a tank spin");
 assert(src.indexOf("function hitCarFeel") !== -1, "car-car: tap wiggles, ram spins, front shoves");
 
-var dumpAt = src.indexOf('info.name === "hairpin" || info.name === "chicane"');
-assert(dumpAt !== -1, "hold-W dump gate still exists");
-var dumpBlk = src.slice(dumpAt, src.indexOf("if (latDemand > maxLat", dumpAt));
+var dumpAt = src.indexOf("else if (inChicaneS(info) && r.speed > 24)");
+assert(dumpAt !== -1, "hold-W dump gate is the actual S over 24");
+var dumpBlk = src.slice(src.indexOf("if (!info.grass && info.name === \"hairpin\" && r.speed > 17)"), src.indexOf("if (latDemand > maxLat", dumpAt));
 assert(dumpBlk.indexOf("maxYaw") === -1, "named chicane/hairpin dump does not crush yaw");
 
 function steerLiveBoth(car, label) {
@@ -1693,6 +1698,63 @@ function proveLoopApproach() {
   }
   assert(Math.abs(hold.slide) < 1.2, "hold W on the approach does not dump like the S, slide=" + hold.slide.toFixed(2));
   steerLiveBoth(onSlab, "Loop chicane approach");
+  var i;
+  var entry = null;
+  for (i = 0; i < sim.PATH.length; i++) {
+    if (sim.PATH[i].type === "arc" && sim.PATH[i].name === "the90" && Math.abs(sim.PATH[i].r - 12) < 0.05) {
+      entry = sim.PATH[i];
+    }
+  }
+  assert(entry, "Loop 88 before the S is a 90");
+  var ep = sim.centerlinePoint(entry.startS + entry.len * 0.5);
+  var onEntry = blankCar(ep.x, ep.z, ep.h, 40);
+  onEntry.fuel = 100;
+  onEntry.tires = 100;
+  assert(sim.projectTrack(onEntry.x, onEntry.z).name !== "chicane", "88 before the S is not the chicane dump");
+  steerLiveBoth(onEntry, "Loop 88 before the S");
+  var holdE = copyCar(onEntry);
+  for (ht = 0; ht < 0.45; ht += 1 / 60) {
+    sim.applyMotion(holdE, 0, true, false, false, 1 / 60, true);
+  }
+  assert(Math.abs(holdE.slide) < 1.2, "hold W on the 88 before the S does not dump, slide=" + holdE.slide.toFixed(2));
+}
+
+function proveSpaceThroughS() {
+  sim.lockRacePath("");
+  sim.placeWalls();
+  var cs = firstTightChicane();
+  assert(cs > 80, "S is after the approach");
+  var p = sim.centerlinePoint(cs - 8);
+  var car = blankCar(p.x, p.z, p.h, 32);
+  car.fuel = 100;
+  car.tires = 100;
+  assert(sim.projectTrack(car.x, car.z).name !== "chicane", "Space prove starts on the approach");
+  var t;
+  var on = 0;
+  var n = 0;
+  var sawS = 0;
+  var dumpOnS = 0;
+  for (t = 0; t < 2.4; t += 1 / 60) {
+    var line = sim.projectTrack(car.x, car.z);
+    var look = sim.centerlinePoint(line.s + 8);
+    var err = angDiff(look.h, car.heading);
+    var steer = err * 1.7;
+    if (steer > 1) steer = 1;
+    if (steer < -1) steer = -1;
+    var inS = line.name === "chicane";
+    var brake = inS;
+    sim.applyMotion(car, steer, !brake, brake, false, 1 / 60, true);
+    sim.bashAllWalls(car);
+    n += 1;
+    if (sim.projectTrack(car.x, car.z).onAsphalt) on += 1;
+    if (inS) {
+      sawS += 1;
+      if (Math.abs(car.slide) > 2.4) dumpOnS += 1;
+    }
+  }
+  assert(sawS > 12, "Space prove actually enters the S, frames=" + sawS);
+  assert(on / n > 0.72, "Space through the S stays on asphalt, on=" + on + "/" + n);
+  assert(dumpOnS < sawS * 0.45, "Space is what gets you through the S, dump=" + dumpOnS + "/" + sawS);
 }
 
 function proveChicaneSteer(code, label) {
@@ -2153,6 +2215,7 @@ function provePitPctSticky() {
 
 sim.lockRacePath("");
 proveLoopApproach();
+proveSpaceThroughS();
 proveChicaneSteer("", "Campus Loop chicane");
 proveChicaneSteer(sim.encodeMap(zig), "custom zig-zag chicane board");
 proveChicaneSteer(sim.encodeMap(kitPieces()), "custom kit chicane+sweeper");

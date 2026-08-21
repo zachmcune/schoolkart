@@ -667,7 +667,7 @@
     pathArc(40, 48, "the90");
     pathArc(13, 42, "the90");
     pathLine(70, "short");
-    pathArc(12, 88, "chicane");
+    pathArc(12, 88, "the90");
     pathLine(150, "short");
     pathArc(9, -100, "chicane");
     pathLine(18, "chicane");
@@ -3706,6 +3706,27 @@
     return false;
   }
 
+  function pathSegAt(s) {
+    var i;
+    for (i = 0; i < PATH.length; i++) {
+      var seg = PATH[i];
+      if (!seg || seg.startS == null) continue;
+      if (s >= seg.startS - 0.2 && s <= seg.startS + seg.len + 0.2) return seg;
+    }
+    return null;
+  }
+
+  function inChicaneS(info) {
+    // The S, not the approach. A chicane name used to cover the Loop
+    // slab and the 88 before it — that locked A/D on the way in.
+    // Custom C tiles are a polyline S (no tight arcs).
+    if (!info || info.grass || info.name !== "chicane") return false;
+    if (onLongStraight(info.s)) return false;
+    var seg = pathSegAt(info.s);
+    if (seg && seg.type === "line" && seg.len > 40) return false;
+    return true;
+  }
+
   function applyMotion(r, steer, throttle, brake, reverse, dt, isPlayer) {
     if (!isFinite(r.speed)) r.speed = 0;
     if (!isFinite(r.slide)) r.slide = 0;
@@ -3799,17 +3820,16 @@
     var maxYaw = STEER_RATE * yawFromSpeed * tireFeel * surface;
     var latDemand = Math.abs(steer) * Math.abs(r.speed) * 0.155;
     var maxLat = MAX_LAT * tireFeel * surface;
-    if (!info.grass && (info.name === "hairpin" || info.name === "chicane")) {
-      var hpOk = info.name === "hairpin" ? 17 : 24;
-      var hpTight = info.name === "hairpin" ? 14 : 12;
-      // Name alone is not a yaw kill. The Loop approach slab used
-      // to be named chicane — dump only the tight bends, not a straight.
-      var turning = info.name === "hairpin" || !onLongStraight(info.s);
-      if (turning && r.speed > hpOk) {
-        var over = (r.speed - hpOk) / hpTight;
-        r.slide += (steer !== 0 ? steer : 1) * over * 22 * dt;
-        if (over > 0.3) r.tires -= 2.8 * dt * over;
-      }
+    if (!info.grass && info.name === "hairpin" && r.speed > 17) {
+      var hpOver = (r.speed - 17) / 14;
+      r.slide += (steer !== 0 ? steer : 1) * hpOver * 22 * dt;
+      if (hpOver > 0.3) r.tires -= 2.8 * dt * hpOver;
+    } else if (inChicaneS(info) && r.speed > 24) {
+      // Space through the S. Hold W dumps. Do not crush A/D yaw —
+      // the approach and 90s stay steerable.
+      var chiOver = (r.speed - 24) / 12;
+      r.slide += (steer !== 0 ? steer : 1) * chiOver * 22 * dt;
+      if (chiOver > 0.3) r.tires -= 2.8 * dt * chiOver;
     }
     if (latDemand > maxLat && Math.abs(steer) > 0.05) {
       var slip = (latDemand - maxLat) / Math.max(6, maxLat);
