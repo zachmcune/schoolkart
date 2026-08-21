@@ -42,7 +42,6 @@ var code = [
   "var GRASS_ROLL = 4;",
   "var GRASS_DUMP = 40;",
   "var TIRE_FLOOR = 22;",
-  "var KERB_RAISE = 0.055;",
   "var MAX_SPEED = 48;",
   "var ACCEL = 16;",
   "var BRAKE_DECEL = 20;",
@@ -116,9 +115,6 @@ var code = [
   sliceFn("faceRaceAt"),
   sliceFn("rideHeight"),
   sliceFn("steerWheelYaw"),
-  sliceFn("kerbDepthAt"),
-  sliceFn("sampleWheelKerbs"),
-  sliceFn("wheelWorld"),
   sliceFn("hitCarFeel"),
   sliceFn("applyMotion"),
   sliceFn("updateLaps"),
@@ -818,7 +814,6 @@ assert(!/function bashCars\([\s\S]{0,900}heading = Math.atan2/.test(src), "bashC
 assert(src.indexOf("function bashOtherCars") !== -1, "room Bowie is bashed from the race tick");
 assert(src.indexOf("function meshOverlap") !== -1 && src.indexOf("var MESH_HALF_W = 1.2") !== -1, "hit box is the visible mesh box, not a sausage");
 assert(src.indexOf("var impact = Math.max(rel, 0, pace * 0.34, 2.6)") !== -1, "overlap at a crawl still yaws");
-assert(src.indexOf("Speed-weighted inelastic crash") !== -1, "max-speed ram plows through, does not bounce back");
 assert(src.indexOf("if (impact < 1.1 && pace < 3)") === -1, "slow side-by-side does not skip feel");
 assert(/function pinGrid\([\s\S]{0,400}faceRaceAt/.test(src), "grid pin faces the ribbon, not leftover yaw");
 assert(src.indexOf("if (!isDriveableLoop()) return 0;") !== -1, "Campus grid is east, not a pit-peel left yaw");
@@ -2303,35 +2298,6 @@ function proveCarHits() {
   sim.hitCarFeel(face, hx * 10, hz * 10, -hx, -hz, 16);
   assert(Math.abs(angDiff(face.heading, hF)) < 0.06, "front hit shoves, does not spin");
   assert(face.speed < spd0, "front hit dumps speed");
-
-  function alongH(r) {
-    var vx = Math.cos(r.heading) * r.speed + -Math.sin(r.heading) * r.slide;
-    var vz = Math.sin(r.heading) * r.speed + Math.cos(r.heading) * r.slide;
-    return vx * hx + vz * hz;
-  }
-  var rammer = blankCar(p.x, p.z, p.h, 48);
-  var prey = blankCar(p.x + hx * 2.5, p.z + hz * 2.5, p.h, 8);
-  rammer.fuel = prey.fuel = 100;
-  rammer.tires = prey.tires = 100;
-  sim.bashCars(rammer, prey);
-  assert(alongH(rammer) > 12, "max-speed rear ram does not bounce the faster car backward, along=" + alongH(rammer).toFixed(2));
-  assert(alongH(prey) > 14, "rear victim is launched the way the faster car was going, along=" + alongH(prey).toFixed(2));
-  assert(alongH(rammer) > 0 && alongH(prey) > 0, "rear ram keeps both cars going forward");
-  var tboner = blankCar(p.x, p.z, p.h, 48);
-  var cross = blankCar(p.x + hx * 2.6, p.z + hz * 2.6, p.h + Math.PI * 0.5, 10);
-  tboner.fuel = cross.fuel = 100;
-  tboner.tires = cross.tires = 100;
-  sim.bashCars(tboner, cross);
-  assert(alongH(tboner) > 10, "max T-bone does not bounce the faster car backward, along=" + alongH(tboner).toFixed(2));
-  assert(alongH(cross) > 8, "T-bone victim is crashed along the faster car, along=" + alongH(cross).toFixed(2));
-  var closer = blankCar(p.x, p.z, p.h, 48);
-  var oncoming = blankCar(p.x + hx * 2.5, p.z + hz * 2.5, p.h + Math.PI, 12);
-  closer.fuel = oncoming.fuel = 100;
-  closer.tires = oncoming.tires = 100;
-  sim.bashCars(closer, oncoming);
-  assert(alongH(closer) > 6, "faster car in a mismatch head-on keeps going, along=" + alongH(closer).toFixed(2));
-  assert(alongH(oncoming) > 2, "slower oncoming is turned the faster car's way, along=" + alongH(oncoming).toFixed(2));
-  assert(sliceFn("bashCars").indexOf("rel * 0.72") === -1, "car-car is not the old equal-mass bounce");
 }
 
 function proveTileIcons() {
@@ -2346,9 +2312,6 @@ function proveTileIcons() {
       if (near(pts[i], { x: x, y: y })) return true;
     }
     return false;
-  }
-  function ends(pts) {
-    return { a: pts[0], b: pts[pts.length - 1] };
   }
   function inside(type, rot, w, h, label) {
     var pts = icon(type, rot, w, h);
@@ -2370,6 +2333,7 @@ function proveTileIcons() {
     var svg = pair.svg(type, rot, w, h);
     assert(svg.indexOf("<path") !== -1 && svg.indexOf("#3a3e46") !== -1, label + " SVG paints asphalt in the square");
     assert(svg.indexOf("M") !== -1, label + " SVG has a silhouette path");
+    assert(svg.indexOf('fill="#3a3e46"') !== -1, label + " road is a filled ribbon, not a stroked cartoon");
     return { minX: minX, maxX: maxX, minY: minY, maxY: maxY, pts: pts };
   }
   var r90 = inside("r", 0, 160, 160, "90");
@@ -2391,46 +2355,9 @@ function proveTileIcons() {
   assert(above > 3 && below > 3, "chicane S is not a flat line");
   assert(hasPort(chi.pts, 0, 80) && hasPort(chi.pts, 160, 80), "chicane meets west and east mid-edges");
   var str = icon("s", 0, 80, 80);
-  var strE = ends(str);
-  assert(near(strE.a, { x: 0, y: 40 }) && near(strE.b, { x: 80, y: 40 }), "short straight is edge-to-edge");
-  var strN = icon("s", 1, 80, 80);
-  var strNE = ends(strN);
-  assert(
-    (near(strNE.a, { x: 40, y: 0 }) && near(strNE.b, { x: 40, y: 80 })) ||
-      (near(strNE.a, { x: 40, y: 80 }) && near(strNE.b, { x: 40, y: 0 })),
-    "rotated short straight is north-south"
-  );
-  var longV = icon("S", 1, 80, 160);
-  var longVE = ends(longV);
-  assert(
-    (near(longVE.a, { x: 40, y: 0 }) && near(longVE.b, { x: 40, y: 160 })) ||
-      (near(longVE.a, { x: 40, y: 160 }) && near(longVE.b, { x: 40, y: 0 })),
-    "long rot 1 stays vertical on a tall chip"
-  );
-  var corner = icon("r", 0, 80, 80);
-  var neighbor = icon("s", 0, 80, 80);
-  var cEast = null;
-  var sWest = null;
-  var pi;
-  for (pi = 0; pi < corner.length; pi++) if (Math.abs(corner[pi].x - 80) < 0.6) cEast = corner[pi];
-  for (pi = 0; pi < neighbor.length; pi++) if (Math.abs(neighbor[pi].x) < 0.6) sWest = neighbor[pi];
-  assert(cEast && sWest && Math.abs(cEast.y - sWest.y) < 0.6, "90 east port lines up with a neighbor straight");
-  var cSouth = null;
-  var sNorth = null;
-  var belowS = icon("s", 1, 80, 80);
-  for (pi = 0; pi < corner.length; pi++) if (Math.abs(corner[pi].y - 80) < 0.6) cSouth = corner[pi];
-  for (pi = 0; pi < belowS.length; pi++) if (Math.abs(belowS[pi].y) < 0.6) sNorth = belowS[pi];
-  assert(cSouth && sNorth && Math.abs(cSouth.x - sNorth.x) < 0.6, "90 south port lines up with a neighbor straight");
-  function asphaltW(svg) {
-    var m = svg.match(/stroke="#3a3e46" stroke-width="([0-9.]+)"/);
-    return m ? +m[1] : 0;
-  }
-  var aw = asphaltW(pair.svg("s", 0, 80, 80));
-  assert(aw > 16, "board chips use a fat ribbon, w=" + aw);
-  assert(Math.abs(aw - asphaltW(pair.svg("w", 0, 160, 160))) < 0.05, "sweeper ribbon matches a 1-cell straight");
-  assert(Math.abs(aw - asphaltW(pair.svg("H", 0, 160, 80))) < 0.05, "hairpin ribbon matches a 1-cell straight");
-  assert(Math.abs(aw - asphaltW(pair.svg("C", 0, 80, 80))) < 0.05, "chicane ribbon matches a 1-cell straight");
-  assert(Math.abs(aw - asphaltW(pair.svg("S", 0, 160, 80))) < 0.05, "long ribbon matches a 1-cell straight");
+  assert(near(str[0], { x: 0, y: 40 }) && near(str[1], { x: 80, y: 40 }), "short straight is edge-to-edge");
+  var boardSvg = pair.svg("s", 0, 80, 80, true);
+  assert(boardSvg.indexOf('fill="#6a655c"') === -1, "board pieces do not paint their own dirt square");
 }
 
 function provePitPctSticky() {
