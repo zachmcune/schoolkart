@@ -1368,6 +1368,7 @@
         h: Math.atan2(seg.bz - seg.az, seg.bx - seg.ax),
         name: seg.name,
         r: 999,
+        left: 0,
       };
     }
     var a = seg.a0 + (seg.a1 - seg.a0) * u;
@@ -1377,12 +1378,13 @@
       h: seg.a1 >= seg.a0 ? a + Math.PI * 0.5 : a - Math.PI * 0.5,
       name: seg.name,
       r: seg.r,
+      left: seg.a1 >= seg.a0 ? 1 : -1,
     };
   }
 
   function centerlinePoint(s) {
     if (!PATH.length || TRACK_LEN <= 0) {
-      return { x: 0, z: SF_Z, h: 0, name: "start", r: 999 };
+      return { x: 0, z: SF_Z, h: 0, name: "start", r: 999, left: 0 };
     }
     s = ((s % TRACK_LEN) + TRACK_LEN) % TRACK_LEN;
     for (var i = 0; i < PATH.length; i++) {
@@ -4058,6 +4060,9 @@
     chiLeft: 0,
     sweepLeft: 0,
     d90Left: 0,
+    dBend: 999,
+    bendR: 99,
+    inside: 1,
   };
 
   function aiOf(r) {
@@ -4083,6 +4088,9 @@
     _scan.chiLeft = 0;
     _scan.sweepLeft = 0;
     _scan.d90Left = 0;
+    _scan.dBend = 999;
+    _scan.bendR = 99;
+    _scan.inside = 0;
     var d;
     for (d = 0; d <= meters; d += 6) {
       var p = centerlinePoint(s + d);
@@ -4099,11 +4107,19 @@
         if (d < _scan.d90) _scan.d90 = d;
         if (d <= _scan.d90 + _scan.d90Left + 10) _scan.d90Left = d - _scan.d90;
       } else if (p.name === "kink" && d < _scan.dKink) _scan.dKink = d;
-      if (p.r < 22 && d < _scan.dTight) {
+      if (p.r < 160) {
+        if (!_scan.inside && p.left) _scan.inside = p.left;
+        if (d < _scan.dBend) {
+          _scan.dBend = d;
+          _scan.bendR = p.r;
+        }
+      }
+      if (p.r < 28 && d < _scan.dTight) {
         _scan.dTight = d;
         _scan.tightR = p.r;
       }
     }
+    if (!_scan.inside) _scan.inside = 1;
     return _scan;
   }
 
@@ -4131,6 +4147,21 @@
     var d = (v0 * v0 - vApex * vApex) / (2 * a);
     if (d < 12) d = 12;
     return (d + 14) * mul;
+  }
+
+  function apexFromRadius(r, mul) {
+    // Speed the washed-out car can actually yaw around this radius.
+    // Custom 90s are ~44m; Campus's decreasing 90 is ~12m. Same brain.
+    if (!(r > 0) || r > 400) return MAX_SPEED * 0.96;
+    if (!(mul > 0)) mul = 1;
+    var v = Math.min(MAX_SPEED * 0.98, r * 0.72 + 8);
+    var wash = 1 - 0.7 * (v / MAX_SPEED);
+    var yaw = STEER_RATE * wash * 0.9;
+    if (yaw < 0.38) yaw = 0.38;
+    v = r * yaw;
+    if (v < 13) v = 13;
+    if (v > MAX_SPEED * 0.96) v = MAX_SPEED * 0.96;
+    return v * 0.9 * mul;
   }
 
   function eachRival(self, fn) {
@@ -4289,7 +4320,7 @@
       poseCar(r);
       return;
     }
-    if (!r.didPit && !r.wantPit) {
+    if (!r.didPit && !r.wantPit && PIT_META.on) {
       if (r.lap >= p.pitLap || r.fuel < p.pitFuel || r.tires < p.pitTires) r.wantPit = true;
     }
 
@@ -4300,7 +4331,7 @@
     var look = (12 + r.speed * 0.3) * p.look;
     if (p.hunter) {
       look = (18 + r.speed * 0.48) * p.look;
-      if (scan.dTight < 88 && scan.dTight > 16) look = Math.min(look, 11 + scan.dTight * 0.32);
+      if (scan.dBend < 88 && scan.dBend > 16) look = Math.min(look, 11 + scan.dBend * 0.32);
     }
     if (scan.dTight < 64) look = Math.min(look, 8 + scan.dTight * 0.22);
     if (scan.dChi < 36) look = Math.min(look, 13);
@@ -4311,18 +4342,32 @@
     var hotHair = p.overshoot && !p.hunter && (r.lap % 2) === 0;
     if (hotHair) hpApex = 18.8;
     if (p.hunter) {
-      want = Math.min(want, approachWant(want, scan.dHair, brakeWindow(want, hpApex, bMul), hpApex, pow));
-      if (scan.tightR < 22) {
-        var cap = Math.sqrt(MAX_LAT * scan.tightR) * p.tight;
+      var bendV = p.the90;
+      var bendMul = p.tight;
+      if (scan.dHair <= scan.dBend + 10 && scan.dHair < 900) bendMul *= 0.86;
+      if (scan.bendR < 200) bendV = apexFromRadius(scan.bendR, bendMul);
+      if (scan.dHair < 24 && scan.bendR < 20) bendV = Math.min(bendV, hpApex);
+      if (scan.dChi < 900 && scan.dChi <= scan.dBend + 10) bendV = Math.min(bendV, p.chicane);
+      if (scan.dKink < 900 && scan.dKink <= scan.dBend + 8) bendV = Math.min(bendV, 24);
+      if (scan.dBend < 900) {
+        want = Math.min(want, approachWant(want, scan.dBend, brakeWindow(want, bendV, bMul), bendV, pow));
+      }
+      var hairV = scan.bendR < 20 ? hpApex : apexFromRadius(Math.max(scan.bendR, 40), p.tight * 0.86);
+      want = Math.min(want, approachWant(want, scan.dHair, brakeWindow(want, hairV, bMul), hairV, pow));
+      if (scan.tightR < 28) {
+        var cap = apexFromRadius(scan.tightR, p.tight);
+        if (scan.dHair < 80 && scan.tightR < 20) cap = Math.min(cap, hpApex);
         if (cap < 12) cap = 12;
-        if (cap > hpApex + 3 && scan.dHair < 120) cap = hpApex + 1.2;
-        want = Math.min(want, approachWant(want, scan.dTight, brakeWindow(want, cap, bMul), cap, pow));
+        var tWin = brakeWindow(want, cap, bMul);
+        // Decreasing 90: the 13m apex sits after a 40m entry. Don't crawl
+        // the straight for it — slow once the first radius is in the window.
+        if (scan.dBend + 12 < scan.dTight && scan.bendR > scan.tightR + 8) tWin *= 0.5;
+        want = Math.min(want, approachWant(want, scan.dTight, tWin, cap, pow));
       }
       want = Math.min(want, approachWant(want, scan.dChi, brakeWindow(want, p.chicane, bMul), p.chicane, pow));
-      want = Math.min(want, approachWant(want, scan.d90, brakeWindow(want, p.the90, bMul), p.the90, pow));
-      want = Math.min(want, approachWant(want, scan.dSweep, brakeWindow(want, p.sweeper, bMul * 0.9), p.sweeper, pow));
-      want = Math.min(want, approachWant(want, scan.dKink, brakeWindow(want, 22, bMul), 22, pow));
-      want = Math.max(want, unwindWant(want, scan.d90, scan.d90Left, p.the90, 20));
+      var sweepV = apexFromRadius(scan.bendR < 200 ? Math.max(scan.bendR, 80) : 130, 0.9);
+      want = Math.min(want, approachWant(want, scan.dSweep, brakeWindow(want, sweepV, bMul * 0.9), sweepV, pow));
+      want = Math.max(want, unwindWant(want, scan.d90, scan.d90Left, bendV, 20));
       want = Math.max(want, unwindWant(want, scan.dSweep, scan.sweepLeft, p.sweeper, 24));
       want = Math.max(want, unwindWant(want, scan.dChi, scan.chiLeft, p.chicane, 14));
     } else {
@@ -4344,19 +4389,19 @@
     if (r.fuel <= 0) want = Math.min(want, LIMP_SPEED);
 
     var hunt = planHunt(r, p, want);
-    if (p.hunter && hunt.on && scan.dTight > 36 && scan.dHair > 50) {
+    if (p.hunter && hunt.on && scan.dTight > 36 && scan.dHair > 50 && scan.dBend > 40) {
       hunt.dive = true;
       hunt.noLift = true;
       hunt.want = Math.max(hunt.want, Math.min(MAX_SPEED, want + 4));
       want = hunt.want;
     }
-    if (p.hunter && hunt.on && (scan.dHair < 50 || scan.dTight < 28 || proj.name === "hairpin" || proj.name === "the90")) {
+    if (p.hunter && hunt.on && (scan.dHair < 50 || scan.dTight < 28 || scan.dBend < 36 || proj.name === "hairpin" || proj.name === "the90")) {
       // Close enough to bash, still make the corner. A 22-into-180 is a free pass.
       hunt.noLift = false;
       hunt.want = Math.min(hunt.want, want);
       want = hunt.want;
     }
-    if (hunt.catchUp && scan.dHair > 90 && scan.dTight > 60 && scan.d90 > 80 && scan.dChi > 50) {
+    if (hunt.catchUp && scan.dHair > 90 && scan.dTight > 60 && scan.d90 > 80 && scan.dChi > 50 && scan.dBend > 70) {
       want = Math.max(want, hunt.want);
     }
     if (hunt.block && scan.dHair > 50 && scan.dTight > 36 && scan.d90 > 50) {
@@ -4366,12 +4411,14 @@
     var target = centerlinePoint(r.s + look);
     var nx = -Math.sin(target.h);
     var nz = Math.cos(target.h);
-    var off = p.lineOff;
-    if (p.hunter && scan.dTight < 86) off += 0.5;
+    var inside = scan.inside || 1;
+    var off = Math.abs(p.lineOff) * (p.hunter ? inside : 1);
+    if (!p.hunter) off = p.lineOff;
+    if (p.hunter && scan.dBend < 86) off += 0.5 * inside;
     if (p.wideEntry && scan.dTight > 14 && scan.dTight < 52) off -= 1.45;
     if (hunt.block) {
-      off = p.lineOff;
-      if (Math.abs(hunt.cover) > 0.45) off = clamp(p.lineOff + hunt.cover * 0.62, -2.35, 2.1);
+      off = Math.abs(p.lineOff) * inside;
+      if (Math.abs(hunt.cover) > 0.45) off = clamp(off + hunt.cover * 0.62, -2.35, 2.1);
     }
     var tx = target.x + nx * off;
     var tz = target.z + nz * off;
