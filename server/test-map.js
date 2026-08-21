@@ -849,7 +849,8 @@ assert(src.indexOf("mpMode && playerGridX != null") !== -1, "room grid keeps the
 assert(src.indexOf("z: SF_Z + (i % 2 ? GRID_OUT_B : GRID_OUT_A), h: 0") !== -1, "campus room grid is outside the pit peel");
 assert(src.indexOf("x: -6 - Math.floor(i / 2) * 8") !== -1, "campus grid is 2-wide so Add Bowie parks beside the host");
 assert(src.indexOf("x: -6 - i * 8") === -1, "campus no longer stacks cars single-file behind the chase cam");
-assert(src.indexOf("var gxs = [-6, -6, -14]") !== -1, "painted boxes match the 2-wide grid");
+assert(src.indexOf("var gxs = [-6, -6, -14, -14, -22, -22, -30, -30]") !== -1, "painted boxes match the 2-wide 8-car grid");
+assert(src.indexOf("for (var gb = 0; gb < 8; gb++)") !== -1, "all eight grid boxes are painted");
 assert(src.indexOf("function roomBotLook") !== -1 && src.indexOf('p.name === "BowieKnife99"') !== -1, "room Bowie is gold #12, not a skin-slot ghost");
 assert(src.indexOf("hostBots[p.id].mesh.visible = true") !== -1, "Add Bowie parks a visible mesh");
 assert(src.indexOf("var GRID_OUT_A = -2.4") !== -1 && src.indexOf("var GRID_OUT_B = -5.2") !== -1, "campus slots sit on the outside ribbon");
@@ -858,6 +859,13 @@ assert(src.indexOf("function attachNameTag") !== -1 && src.indexOf("function lay
 assert(!/function attachNameTag\([\s\S]{0,500}new THREE\.Sprite/.test(src), "nametags are mesh billboards");
 assert(src.indexOf('r.kind !== "player"') !== -1, "own tag stays off; other cars still show");
 assert(src.indexOf('createRacer("cpu", 0xd4a017, "BowieKnife99"') !== -1, "one bot is exactly BowieKnife99");
+assert(src.indexOf('createRacer("cpu", 0x3d8cff, "Library Kid"') !== -1, "Library Kid is on the solo grid");
+assert(src.indexOf('createRacer("cpu", 0x9b59b6, "Band Kid"') !== -1, "Band Kid is on the solo grid");
+assert(src.indexOf('createRacer("cpu", 0x2ecc71, "Lab Partner"') !== -1, "Lab Partner is on the solo grid");
+assert(src.indexOf('createRacer("cpu", 0xe67e22, "Detention"') !== -1, "Detention is on the solo grid");
+assert(src.indexOf('createRacer("cpu", 0x1abc9c, "Yearbook"') !== -1, "Yearbook is on the solo grid");
+assert((src.match(/createRacer\("cpu", 0x[0-9a-f]+, "/g) || []).length === 7, "solo races field seven CPUs");
+assert(src.indexOf("slot: 3,") === -1, "no CPU sits in the player's GRID_P2 slot");
 assert(src.indexOf("rideHeight() + 1.46") !== -1, "tags sit tiny over the halo");
 assert(src.indexOf("dropNameTag") !== -1, "nametags leave the scene with the car");
 

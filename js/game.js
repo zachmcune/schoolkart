@@ -1821,9 +1821,18 @@
     trackRoot.add(stripe);
 
     if (!customMap) {
-      var gxs = [-6, -6, -14];
-      var gzs = [SF_Z + GRID_OUT_A, SF_Z + GRID_OUT_B, SF_Z + GRID_OUT_A];
-      for (var gb = 0; gb < 3; gb++) {
+      var gxs = [-6, -6, -14, -14, -22, -22, -30, -30];
+      var gzs = [
+        SF_Z + GRID_OUT_A,
+        SF_Z + GRID_OUT_B,
+        SF_Z + GRID_OUT_A,
+        SF_Z + GRID_OUT_B,
+        SF_Z + GRID_OUT_A,
+        SF_Z + GRID_OUT_B,
+        SF_Z + GRID_OUT_A,
+        SF_Z + GRID_OUT_B,
+      ];
+      for (var gb = 0; gb < 8; gb++) {
         addBox(gxs[gb], 0.09, gzs[gb], 5.2, 0.03, 2.6, 0xffffff, trackRoot);
         addBox(gxs[gb], 0.1, gzs[gb], 4.6, 0.02, 0.12, 0x111111, trackRoot);
       }
@@ -3468,8 +3477,9 @@
       r.tag.scale.set(w, h, 1);
     }
     one(player);
-    one(cpus[0]);
-    one(cpus[1]);
+    eachCpu(function (r) {
+      one(r);
+    });
     Object.keys(remotes).forEach(function (id) {
       one(remotes[id].r);
     });
@@ -3479,10 +3489,36 @@
   }
 
   var player = createRacer("player", playerBody, "House 7", 7, playerWing);
+  // Player sits GRID_P2 / slot 3. Seven CPUs fill the rest of the 2-wide 8-car grid.
+  var SOLO_FIELD = [
+    { color: 0xd4a017, name: "BowieKnife99", num: 12, slot: 0, pathS: 6, pathSide: 1 },
+    { color: 0x3d8cff, name: "Library Kid", num: 3, slot: 1, pathS: 6, pathSide: -1 },
+    { color: 0xb4532e, name: "Hall Monitor", num: 21, slot: 2, pathS: 22, pathSide: 1 },
+    { color: 0x9b59b6, name: "Band Kid", num: 9, slot: 4, pathS: 14, pathSide: 1 },
+    { color: 0x2ecc71, name: "Lab Partner", num: 18, slot: 5, pathS: 22, pathSide: -1 },
+    { color: 0xe67e22, name: "Detention", num: 5, slot: 6, pathS: 30, pathSide: 1 },
+    { color: 0x1abc9c, name: "Yearbook", num: 14, slot: 7, pathS: 30, pathSide: -1 },
+  ];
   var cpus = [
     createRacer("cpu", 0xd4a017, "BowieKnife99", 12),
+    createRacer("cpu", 0x3d8cff, "Library Kid", 3),
     createRacer("cpu", 0xb4532e, "Hall Monitor", 21),
+    createRacer("cpu", 0x9b59b6, "Band Kid", 9),
+    createRacer("cpu", 0x2ecc71, "Lab Partner", 18),
+    createRacer("cpu", 0xe67e22, "Detention", 5),
+    createRacer("cpu", 0x1abc9c, "Yearbook", 14),
   ];
+
+  function eachCpu(fn) {
+    var i;
+    for (i = 0; i < cpus.length; i++) fn(cpus[i], i);
+  }
+
+  function soloCpuPose(i, onCustom) {
+    var spec = SOLO_FIELD[i];
+    if (onCustom) return slotOnPath(TRACK_LEN - spec.pathS, spec.pathSide);
+    return gridSlot(spec.slot);
+  }
 
   function resetRacer(r, x, z, heading, s) {
     r.x = x;
@@ -3539,10 +3575,7 @@
     return p;
   }
 
-  var cpuGrid = [
-    { x: -6, z: SF_Z + GRID_OUT_A, h: 0 },
-    { x: -22, z: SF_Z + GRID_OUT_A, h: 0 },
-  ];
+  var cpuGrid = [];
 
   function applyCustomGrid() {
     var pose = customGridPose();
@@ -3568,17 +3601,12 @@
       if (!pose) gridHeading = 0;
     }
     resetRacer(player, playerGridX, playerGridZ, gridHeading, TRACK_LEN - 14);
-    if (pose) {
-      cpuGrid[0] = slotOnPath(TRACK_LEN - 6, 1);
-      cpuGrid[1] = slotOnPath(TRACK_LEN - 22, 1);
-      resetRacer(cpus[0], cpuGrid[0].x, cpuGrid[0].z, cpuGrid[0].h, TRACK_LEN - 6);
-      resetRacer(cpus[1], cpuGrid[1].x, cpuGrid[1].z, cpuGrid[1].h, TRACK_LEN - 22);
-    } else {
-      cpuGrid[0] = gridSlot(0);
-      cpuGrid[1] = gridSlot(2);
-      resetRacer(cpus[0], cpuGrid[0].x, cpuGrid[0].z, slotHeading(cpuGrid[0]), TRACK_LEN - 6);
-      resetRacer(cpus[1], cpuGrid[1].x, cpuGrid[1].z, slotHeading(cpuGrid[1]), TRACK_LEN - 22);
-    }
+    eachCpu(function (r, i) {
+      var spec = SOLO_FIELD[i];
+      var g = soloCpuPose(i, !!pose);
+      cpuGrid[i] = g;
+      resetRacer(r, g.x, g.z, slotHeading(g), TRACK_LEN - spec.pathS);
+    });
     function pinS(r) {
       r.s = projectTrack(r.x, r.z).s;
       r.lastS = r.s;
@@ -3586,11 +3614,13 @@
     }
     pinS(player);
     if (pose) {
-      pinS(cpus[0]);
-      pinS(cpus[1]);
+      eachCpu(function (r) {
+        pinS(r);
+      });
     }
-    cpus[0].mesh.visible = !mpMode;
-    cpus[1].mesh.visible = !mpMode;
+    eachCpu(function (r) {
+      r.mesh.visible = !mpMode;
+    });
     raceTime = 0;
     didPit = false;
     pitTimer = 0;
@@ -3931,11 +3961,102 @@
     overshoot: 0,
     wideEntry: 1,
   };
+  var AI_SHY = {
+    pace: 0.84,
+    look: 1.1,
+    brake: 1.18,
+    hairpin: 14.8,
+    chicane: 18,
+    the90: 22,
+    sweeper: 32,
+    tight: 0.78,
+    lineOff: 0.05,
+    pitLap: 3,
+    pitFuel: 24,
+    pitTires: 40,
+    launch: 1.05,
+    wobble: 0,
+    overshoot: 0,
+  };
+  var AI_BEAT = {
+    pace: 0.92,
+    look: 0.94,
+    brake: 0.92,
+    hairpin: 16.2,
+    chicane: 22,
+    the90: 26,
+    sweeper: 36,
+    tight: 0.88,
+    lineOff: 0.35,
+    pitLap: 3,
+    pitFuel: 20,
+    pitTires: 32,
+    launch: 0.72,
+    wobble: 0.1,
+    overshoot: 0,
+  };
+  var AI_LAB = {
+    pace: 0.9,
+    look: 1.04,
+    brake: 1.12,
+    hairpin: 15.2,
+    chicane: 20,
+    the90: 24,
+    sweeper: 34,
+    tight: 0.84,
+    lineOff: 0.04,
+    pitLap: 3,
+    pitFuel: 21,
+    pitTires: 36,
+    launch: 0.98,
+    wobble: 0.02,
+    overshoot: 0,
+  };
+  var AI_WILD = {
+    pace: 0.95,
+    look: 0.84,
+    brake: 0.8,
+    hairpin: 16.6,
+    chicane: 23,
+    the90: 27,
+    sweeper: 39,
+    tight: 0.9,
+    lineOff: 0.45,
+    pitLap: 3,
+    pitFuel: 17,
+    pitTires: 28,
+    launch: 0.7,
+    wobble: 0.14,
+    overshoot: 1,
+  };
+  var AI_WIDE = {
+    pace: 0.87,
+    look: 0.98,
+    brake: 0.94,
+    hairpin: 16,
+    chicane: 23,
+    the90: 26,
+    sweeper: 36,
+    tight: 0.86,
+    lineOff: 1.05,
+    pitLap: 4,
+    pitFuel: 16,
+    pitTires: 30,
+    launch: 0.6,
+    wobble: 0.12,
+    overshoot: 0,
+    wideEntry: 1,
+  };
   var _scan = { dHair: 999, dChi: 999, dSweep: 999, d90: 999, dKink: 999, dTight: 999, tightR: 99 };
 
   function aiOf(r) {
     if (r && r.name === "BowieKnife99") return AI_AGGRO;
     if (r && r.name === "Hall Monitor") return AI_TIDY;
+    if (r && r.name === "Library Kid") return AI_SHY;
+    if (r && r.name === "Band Kid") return AI_BEAT;
+    if (r && r.name === "Lab Partner") return AI_LAB;
+    if (r && r.name === "Detention") return AI_WILD;
+    if (r && r.name === "Yearbook") return AI_WIDE;
     return AI_MESSY;
   }
 
@@ -3976,8 +4097,8 @@
     }
     one(player);
     if (!mpMode) {
-      one(cpus[0]);
-      one(cpus[1]);
+      var ci;
+      for (ci = 0; ci < cpus.length; ci++) one(cpus[ci]);
     }
     var id;
     for (id in remotes) {
@@ -4849,11 +4970,11 @@
       });
       hud.finishPlace.textContent = place + " · room " + (net && net.room ? net.room : "");
     } else {
-      if (cpus[0].finished && cpus[0].finishTime < player.finishTime) place += 1;
-      if (!cpus[0].finished && !player.finished) place += 1;
-      if (cpus[1].finished && cpus[1].finishTime < player.finishTime) place += 1;
-      var names = ["1st", "2nd", "3rd"];
-      hud.finishPlace.textContent = names[place - 1] + " · vs BowieKnife99 & Hall Monitor";
+      eachCpu(function (r) {
+        if (r.finished && r.finishTime < player.finishTime) place += 1;
+      });
+      var ord = place + (place === 1 ? "st" : place === 2 ? "nd" : place === 3 ? "rd" : "th");
+      hud.finishPlace.textContent = ord + " · vs 7 CPUs";
     }
   }
 
@@ -4997,8 +5118,11 @@
     ctx.lineTo(pitB.x, pitB.y);
     ctx.stroke();
     if (!mpMode) {
-      paintMiniDot(ctx, cpus[0].x, cpus[0].z, "#d4a017", 4);
-      paintMiniDot(ctx, cpus[1].x, cpus[1].z, "#b4532e", 4);
+      eachCpu(function (r, i) {
+        var hex = (SOLO_FIELD[i].color | 0).toString(16);
+        while (hex.length < 6) hex = "0" + hex;
+        paintMiniDot(ctx, r.x, r.z, "#" + hex, 4);
+      });
     } else {
       Object.keys(remotes).forEach(function (id) {
         var r = remotes[id].r;
@@ -5147,10 +5271,10 @@
       }
     }
     if (!mpMode) {
-      var g0 = cpuGrid[0];
-      var g1 = cpuGrid[1];
-      pinGrid(cpus[0], g0.x, g0.z, slotHeading(g0));
-      pinGrid(cpus[1], g1.x, g1.z, slotHeading(g1));
+      eachCpu(function (r, i) {
+        var g = cpuGrid[i];
+        if (g) pinGrid(r, g.x, g.z, slotHeading(g));
+      });
     }
     chaseCamera(dt);
   }
@@ -5669,22 +5793,27 @@
           else player.speed -= REVERSE_ACCEL * simDt;
         }
       } else {
-        updateCpu(cpus[0], simDt);
-        updateCpu(cpus[1], simDt);
-        bashCars(player, cpus[0]);
-        bashCars(player, cpus[1]);
-        bashCars(cpus[0], cpus[1]);
-        bashCars(player, cpus[0]);
-        bashCars(player, cpus[1]);
-        bashCars(cpus[0], cpus[1]);
-        bashCars(player, cpus[0]);
-        bashCars(player, cpus[1]);
-        bashCars(cpus[0], cpus[1]);
+        eachCpu(function (r) {
+          updateCpu(r, simDt);
+        });
+        var bi;
+        var bj;
+        var pass;
+        for (pass = 0; pass < 3; pass++) {
+          eachCpu(function (r) {
+            bashCars(player, r);
+          });
+          for (bi = 0; bi < cpus.length; bi++) {
+            for (bj = bi + 1; bj < cpus.length; bj++) {
+              bashCars(cpus[bi], cpus[bj]);
+            }
+          }
+        }
         bashAllWalls(player);
-        bashAllWalls(cpus[0]);
-        bashAllWalls(cpus[1]);
-        emitRacerFx(cpus[0], null, simDt, false);
-        emitRacerFx(cpus[1], null, simDt, false);
+        eachCpu(function (r) {
+          bashAllWalls(r);
+          emitRacerFx(r, null, simDt, false);
+        });
         if (!pitServicing && (input.throttle || input.reverse || drive.up || drive.down) && Math.abs(player.speed) <= 0.35) {
           if (input.throttle || drive.up) player.speed += ACCEL * simDt;
           else player.speed -= REVERSE_ACCEL * simDt;

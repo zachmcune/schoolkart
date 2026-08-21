@@ -131,6 +131,11 @@ var code = [
   sliceAssign("AI_AGGRO"),
   sliceAssign("AI_TIDY"),
   sliceAssign("AI_MESSY"),
+  sliceAssign("AI_SHY"),
+  sliceAssign("AI_BEAT"),
+  sliceAssign("AI_LAB"),
+  sliceAssign("AI_WILD"),
+  sliceAssign("AI_WIDE"),
   "var _scan = { dHair: 999, dChi: 999, dSweep: 999, d90: 999, dKink: 999, dTight: 999, tightR: 99 };",
   sliceFn("aiOf"),
   sliceFn("scanAhead"),
@@ -361,6 +366,17 @@ assert(sim.gradeLaunch(0.81) === "DUMP", "past the mark dumps");
 assert(sim.gradeLaunch(1) === "DUMP", "at max is a fail");
 assert(sim.AI_AGGRO.hunter === 1, "BowieKnife99 is the hunter");
 assert(!sim.AI_TIDY.hunter && !sim.AI_MESSY.hunter, "only Bowie hunts");
+assert(sim.AI_SHY.pace < sim.AI_TIDY.pace, "Library Kid is shyer than Hall Monitor");
+assert(sim.AI_WILD.pace > sim.AI_BEAT.pace, "Detention is quicker than Band Kid");
+assert(sim.AI_WIDE.lineOff > sim.AI_LAB.lineOff, "Yearbook runs wider than Lab Partner");
+assert(sim.AI_LAB.brake > sim.AI_BEAT.brake, "Lab Partner brakes earlier than Band Kid");
+
+["Library Kid", "Band Kid", "Lab Partner", "Detention", "Yearbook"].forEach(function (name) {
+  var extra = sim.runBot(name, -14, -80 + 2.7, sim.TRACK_LEN - 14, 12);
+  assert(extra.asphalt > 4, name + " drives on asphalt (" + extra.asphalt.toFixed(1) + "s)");
+  assert(extra.speed > 8, name + " is up to race speed (" + extra.speed.toFixed(1) + ")");
+  assert(extra.maxOff < 40, name + " stays near the ribbon (" + extra.maxOff.toFixed(1) + ")");
+});
 
 var hunt = sim.runHunt("BowieKnife99", 2.6);
 var dodge = sim.runHunt("Hall Monitor", 2.6);
