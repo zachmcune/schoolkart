@@ -115,6 +115,7 @@ var code = [
   sliceFn("hitCarFeel"),
   sliceFn("applyMotion"),
   sliceFn("updateLaps"),
+  sliceFn("onRaceRibbon"),
   sliceFn("inPitLane"),
   sliceFn("inPitGrab"),
   sliceFn("cleanTrack"),
@@ -165,6 +166,8 @@ var code = [
   "  applyMotion: applyMotion,",
   "  updateLaps: updateLaps,",
   "  inPitGrab: inPitGrab,",
+  "  inPitLane: inPitLane,",
+  "  onRaceRibbon: onRaceRibbon,",
   "  cleanTrack: cleanTrack,",
   "  cellsInBoard: cellsInBoard,",
   "  customGridPose: customGridPose,",
@@ -812,8 +815,12 @@ assert(src.indexOf("if (launchCall === \"DUMP\") launchCall = \"SLUGGISH\"") !==
 assert(!/function applyLaunch\([\s\S]{0,500}dumpLaunch/.test(src), "lights-out does not spin onto grass");
 assert(!/function applyCpuLaunch\([\s\S]{0,900}dumpLaunch/.test(src), "room Bowie does not dump-spin at GO");
 assert(src.indexOf("function slotHeading") !== -1 && src.indexOf("gridHeading = slotHeading(g)") !== -1, "room grid keeps the slot heading");
-assert(src.indexOf("return inRect(r.x, r.z, PIT_GRAB)") !== -1, "campus pit grab is the halfway box, not a fat ribbon corridor");
-assert(src.indexOf("var onRace = ribbon && ribbon.dist <= ASPHALT") !== -1, "full racing ribbon is on-race, not a 5.2m strip");
+assert(src.indexOf("function onRaceRibbon") !== -1, "ribbon test is shared by lane, grab, and banner");
+assert(src.indexOf("if (onRaceRibbon(r.x, r.z)) return false") !== -1, "on-ribbon never enters pit lane or grab");
+assert(src.indexOf("if (!isDriveableLoop() && r.z <= SF_Z + ASPHALT) return false") !== -1, "campus center/right of the ribbon is never the pit lane");
+assert(src.indexOf("if (onRaceRibbon(player.x, player.z)) inBox = false") !== -1, "PIT LANE banner cannot light on the ribbon");
+assert(src.indexOf("return inRect(r.x, r.z, PIT_GRAB)") !== -1, "campus pit grab is the halfway box");
+assert(src.indexOf("var onRace = ribbon && ribbon.dist <= ASPHALT") !== -1, "full racing ribbon is on-race");
 assert(src.indexOf("r.z > leftOfRace && r.z < PIT_LANE.z1 + 4") === -1, "pit grab does not eat toward the racing line");
 assert(src.indexOf("launchT = GETAWAY_T") !== -1 && src.indexOf("var GETAWAY_T = 1.5") !== -1, "SLUGGISH is a 1.5s getaway, not a grass limp");
 assert(src.indexOf("mpMode && playerGridX != null") !== -1, "room grid keeps the slot, not Campus P2");
@@ -1747,11 +1754,14 @@ function proveLoopRibbonNotPit() {
     for (i = 0; i < sides.length; i++) {
       var car = blankCar(p.x + sx * sides[i], p.z + sz * sides[i], p.h, 0);
       assert(!sim.inPitGrab(car), "ribbon/right-of-peel is not a pit grab s=" + s + " lat=" + sides[i]);
+      assert(!sim.inPitLane(car), "ribbon/right-of-peel is not PIT LANE s=" + s + " lat=" + sides[i]);
     }
   }
   assert(sim.inPitGrab({ x: 74, z: -62 }), "halfway into the LEFT pit lane still grabs");
-  assert(!sim.inPitGrab({ x: 74, z: -80 }), "racing line at pit-x does not grab");
-  assert(!sim.inPitGrab({ x: 74, z: -82.4 }), "right of the peel does not grab");
+  assert(sim.inPitLane({ x: 74, z: -62 }), "halfway box is in the pit lane");
+  assert(!sim.inPitGrab({ x: 74, z: -80 }) && !sim.inPitLane({ x: 74, z: -80 }), "centerline at pit-x is not PIT LANE");
+  assert(!sim.inPitGrab({ x: 74, z: -82.4 }) && !sim.inPitLane({ x: 74, z: -82.4 }), "right of the peel is not PIT LANE");
+  assert(!sim.inPitGrab({ x: 20, z: -80 }) && !sim.inPitLane({ x: 20, z: -80 }), "peel mouth on the ribbon is not PIT LANE");
   assert(!sim.inPitGrab({ x: 20, z: -62 }), "peel entry is not halfway");
 }
 
@@ -1765,13 +1775,21 @@ function proveStayRightNoGrab() {
   var grabbed = 0;
   var on = 0;
   var n = 0;
-  for (t = 0; t < 4; t += 1 / 60) {
+  var onStraight = 0;
+  var straightN = 0;
+  var zRight = 0;
+  for (t = 0; t < 10; t += 1 / 60) {
     sim.applyMotion(car, 0, true, false, false, 1 / 60, true);
-    if (sim.inPitGrab(car)) grabbed += 1;
+    if (sim.inPitGrab(car) || sim.inPitLane(car)) grabbed += 1;
+    if (car.x < 200) {
+      straightN += 1;
+      if (sim.projectTrack(car.x, car.z).onAsphalt) onStraight += 1;
+      if (car.z <= -80 + 0.5) zRight += 1;
+    }
   }
-  assert(grabbed === 0, "holding W with no steer on the south straight does not auto-grab");
-  assert(sim.projectTrack(car.x, car.z).onAsphalt, "still on asphalt past the peel mouth");
-  assert(car.z < -80, "no-A getaway stays right of the peel, z=" + car.z.toFixed(2));
+  assert(grabbed === 0, "10s hold W, no A, center/right never PIT LANE / grab, hits=" + grabbed);
+  assert(straightN > 60 && onStraight / straightN > 0.92, "south straight stay-right stays on asphalt, on=" + onStraight + "/" + straightN);
+  assert(zRight === straightN, "no-A on the south straight stays center/right of the peel");
 
   car = blankCar(g.x, g.z, sim.slotHeading(g), 0);
   car.fuel = 100;
@@ -1785,7 +1803,7 @@ function proveStayRightNoGrab() {
     else if (err < -0.05) steer = -1;
     sim.applyMotion(car, steer, true, false, false, 1 / 60, true);
     n += 1;
-    if (sim.inPitGrab(car)) grabbed += 1;
+    if (sim.inPitGrab(car) || sim.inPitLane(car)) grabbed += 1;
     if (sim.projectTrack(car.x, car.z).onAsphalt) on += 1;
   }
   assert(grabbed === 0, "10s on the racing line never auto-grabs, grabs=" + grabbed);

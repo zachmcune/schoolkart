@@ -115,7 +115,7 @@ waitHealth()
         assert(html.indexOf('rel="manifest"') !== -1, "web app manifest link");
         assert(html.indexOf("apple-mobile-web-app-capable") !== -1, "iOS home screen capable");
         assert(html.indexOf('apple-mobile-web-app-title" content="SchoolKart"') !== -1, "iOS title");
-        assert(html.indexOf('SK_BUILD = "mp79"') !== -1, "cache bump mp79");
+        assert(html.indexOf('SK_BUILD = "mp80"') !== -1, "cache bump mp80");
         assert(html.indexOf('maxlength="240"') !== -1, "share-string fits a full board");
         assert(html.indexOf('id="title-track"') !== -1, "title label matches Solo load");
         assert(html.indexOf('aria-label="90"') !== -1 && html.indexOf('aria-label="sweeper"') !== -1, "palette has 90 and sweeper chips");
@@ -149,7 +149,7 @@ waitHealth()
           .then(function (sr) {
             return sr.text().then(function (sw) {
               assert(sr.status === 200, "sw 200");
-              assert(sw.indexOf('BUILD = "mp79"') !== -1, "SW build matches cache");
+              assert(sw.indexOf('BUILD = "mp80"') !== -1, "SW build matches cache");
               assert(/cache:\s*"no-store"/.test(sw), "network-first no-store");
               assert(sw.indexOf("websocket") !== -1, "SW leaves websocket alone");
             });
@@ -185,8 +185,9 @@ waitHealth()
                   assert(js.indexOf("function slotHeading") !== -1 && js.indexOf("gridHeading = slotHeading(g)") !== -1, "room grid keeps the slot heading");
                   assert(js.indexOf("var GRID_OUT_A = -2.4") !== -1, "campus host sits outside the pit peel");
                   assert(js.indexOf("if (launchCall === \"DUMP\") launchCall = \"SLUGGISH\"") !== -1, "start DUMP is sluggish on asphalt");
-                  assert(js.indexOf("return inRect(r.x, r.z, PIT_GRAB)") !== -1, "campus pit grab is halfway in the LEFT lane only");
-                  assert(js.indexOf("var onRace = ribbon && ribbon.dist <= ASPHALT") !== -1, "racing ribbon is not an auto-grab");
+                  assert(js.indexOf("function onRaceRibbon") !== -1, "ribbon lock is shared");
+                  assert(js.indexOf("if (onRaceRibbon(player.x, player.z)) inBox = false") !== -1, "PIT LANE banner cannot light on the ribbon");
+                  assert(js.indexOf("if (!isDriveableLoop() && r.z <= SF_Z + ASPHALT) return false") !== -1, "campus center/right is never the pit lane");
                   assert(js.indexOf("if (!isDriveableLoop()) return 0;") !== -1, "Campus room grid is east, not pre-yawed left");
                   assert(js.indexOf("pinGrid(player, playerGridX, playerGridZ, gridHeading)") !== -1, "lights pin the stored race heading");
                   assert(js.indexOf("function meshOverlap") !== -1 && js.indexOf("var MESH_HALF_W = 1.2") !== -1, "hit box is the visible mesh, not a sausage");

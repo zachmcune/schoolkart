@@ -3573,17 +3573,25 @@
     sky.planeLap = 0;
   }
 
+  function onRaceRibbon(x, z) {
+    var pr = projectTrack(x, z);
+    return !!(pr && pr.dist <= ASPHALT);
+  }
+
   function inPitLane(r) {
+    // Center / right of the ribbon is never the pit. Banner and grab
+    // both go through here — mp79 only locked inPitGrab and still
+    // painted PIT LANE on the racing line.
+    if (onRaceRibbon(r.x, r.z)) return false;
+    if (!isDriveableLoop() && r.z <= SF_Z + ASPHALT) return false;
     if (isDriveableLoop()) return PIT_META.on && (inRect(r.x, r.z, PIT_LANE) || onPitPavement(r.x, r.z));
-    // Campus: the teal lane only. Not a fat corridor that eats the ribbon.
     return inRect(r.x, r.z, PIT_LANE) || inRect(r.x, r.z, PIT_GRAB);
   }
 
   function inPitGrab(r) {
+    if (onRaceRibbon(r.x, r.z)) return false;
     if (isDriveableLoop()) {
       if (!PIT_META.on) return false;
-      var ribbon = projectTrack(r.x, r.z);
-      if (ribbon && ribbon.dist <= ASPHALT) return false;
       if (!onPitPavement(r.x, r.z) && !inRect(r.x, r.z, PIT_GRAB)) return false;
       var dx = PIT_META.bx - PIT_META.ax;
       var dz = PIT_META.bz - PIT_META.az;
@@ -3591,8 +3599,8 @@
       var t = ((r.x - PIT_META.ax) * dx + (r.z - PIT_META.az) * dz) / len2;
       return t >= 0.5 && t <= 1.15;
     }
-    // LEFT peel, halfway into the pit lane only. Staying on the ribbon
-    // or right of the peel must never auto-grab.
+    // Campus: LEFT of the asphalt and inside the halfway box only.
+    if (r.z <= SF_Z + ASPHALT) return false;
     return inRect(r.x, r.z, PIT_GRAB);
   }
 
@@ -4821,6 +4829,7 @@
     paintRevs();
 
     var inBox = inPitLane(player) || inPitGrab(player);
+    if (onRaceRibbon(player.x, player.z)) inBox = false;
     var visiting = pitServicing || pitVisit || pitHudPct > 0;
     var pitting = state === "racing" && (visiting || inBox || pitFlash > 0 || pitAwayT < 0.48);
     if (pitServicing) {
