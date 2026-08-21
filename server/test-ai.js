@@ -136,14 +136,15 @@ var code = [
   sliceAssign("AI_LAB"),
   sliceAssign("AI_WILD"),
   sliceAssign("AI_WIDE"),
-  "var _scan = { dHair: 999, dChi: 999, dSweep: 999, d90: 999, dKink: 999, dTight: 999, tightR: 99 };",
+  "var _scan = { dHair: 999, dChi: 999, dSweep: 999, d90: 999, dKink: 999, dTight: 999, tightR: 99, hairLeft: 0, chiLeft: 0, sweepLeft: 0, d90Left: 0 };",
   sliceFn("aiOf"),
   sliceFn("scanAhead"),
   sliceFn("approachWant"),
+  sliceFn("unwindWant"),
   sliceFn("eachRival"),
   sliceFn("avoidRams"),
   "var _prey = { r: null, d: 999, fwd: 0, lat: 0 };",
-  "var _hunt = { on: false, tx: 0, tz: 0, want: 0, noLift: false, dive: false };",
+  "var _hunt = { on: false, tx: 0, tz: 0, want: 0, noLift: false, dive: false, catchUp: false };",
   sliceFn("pickPrey"),
   sliceFn("planHunt"),
   sliceFn("gradeLaunch"),
@@ -159,6 +160,7 @@ var code = [
   "  PATH: PATH,",
   "  runBot: runBot,",
   "  runHunt: runHunt,",
+  "  runCatch: runCatch,",
   "  gradeLaunch: gradeLaunch,",
   "  centerlinePoint: centerlinePoint,",
   "  projectTrack: projectTrack,",
@@ -243,6 +245,26 @@ var code = [
   "  var endD = Math.hypot(player.x - r.x, player.z - r.z);",
   "  player.x = -9999; player.z = -9999; player.mesh.visible = false;",
   "  return { name: name, d0: d0, minD: minD, endD: endD, hitT: hitT };",
+  "}",
+  "function runCatch(name, seconds) {",
+  "  player.x = 52; player.z = SF_Z; player.heading = 0; player.speed = 30;",
+  "  player.kind = 'player'; player.finished = false; player.pitServicing = false;",
+  "  player.mesh = { visible: true };",
+  "  var r = blankBot(name, -6, SF_Z + 0.2, 28);",
+  "  var d0 = Math.hypot(player.x - r.x, player.z - r.z);",
+  "  var minD = d0;",
+  "  var dt = 1/30;",
+  "  raceTime = 2;",
+  "  for (var t = 0; t < seconds; t += dt) {",
+  "    player.x += Math.cos(player.heading) * player.speed * dt;",
+  "    player.z += Math.sin(player.heading) * player.speed * dt;",
+  "    updateCpu(r, dt);",
+  "    var d = Math.hypot(player.x - r.x, player.z - r.z);",
+  "    if (d < minD) minD = d;",
+  "  }",
+  "  var endD = Math.hypot(player.x - r.x, player.z - r.z);",
+  "  player.x = -9999; player.z = -9999; player.mesh.visible = false;",
+  "  return { name: name, d0: d0, minD: minD, endD: endD, speed: r.speed };",
   "}",
 ].join("\n");
 
@@ -358,7 +380,10 @@ assert(bowie.finishTime < tidy.finishTime, "Bowie beats the tidy bot");
 assert(tidy.finishTime < messy.finishTime, "messy is slower, pack stays alive");
 assert(bowie.hairFast > 0.2, "Bowie commits late into the 180");
 assert(tidy.hairFast < bowie.hairFast, "Hall Monitor brakes earlier than Bowie");
-assert(bowie.finishTime > 270, "beatable — not 1st-every-lap robots (" + bowie.finishTime.toFixed(1) + ")");
+assert(bowie.finishTime > 242, "beatable — not 1st-every-lap robots (" + bowie.finishTime.toFixed(1) + ")");
+assert(bowie.finishTime < 278, "Bowie keeps race pace, not a backmarker (" + bowie.finishTime.toFixed(1) + ")");
+assert(sim.AI_AGGRO.pace >= 1, "Bowie winds the longs at the cap");
+assert(sim.AI_AGGRO.brake <= 0.62, "Bowie late-brakes");
 assert(bowie.pitAt && tidy.pitAt && bowie.pitAt.t < messy.pitAt.t, "tidy/Bowie box before the messy late stop");
 assert(sim.AI_AGGRO.brake < sim.AI_TIDY.brake, "Bowie brakes later");
 assert(sim.AI_AGGRO.pitFuel < sim.AI_TIDY.pitFuel, "Bowie pits later");
@@ -398,5 +423,24 @@ console.log(
 assert(hunt.minD < 1.0, "Bowie closes to wreck range (" + hunt.minD.toFixed(2) + ")");
 assert(dodge.minD > hunt.minD + 0.35, "tidy does not divebomb the player");
 assert(hunt.hitT > 0, "Bowie reaches bash radius");
+
+var catchB = sim.runCatch("BowieKnife99", 3.2);
+var catchT = sim.runCatch("Hall Monitor", 3.2);
+console.log(
+  "catch Bowie d0=" +
+    catchB.d0.toFixed(1) +
+    " end=" +
+    catchB.endD.toFixed(1) +
+    " min=" +
+    catchB.minD.toFixed(1) +
+    " v=" +
+    catchB.speed.toFixed(1) +
+    " tidy end=" +
+    catchT.endD.toFixed(1)
+);
+assert(catchB.d0 > 50, "catch starts from a real lead");
+assert(catchB.endD < catchB.d0 - 14, "Bowie reels in a straight lead (" + catchB.endD.toFixed(1) + ")");
+assert(catchB.endD + 5 < catchT.endD, "Bowie closes harder than tidy");
+assert(catchB.speed > 40, "Bowie winds the straight while catching up");
 
 console.log("OK bot AI Campus Loop", sim.TRACK_LEN.toFixed(1));
