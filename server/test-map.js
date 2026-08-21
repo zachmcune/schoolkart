@@ -1319,6 +1319,81 @@ assert(artSrc.indexOf("createElement(\"canvas\")") === -1, "chips are SVG in the
 assert(artSrc.indexOf("tileIconSvg") !== -1, "palette injects SVG into the square");
 
 sim.lockRacePath("");
+assert(src.indexOf("function viewBox") !== -1 && src.indexOf("visualViewport") !== -1, "canvas follows the painted viewport");
+assert(src.indexOf("Math.abs(gamma) > 40") === -1, "tilt does not swap beta/gamma mid-roll");
+assert(src.indexOf("var TILT_DEAD = 6") !== -1, "tilt deadzone is 6deg not 18");
+assert(src.indexOf("var dead = 18") === -1, "fat tilt deadzone is gone");
+assert(src.indexOf("window.screen.orientation") !== -1, "orientation reads window.screen not a bare global");
+
+function proveViewBox() {
+  var fn = new Function("window", sliceFn("viewBox") + "; return viewBox();");
+  var box = fn({
+    innerWidth: 800,
+    innerHeight: 600,
+    visualViewport: { width: 720, height: 390, offsetLeft: 12, offsetTop: 44 },
+  });
+  assert(box.w === 720 && box.h === 390 && box.x === 12 && box.y === 44, "viewBox uses visualViewport including offset");
+  box = fn({ innerWidth: 844, innerHeight: 390 });
+  assert(box.w === 844 && box.h === 390 && box.x === 0 && box.y === 0, "viewBox falls back to inner size");
+}
+proveViewBox();
+
+function proveTiltFeel() {
+  var fn = new Function(
+    "window",
+    "touchCtl",
+    "var TILT_DEAD = 6; var TILT_SPAN = 26;" +
+      sliceFn("clamp") +
+      sliceFn("isLandscape") +
+      sliceFn("screenAngle") +
+      sliceFn("tiltNum") +
+      sliceFn("tiltSide") +
+      sliceFn("tiltRaw") +
+      sliceFn("applyGyro") +
+      "; return { tiltRaw: tiltRaw, applyGyro: applyGyro };"
+  );
+  function pack(ang, w, h, ctl) {
+    return fn(
+      {
+        innerWidth: w,
+        innerHeight: h,
+        orientation: ang,
+        screen: { orientation: { angle: ang } },
+      },
+      ctl
+    );
+  }
+  var ctl = { gyroNeedCal: true, gyroCenter: 0, gyroFilt: 0, steer: 0, tiltSide: 0 };
+  var api = pack(90, 844, 390, ctl);
+  assert(api.tiltRaw({ beta: 12, gamma: 8 }) === 12, "landscape 90 roll is beta");
+  ctl = { gyroNeedCal: true, gyroCenter: 0, gyroFilt: 0, steer: 0, tiltSide: 0 };
+  api = pack(270, 844, 390, ctl);
+  assert(api.tiltRaw({ beta: 12, gamma: 8 }) === -12, "landscape 270 inverts beta");
+  ctl = { gyroNeedCal: true, gyroCenter: 0, gyroFilt: 0, steer: 0, tiltSide: 0 };
+  api = pack(0, 844, 390, ctl);
+  var low = api.tiltRaw({ beta: 10, gamma: 10 });
+  var high = api.tiltRaw({ beta: 10, gamma: 50 });
+  assert(low === high, "stale angle 0 does not swap axes when gamma crosses 40, low=" + low + " high=" + high);
+  assert(low === 10, "landscape with stale 0 uses signed beta, got " + low);
+
+  ctl = { gyroNeedCal: true, gyroCenter: 0, gyroFilt: 0, steer: 0, tiltSide: 0 };
+  api = pack(90, 844, 390, ctl);
+  api.applyGyro(4);
+  assert(ctl.steer === 0 && ctl.gyroNeedCal === false && ctl.gyroCenter === 4, "first sample is the held center");
+  var i;
+  for (i = 0; i < 10; i++) api.applyGyro(6);
+  assert(Math.abs(ctl.steer) < 0.04, "inside the small deadzone stays straight, steer=" + ctl.steer);
+  ctl.gyroNeedCal = true;
+  api.applyGyro(0);
+  for (i = 0; i < 14; i++) api.applyGyro(18);
+  assert(Math.abs(ctl.steer) > 0.25, "18deg used to be dead and now steers, steer=" + ctl.steer);
+  ctl.gyroNeedCal = true;
+  api.applyGyro(0);
+  for (i = 0; i < 14; i++) api.applyGyro(3);
+  assert(Math.abs(ctl.steer) < 0.04, "tiny 3deg wobble does not twitch the wheel");
+}
+proveTiltFeel();
+
 assert(src.indexOf("var ACCEL = 16") !== -1, "wind-up is slow (arcade, not a snap)");
 assert(src.indexOf("var COAST = 5") !== -1, "coast bleeds speed");
 assert(src.indexOf("var BRAKE_DECEL = 20") !== -1, "Space is a planned squeeze");
