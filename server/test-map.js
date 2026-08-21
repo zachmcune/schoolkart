@@ -1365,6 +1365,8 @@ assert(src.indexOf("function viewBox") !== -1 && src.indexOf("visualViewport") !
 assert(src.indexOf("Math.abs(gamma) > 40") === -1, "tilt does not swap beta/gamma mid-roll");
 assert(src.indexOf("var TILT_DEAD = 4") !== -1, "tilt deadzone is 4deg not 18");
 assert(src.indexOf("var dead = 18") === -1, "fat tilt deadzone is gone");
+assert(src.indexOf("gyroCenter += d * 0.08") === -1, "rest pose does not chase a slow lean");
+assert(src.indexOf("var TILT_LEVEL = 2.5") !== -1 && src.indexOf("var TILT_CAL_MAX = 8") !== -1, "level phone is straight; big leans are not the rest");
 assert(src.indexOf("window.screen.orientation") !== -1, "orientation reads window.screen not a bare global");
 
 function proveViewBox() {
@@ -1384,7 +1386,7 @@ function proveTiltFeel() {
   var fn = new Function(
     "window",
     "touchCtl",
-    "var TILT_DEAD = 4; var TILT_SPAN = 18;" +
+    "var TILT_DEAD = 4; var TILT_SPAN = 18; var TILT_LEVEL = 2.5; var TILT_CAL_MAX = 8;" +
       sliceFn("clamp") +
       sliceFn("isLandscape") +
       sliceFn("screenAngle") +
@@ -1418,7 +1420,7 @@ function proveTiltFeel() {
   assert(low === high, "stale angle 0 does not swap axes when gamma crosses 40, low=" + low + " high=" + high);
   assert(low === 10, "landscape with stale 0 uses signed beta, got " + low);
 
-  ctl = { gyroNeedCal: true, gyroCenter: 0, gyroFilt: 0, steer: 0, tiltSide: 0 };
+  ctl = { gyroNeedCal: true, gyroCenter: 0, gyroFilt: 0, steer: 0, tiltSide: 0, tiltAng: null };
   api = pack(90, 844, 390, ctl);
   api.applyGyro(4);
   assert(ctl.steer === 0 && ctl.gyroNeedCal === false && ctl.gyroCenter === 4, "first sample is the held center");
@@ -1437,6 +1439,34 @@ function proveTiltFeel() {
   api.applyGyro(0);
   for (i = 0; i < 14; i++) api.applyGyro(3);
   assert(Math.abs(ctl.steer) < 0.04, "tiny 3deg wobble does not twitch the wheel");
+
+  ctl = { gyroNeedCal: true, gyroCenter: 0, gyroFilt: 0, steer: 0, tiltSide: 0, tiltAng: 90 };
+  api = pack(90, 844, 390, ctl);
+  api.applyGyro(0);
+  var deg;
+  for (deg = 0; deg <= 16; deg += 0.25) {
+    for (i = 0; i < 5; i++) api.applyGyro(deg);
+  }
+  assert(ctl.steer < -0.35, "a slow right lean still turns right, steer=" + ctl.steer);
+  assert(Math.abs(ctl.gyroCenter) <= 2.5, "center does not crawl onto the lean, center=" + ctl.gyroCenter);
+  for (i = 0; i < 8; i++) api.applyGyro(0);
+  assert(Math.abs(ctl.steer) < 0.04, "back to level is straight, not the opposite turn, steer=" + ctl.steer);
+
+  ctl = { gyroNeedCal: true, gyroCenter: 0, gyroFilt: 0, steer: 0, tiltSide: 0, tiltAng: 90 };
+  api = pack(90, 844, 390, ctl);
+  api.applyGyro(16);
+  assert(ctl.gyroCenter === 0 && ctl.gyroNeedCal === false, "a big first lean is not the rest pose");
+  for (i = 0; i < 10; i++) api.applyGyro(16);
+  assert(ctl.steer < -0.5, "first-sample lean still steers, steer=" + ctl.steer);
+
+  ctl = { gyroNeedCal: false, gyroCenter: 0, gyroFilt: 0, steer: 0, tiltSide: 0, tiltAng: 0 };
+  api = pack(0, 844, 390, ctl);
+  api.tiltRaw({ beta: 10, gamma: 10 });
+  api.tiltRaw({ beta: 10, gamma: -10 });
+  assert(ctl.gyroNeedCal === false, "gamma sign change does not recapture rest");
+  api = pack(270, 844, 390, ctl);
+  api.tiltRaw({ beta: 10, gamma: -10 });
+  assert(ctl.gyroNeedCal === true, "a real screen-angle change does recapture");
 }
 proveTiltFeel();
 
