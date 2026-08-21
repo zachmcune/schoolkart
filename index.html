@@ -6,7 +6,7 @@
   <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <!-- sk-build mp95: phone tilt rest pose no longer eats a slow turn -->
+  <!-- sk-build mp97: 16x12 editor + F1-read built-in circuits -->
   <meta name="theme-color" content="#1a120e" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -214,7 +214,7 @@
       <div class="editor-dock">
         <button type="button" class="tile-rot" id="btn-tile-rot" aria-label="Rotate selected piece 90 degrees">↻ Rotate</button>
         <button type="button" class="tile-trash" id="tile-trash">Trash</button>
-        <input id="track-paste" class="lobby-input name-input track-share" maxlength="240" placeholder="SHARE STRING" autocomplete="off" spellcheck="false" autocapitalize="off" autocorrect="off" />
+        <input id="track-paste" class="lobby-input name-input track-share" maxlength="800" placeholder="SHARE STRING" autocomplete="off" spellcheck="false" autocapitalize="off" autocorrect="off" />
       </div>
       <div class="lobby-row">
         <button type="button" class="lobby-btn" id="btn-track-undo">Undo</button>
@@ -235,7 +235,7 @@
   </div>
 
   <script>
-    window.SK_BUILD = "mp95";
+    window.SK_BUILD = "mp96";
     try {
       if (window.caches) {
         caches.keys().then(function (keys) {

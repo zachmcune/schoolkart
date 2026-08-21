@@ -60,7 +60,7 @@ Car **#7** is white/teal by default. Title-screen garage picks body + wing color
 
 Fuel still wants **~2 km / 5 laps / one box**. Only Forest Climb uses elevation (height along the racing line). Custom editor tracks stay flat and scenery-bare except placed trees.
 
-**Track editor:** title **Track** button. Regular tile grid. Kit: straight, long straight, 90, wide sweeper, hairpin, chicane, start/finish, pit, tree. Pieces snap to cell centers and meet flush. Driveable asphalt and the race line are rebuilt from the placed pieces — a closed loop laps; open layouts stay driveable. Bots follow the custom ribbon. Share-string (up to 240) encodes type + cell + rotation. **Default · Campus Loop** restores the real ~2km loop and clears the save / room code.
+**Track editor:** title **Track** button. **16×12** tile grid (was 8×6) so custom circuits can run much longer. Kit: straight, long straight, 90, wide sweeper, hairpin, chicane, start/finish, pit, tree. Pieces snap to cell centers and meet flush. Driveable asphalt and the race line are rebuilt from the placed pieces — a closed loop laps; open layouts stay driveable. Bots follow the custom ribbon. Share-string (up to 800) encodes type + cell + rotation; cells past 9 use letters so old 8×6 codes still paste. **Default · Campus Loop** restores the real ~2km loop and clears the save / room code.
 
 ## Multiplayer (Chromebook lunch)
 
@@ -103,7 +103,7 @@ Ship from **`main` only**. Railway and GitHub Pages should both track `main`. Do
 
 Repo is also a static site (HTML + CSS + JS + Three.js from CDN). Pages deploys from `main`. Use Railway as the school link.
 
-`index.html` is marked `no-store`. JS/CSS are versioned (`?v=mp95`) so a **normal reload** picks up the lobby.
+`index.html` is marked `no-store`. JS/CSS are versioned (`?v=mp96`) so a **normal reload** picks up the lobby.
 
 **Install (PWA):** on phone Safari / Chrome, Add to Home Screen. Standalone landscape chrome, dark splash (`#1a120e`). Original teal/cream mark (192 + 512 + apple-touch-icon). The service worker is network-first and does **not** cache the race or the websocket — a new Railway deploy is not a trapped old build. Offline play is not required.
 
