@@ -115,7 +115,7 @@ waitHealth()
         assert(html.indexOf('rel="manifest"') !== -1, "web app manifest link");
         assert(html.indexOf("apple-mobile-web-app-capable") !== -1, "iOS home screen capable");
         assert(html.indexOf('apple-mobile-web-app-title" content="SchoolKart"') !== -1, "iOS title");
-        assert(html.indexOf('SK_BUILD = "mp94"') !== -1, "cache bump mp94");
+        assert(html.indexOf('SK_BUILD = "mp95"') !== -1, "cache bump mp95");
         assert(html.indexOf("viewport-fit=cover") !== -1, "phone paints under the notch");
         assert(html.indexOf('maxlength="240"') !== -1, "share-string fits a full board");
         assert(html.indexOf('id="title-track"') !== -1, "title label matches Solo load");
@@ -150,7 +150,7 @@ waitHealth()
           .then(function (sr) {
             return sr.text().then(function (sw) {
               assert(sr.status === 200, "sw 200");
-              assert(sw.indexOf('BUILD = "mp94"') !== -1, "SW build matches cache");
+              assert(sw.indexOf('BUILD = "mp95"') !== -1, "SW build matches cache");
               assert(/cache:\s*"no-store"/.test(sw), "network-first no-store");
               assert(sw.indexOf("websocket") !== -1, "SW leaves websocket alone");
             });

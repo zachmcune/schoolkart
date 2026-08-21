@@ -4339,6 +4339,9 @@
     }
     if (r.tires < TIRE_FLOOR) r.tires = TIRE_FLOOR;
     if (tire < 0.45) r.slide += (Math.random() - 0.5) * 4.2 * dt;
+    // Dive wiggles, not a ramp. Slide/yaw chatter only — never a world-X
+    // pitch hop (Euler XYZ made that tilt the wrong axis by heading).
+    var bumpTarget = 0;
     if (onKerb && kerbDepth > 0) {
       var dive = Math.abs(r.speed) / 36;
       var wob = kerbDepth * dive;
@@ -4346,11 +4349,10 @@
       r.heading += Math.sin((raceTime + r.z * 0.04) * 17) * 0.7 * wob * dt;
       var wheelFrac = wheelKerb.count / 4;
       r.tires -= (1.2 + 2.4 * wheelFrac) * dt * speed01 * kerbDepth;
-      var bumpTarget = KERB_RAISE * kerbDepth * (0.35 + 0.65 * wheelFrac) * (0.35 + 0.65 * speed01);
-      r.kerbBump = clamp((r.kerbBump || 0) * Math.pow(0.1, dt) + bumpTarget, 0, KERB_RAISE * 1.35);
-    } else {
-      r.kerbBump = (r.kerbBump || 0) * Math.pow(0.12, dt);
+      bumpTarget = KERB_RAISE * kerbDepth * (0.25 + 0.35 * wheelFrac);
     }
+    var bumpEase = 1 - Math.pow(0.08, dt);
+    r.kerbBump = (r.kerbBump || 0) + (bumpTarget - (r.kerbBump || 0)) * bumpEase;
 
     r.heading += steer * maxYaw * dt * (r.speed < 0 ? -1 : 1);
     r.x += Math.cos(r.heading) * r.speed * dt;
@@ -4361,7 +4363,7 @@
 
     var bump = r.kerbBump || 0;
     r.mesh.position.set(r.x, rideHeight() + bump, r.z);
-    r.mesh.rotation.set(-bump * 3.4, -r.heading, bump * 0.65 * clamp(r.slide, -1, 1));
+    r.mesh.rotation.set(0, -r.heading, 0);
     var wheels = r.mesh.userData.wheels;
     if (wheels) {
       var spin = r.speed * dt * 2.4;
