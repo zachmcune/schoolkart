@@ -115,7 +115,8 @@ waitHealth()
         assert(html.indexOf('rel="manifest"') !== -1, "web app manifest link");
         assert(html.indexOf("apple-mobile-web-app-capable") !== -1, "iOS home screen capable");
         assert(html.indexOf('apple-mobile-web-app-title" content="SchoolKart"') !== -1, "iOS title");
-        assert(html.indexOf('SK_BUILD = "mp91"') !== -1, "cache bump mp91");
+        assert(html.indexOf('SK_BUILD = "mp92"') !== -1, "cache bump mp92");
+        assert(html.indexOf("viewport-fit=cover") !== -1, "phone paints under the notch");
         assert(html.indexOf('maxlength="240"') !== -1, "share-string fits a full board");
         assert(html.indexOf('id="title-track"') !== -1, "title label matches Solo load");
         assert(html.indexOf('aria-label="90"') !== -1 && html.indexOf('aria-label="sweeper"') !== -1, "palette has 90 and sweeper chips");
@@ -149,7 +150,7 @@ waitHealth()
           .then(function (sr) {
             return sr.text().then(function (sw) {
               assert(sr.status === 200, "sw 200");
-              assert(sw.indexOf('BUILD = "mp91"') !== -1, "SW build matches cache");
+              assert(sw.indexOf('BUILD = "mp92"') !== -1, "SW build matches cache");
               assert(/cache:\s*"no-store"/.test(sw), "network-first no-store");
               assert(sw.indexOf("websocket") !== -1, "SW leaves websocket alone");
             });
@@ -214,6 +215,13 @@ waitHealth()
                   assert(js.indexOf("portraitRaceBlock") !== -1, "portrait race is gated, not a vertical drive");
                   assert(!/function portraitRaceBlock\(\)[\s\S]{0,400}isPhoneLike/.test(js), "portrait gate ignores phone/keyboard/Chromebook");
                   assert(js.indexOf("innerHeight > window.innerWidth") !== -1, "portrait gate is viewport-only");
+                  assert(js.indexOf("function viewBox") !== -1 && js.indexOf("visualViewport") !== -1, "canvas follows the visual viewport");
+                  assert(js.indexOf("function pinGameBox") !== -1, "game root pins to the painted screen");
+                  assert(js.indexOf("function tiltSide") !== -1 && js.indexOf("function tiltNum") !== -1, "tilt roll is landscape-stable");
+                  assert(js.indexOf("Math.abs(gamma) > 40") === -1, "tilt does not swap axes mid-roll");
+                  assert(js.indexOf("var TILT_DEAD = 6") !== -1 && js.indexOf("var TILT_SPAN = 26") !== -1, "tilt deadzone is small");
+                  assert(js.indexOf("var dead = 18") === -1, "fat 18deg deadzone is gone");
+                  assert(js.indexOf("gyroFilt") !== -1, "tilt steer is smoothed");
                   assert(js.indexOf("isChromeOS") !== -1, "Chromebook UA still skips gas/brake overlay");
                   assert(js.indexOf("exitPortAfter") !== -1 && js.indexOf("campusRoot") !== -1, "custom start does not stack piece walls or campus volumes");
                   assert(js.indexOf("MAP_SURF = PATH.slice()") !== -1, "custom physics uses the raced PATH, not leftover pieces");
@@ -249,6 +257,9 @@ waitHealth()
                   assert(css.indexOf("race-portrait") !== -1, "portrait race hides the vertical driving view");
                   assert(css.indexOf("html.race-portrait #rotate-hint.hidden") !== -1, "display:none cannot hide the sideways gate");
                   assert(css.indexOf("html.race-live #rotate-hint") !== -1, "tall race-live window forces the gate");
+                  assert(css.indexOf("100svh") !== -1, "phone height uses the small viewport");
+                  assert(css.indexOf("env(safe-area-inset-top") !== -1, "HUD clears the notch");
+                  assert(css.indexOf("#game") !== -1 && css.indexOf("position: fixed") !== -1, "game shell is fixed to the screen");
                   assert(/\.tile-cell\s*\{[^}]*overflow:\s*hidden/.test(css), "editor cells clip art so pieces cannot paint onto neighbors");
                   assert(/\.palette-tile[\s\S]{0,400}overflow:\s*hidden/.test(css), "palette chips clip to the square");
                   assert(css.indexOf(".palette-tile svg") !== -1, "palette SVG fills the square");

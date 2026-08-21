@@ -16,11 +16,17 @@
 html,
 body {
   margin: 0;
+  width: 100%;
   height: 100%;
+  height: 100svh;
+  max-width: 100%;
+  overflow: hidden;
+  position: fixed;
+  inset: 0;
+  overscroll-behavior: none;
   background: var(--ink);
   color: var(--text);
   font-family: Trebuchet MS, Arial Black, Impact, sans-serif;
-  overflow: hidden;
   user-select: none;
   -webkit-user-select: none;
 }
@@ -32,13 +38,17 @@ textarea {
 }
 
 #game {
-  position: relative;
+  position: fixed;
+  inset: 0;
   width: 100%;
   height: 100%;
+  overflow: hidden;
 }
 
 #view {
   display: block;
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
 }
@@ -65,12 +75,16 @@ textarea {
 }
 
 .hud-top {
-  top: 14px;
+  top: max(14px, env(safe-area-inset-top, 0px));
+  left: max(16px, env(safe-area-inset-left, 0px));
+  right: max(16px, env(safe-area-inset-right, 0px));
   align-items: flex-start;
 }
 
 .hud-bottom {
-  bottom: 14px;
+  bottom: max(14px, env(safe-area-inset-bottom, 0px));
+  left: max(16px, env(safe-area-inset-left, 0px));
+  right: max(16px, env(safe-area-inset-right, 0px));
   align-items: flex-end;
 }
 
@@ -237,7 +251,8 @@ textarea {
   align-items: center;
   justify-content: center;
   text-align: center;
-  padding: 24px;
+  padding: max(24px, env(safe-area-inset-top, 0px)) max(24px, env(safe-area-inset-right, 0px))
+    max(24px, env(safe-area-inset-bottom, 0px)) max(24px, env(safe-area-inset-left, 0px));
   background: linear-gradient(180deg, rgba(26, 18, 14, 0.22), rgba(26, 18, 14, 0.62));
 }
 
@@ -249,7 +264,8 @@ textarea {
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
-  padding: 20px 16px 48px;
+  padding: max(20px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px))
+    max(48px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
 }
 
 .screen h1 {
@@ -572,8 +588,8 @@ kbd {
 
 .race-names {
   position: absolute;
-  left: 14px;
-  top: 248px;
+  left: max(14px, env(safe-area-inset-left, 0px));
+  top: max(248px, calc(env(safe-area-inset-top, 0px) + 234px));
   margin: 0;
   padding: 0;
   list-style: none;
@@ -615,8 +631,8 @@ kbd {
 
 .minimap {
   position: absolute;
-  left: 14px;
-  top: 88px;
+  left: max(14px, env(safe-area-inset-left, 0px));
+  top: max(88px, calc(env(safe-area-inset-top, 0px) + 74px));
   width: 148px;
   height: 148px;
   border-radius: 50%;
@@ -666,7 +682,7 @@ kbd {
 #rev-btn {
   position: absolute;
   left: 50%;
-  bottom: 18px;
+  bottom: max(18px, env(safe-area-inset-bottom, 0px));
   width: 42px;
   height: 42px;
   margin-left: -21px;
@@ -688,7 +704,7 @@ kbd {
 
 #mobile-hint {
   position: absolute;
-  top: 12px;
+  top: max(12px, env(safe-area-inset-top, 0px));
   left: 50%;
   transform: translateX(-50%);
   z-index: 14;
@@ -704,7 +720,7 @@ kbd {
 
 #tilt-btn {
   position: absolute;
-  top: 48px;
+  top: max(48px, calc(env(safe-area-inset-top, 0px) + 36px));
   left: 50%;
   transform: translateX(-50%);
   z-index: 14;

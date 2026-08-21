@@ -37,6 +37,8 @@
   var LIMP_ACCEL = 2;
   var STEER_RATE = 2.35;
   var MAX_LAT = 28;
+  var TILT_DEAD = 6;
+  var TILT_SPAN = 26;
   // Burn is the clock. Retuned for measured TRACK_LEN (~1979). 5 laps
   // still force ONE box — a second stop should never be required.
   var IDLE_FUEL = 0.46;
@@ -131,6 +133,8 @@
     gyroOn: false,
     gyroNeedCal: true,
     gyroCenter: 0,
+    gyroFilt: 0,
+    tiltSide: 0,
     hintShown: false,
     tiltAsked: false,
     tiltGranted: false,
@@ -199,12 +203,50 @@
     powerPreference: "low-power",
   });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.2));
-  renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.setClearColor(0xe87834, 1);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
 
+  function viewBox() {
+    // Phones: layout innerWidth/innerHeight is not the painted screen.
+    // Safari chrome, the iOS home-screen status bar, and a landscape PWA
+    // launch all shift visualViewport — that is the offset letterbox.
+    var vv = window.visualViewport;
+    if (vv && vv.width > 2 && vv.height > 2) {
+      return {
+        w: Math.max(1, Math.round(vv.width)),
+        h: Math.max(1, Math.round(vv.height)),
+        x: vv.offsetLeft || 0,
+        y: vv.offsetTop || 0,
+      };
+    }
+    return {
+      w: Math.max(1, window.innerWidth || 1),
+      h: Math.max(1, window.innerHeight || 1),
+      x: 0,
+      y: 0,
+    };
+  }
+
+  function pinGameBox(box) {
+    var root = document.getElementById("game");
+    if (!root) return;
+    root.style.position = "fixed";
+    root.style.left = box.x + "px";
+    root.style.top = box.y + "px";
+    root.style.width = box.w + "px";
+    root.style.height = box.h + "px";
+  }
+
+  function fitView() {
+    var box = viewBox();
+    pinGameBox(box);
+    renderer.setSize(box.w, box.h, false);
+    if (camera) layoutCamera();
+  }
+
   function layoutCamera() {
-    camera.aspect = window.innerWidth / window.innerHeight;
+    var box = viewBox();
+    camera.aspect = box.w / box.h;
     camera.updateProjectionMatrix();
     camera.projectionMatrix.elements[0] *= -1;
   }
@@ -214,11 +256,11 @@
 
   var camera = new THREE.PerspectiveCamera(
     62,
-    window.innerWidth / window.innerHeight,
+    viewBox().w / viewBox().h,
     0.3,
     2000
   );
-  layoutCamera();
+  fitView();
 
   var hud = {
     root: document.getElementById("hud"),
@@ -6726,35 +6768,60 @@
     return isLandscape() ? 90 : 0;
   }
 
+  function tiltNum(v) {
+    v = +v;
+    return v === v ? v : 0;
+  }
+
   function tiltRaw(e) {
-    var beta = Number(e.beta) || 0;
-    var gamma = Number(e.gamma) || 0;
+    var beta = tiltNum(e.beta);
+    var gamma = tiltNum(e.gamma);
     var ang = ((screenAngle() % 360) + 360) % 360;
-    // Steer axis is landscape-held roll. Do not follow an OS portrait flip —
-    // that is what made tilt fight the layout rotation.
+    var side = tiltSide(gamma, ang);
+    if (touchCtl.tiltSide && touchCtl.tiltSide !== side) {
+      touchCtl.gyroNeedCal = true;
+    }
+    touchCtl.tiltSide = side;
+    // Landscape roll only. Never swap beta/gamma mid-tilt — a |gamma| > 40
+    // switch is what made steer flip while the phone was already sideways.
     if (ang === 90) return beta;
     if (ang === 270) return -beta;
     if (ang === 180) return -gamma;
-    if (Math.abs(gamma) > 40) return gamma > 0 ? -beta : beta;
+    if (isLandscape()) return side * beta;
     return gamma;
+  }
+
+  function tiltSide(gamma, ang) {
+    if (ang === 270 || ang === 180) return -1;
+    if (ang === 90) return 1;
+    return gamma < 0 ? -1 : 1;
   }
 
   function applyGyro(raw) {
     if (touchCtl.gyroNeedCal) {
       touchCtl.gyroCenter = raw;
       touchCtl.gyroNeedCal = false;
+      touchCtl.gyroFilt = 0;
+      touchCtl.steer = 0;
+      return;
     }
     var d = raw - touchCtl.gyroCenter;
     if (d > 180) d -= 360;
     if (d < -180) d += 360;
-    var dead = 18;
-    if (Math.abs(d) < dead) {
-      touchCtl.steer = 0;
-      return;
+    if (Math.abs(d) < 4) {
+      touchCtl.gyroCenter += d * 0.08;
+      d = raw - touchCtl.gyroCenter;
     }
-    var mag = clamp((Math.abs(d) - dead) / 34, 0, 1);
+    var mag = 0;
+    if (Math.abs(d) > TILT_DEAD) {
+      mag = clamp((Math.abs(d) - TILT_DEAD) / TILT_SPAN, 0, 1);
+      mag = mag * mag * (3 - 2 * mag);
+    }
     // Match keyboard: A / left = +steer, D / right = -steer.
-    touchCtl.steer = (d > 0 ? -1 : 1) * mag;
+    var target = (d > 0 ? -1 : 1) * mag;
+    touchCtl.gyroFilt += (target - touchCtl.gyroFilt) * 0.42;
+    if (Math.abs(touchCtl.gyroFilt) < 0.02) touchCtl.gyroFilt = 0;
+    touchCtl.steer = touchCtl.gyroFilt;
   }
 
   function onOrient(e) {
@@ -6819,7 +6886,8 @@
       if (!isPhoneLike()) return;
       if (e.target && e.target.id === "rev-btn") return;
       e.preventDefault();
-      var half = e.clientX >= window.innerWidth * 0.5 ? "gas" : "brake";
+      var rect = layer.getBoundingClientRect();
+      var half = e.clientX >= rect.left + rect.width * 0.5 ? "gas" : "brake";
       touchCtl.pads[e.pointerId] = half;
       syncPads();
       try {
@@ -7063,16 +7131,21 @@
     touchCtl.rev = false;
     // pitTimer stays on blur. Leave the pit lane to reset a visit.
   });
-  window.addEventListener("resize", function () {
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    layoutCamera();
+  function onViewChange() {
+    fitView();
     if (state === "start" || state === "racing") lockLandscape();
     syncMobileUi();
-  });
+  }
+  window.addEventListener("resize", onViewChange);
   window.addEventListener("orientationchange", function () {
-    if (state === "start" || state === "racing") lockLandscape();
-    syncMobileUi();
+    onViewChange();
+    setTimeout(onViewChange, 80);
+    setTimeout(onViewChange, 300);
   });
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener("resize", onViewChange);
+    window.visualViewport.addEventListener("scroll", onViewChange);
+  }
 
   function showBoot(text, isErr) {
     if (!hud.bootStatus) return;
