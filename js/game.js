@@ -39,6 +39,8 @@
   var MAX_LAT = 28;
   var TILT_DEAD = 4;
   var TILT_SPAN = 18;
+  var TILT_LEVEL = 2.5;
+  var TILT_CAL_MAX = 8;
   // Burn is the clock. Retuned for measured TRACK_LEN (~1979). 5 laps
   // still force ONE box — a second stop should never be required.
   var IDLE_FUEL = 0.46;
@@ -135,6 +137,7 @@
     gyroCenter: 0,
     gyroFilt: 0,
     tiltSide: 0,
+    tiltAng: null,
     hintShown: false,
     tiltAsked: false,
     tiltGranted: false,
@@ -6776,10 +6779,13 @@
     var beta = tiltNum(e.beta);
     var gamma = tiltNum(e.gamma);
     var ang = ((screenAngle() % 360) + 360) % 360;
-    var side = tiltSide(gamma, ang);
-    if (touchCtl.tiltSide && touchCtl.tiltSide !== side) {
+    // Recapture rest only when the screen actually rotates. A gamma sign
+    // flip mid-roll used to steal the leaned pose as the new "straight".
+    if (touchCtl.tiltAng != null && touchCtl.tiltAng !== ang) {
       touchCtl.gyroNeedCal = true;
     }
+    touchCtl.tiltAng = ang;
+    var side = tiltSide(gamma, ang);
     touchCtl.tiltSide = side;
     // Landscape roll only. Never swap beta/gamma mid-tilt — a |gamma| > 40
     // switch is what made steer flip while the phone was already sideways.
@@ -6798,8 +6804,14 @@
 
   function applyGyro(raw) {
     if (touchCtl.gyroNeedCal) {
-      touchCtl.gyroCenter = raw;
+      // A big lean is a turn, not a new rest pose. Only absorb a small hold.
+      touchCtl.gyroCenter = Math.abs(raw) <= TILT_CAL_MAX ? raw : 0;
       touchCtl.gyroNeedCal = false;
+      touchCtl.gyroFilt = 0;
+    } else if (Math.abs(raw) < TILT_LEVEL) {
+      // Roll-level is straight. Returning the phone to normal must not keep
+      // a leaned center (that was "tilt right does nothing, then left").
+      touchCtl.gyroCenter = raw;
       touchCtl.gyroFilt = 0;
       touchCtl.steer = 0;
       return;
@@ -6807,10 +6819,6 @@
     var d = raw - touchCtl.gyroCenter;
     if (d > 180) d -= 360;
     if (d < -180) d += 360;
-    if (Math.abs(d) < 4) {
-      touchCtl.gyroCenter += d * 0.08;
-      d = raw - touchCtl.gyroCenter;
-    }
     var mag = 0;
     if (Math.abs(d) > TILT_DEAD) {
       mag = clamp((Math.abs(d) - TILT_DEAD) / TILT_SPAN, 0, 1);
