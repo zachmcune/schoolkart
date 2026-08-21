@@ -4113,7 +4113,6 @@
           _scan.dBend = d;
           _scan.bendR = p.r;
         }
-        if (p.r < _scan.bendR && d < _scan.dBend + 55) _scan.bendR = p.r;
       }
       if (p.r < 28 && d < _scan.dTight) {
         _scan.dTight = d;
@@ -4162,7 +4161,7 @@
     v = r * yaw;
     if (v < 13) v = 13;
     if (v > MAX_SPEED * 0.96) v = MAX_SPEED * 0.96;
-    return v * 0.84 * mul;
+    return v * 0.9 * mul;
   }
 
   function eachRival(self, fn) {
@@ -4344,20 +4343,26 @@
     if (hotHair) hpApex = 18.8;
     if (p.hunter) {
       var bendV = p.the90;
-      if (scan.bendR < 200) bendV = apexFromRadius(scan.bendR, p.tight);
+      var bendMul = p.tight;
+      if (scan.dHair <= scan.dBend + 10 && scan.dHair < 900) bendMul *= 0.86;
+      if (scan.bendR < 200) bendV = apexFromRadius(scan.bendR, bendMul);
       if (scan.dHair < 24 && scan.bendR < 20) bendV = Math.min(bendV, hpApex);
       if (scan.dChi < 900 && scan.dChi <= scan.dBend + 10) bendV = Math.min(bendV, p.chicane);
       if (scan.dKink < 900 && scan.dKink <= scan.dBend + 8) bendV = Math.min(bendV, 24);
       if (scan.dBend < 900) {
         want = Math.min(want, approachWant(want, scan.dBend, brakeWindow(want, bendV, bMul), bendV, pow));
       }
-      var hairV = scan.bendR < 20 ? hpApex : apexFromRadius(Math.max(scan.bendR, 40), p.tight);
+      var hairV = scan.bendR < 20 ? hpApex : apexFromRadius(Math.max(scan.bendR, 40), p.tight * 0.86);
       want = Math.min(want, approachWant(want, scan.dHair, brakeWindow(want, hairV, bMul), hairV, pow));
       if (scan.tightR < 28) {
         var cap = apexFromRadius(scan.tightR, p.tight);
         if (scan.dHair < 80 && scan.tightR < 20) cap = Math.min(cap, hpApex);
         if (cap < 12) cap = 12;
-        want = Math.min(want, approachWant(want, scan.dTight, brakeWindow(want, cap, bMul), cap, pow));
+        var tWin = brakeWindow(want, cap, bMul);
+        // Decreasing 90: the 13m apex sits after a 40m entry. Don't crawl
+        // the straight for it — slow once the first radius is in the window.
+        if (scan.dBend + 12 < scan.dTight && scan.bendR > scan.tightR + 8) tWin *= 0.5;
+        want = Math.min(want, approachWant(want, scan.dTight, tWin, cap, pow));
       }
       want = Math.min(want, approachWant(want, scan.dChi, brakeWindow(want, p.chicane, bMul), p.chicane, pow));
       var sweepV = apexFromRadius(scan.bendR < 200 ? Math.max(scan.bendR, 80) : 130, 0.9);

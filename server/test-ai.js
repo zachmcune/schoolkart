@@ -512,9 +512,9 @@ assert(blockB.speed > 28, "block still rolls, not a park");
 
 console.log("OK bot AI Campus Loop", sim.TRACK_LEN.toFixed(1));
 
-assert(sim.apexFromRadius(12, 0.92) < 20, "Campus decreasing 90 stays a real slow corner");
-assert(sim.apexFromRadius(44, 0.92) > 26, "custom map 90 (r=44) is not crawled like a 12m Campus 90");
-assert(sim.apexFromRadius(132, 0.9) > 30, "custom sweeper is a sweeper, not a 90");
+assert(sim.apexFromRadius(12, 0.92) < 22, "Campus decreasing 90 stays a real slow corner");
+assert(sim.apexFromRadius(44, 0.92) > 28, "custom map 90 (r=44) is not crawled like a 12m Campus 90");
+assert(sim.apexFromRadius(132, 0.9) > 32, "custom sweeper is a sweeper, not a 90");
 
 function buildRectLoop(dir, r, name) {
   sim.resetPathCursor();
