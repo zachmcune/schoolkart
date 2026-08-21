@@ -2384,15 +2384,12 @@
   var _tileArt = {};
 
   function tileIconPts(type, rot, w, h) {
-    // Cheap in-square silhouettes. World ribbon + ctx.arc drew the
-    // long way around and clipped 90/sweeper/hairpin to a blank grey square.
-    var m = Math.min(w, h);
-    var pad = m * 0.2;
-    var x0 = pad;
-    var y0 = pad;
-    var x1 = w - pad;
-    var y1 = h - pad;
+    // Tile-local centerlines that hit the same mid-edge ports the 3D
+    // pieces use. Inset cartoons left a dirt gap at every join.
+    // Keep this in chip space — world pieceSegs + ctx.arc drew the
+    // long way around and clipped 90/sweeper/hairpin to a blank square.
     var r0 = (rot || 0) & 3;
+    var cell = Math.min(w, h);
     var pts = [];
     function add(x, y) {
       pts.push({ x: x, y: y });
@@ -2403,16 +2400,6 @@
       for (i = 0; i <= steps; i++) {
         var a = a0 + (a1 - a0) * (i / steps);
         add(cx + Math.cos(a) * r, cy + Math.sin(a) * r);
-      }
-    }
-    function bez(ax, ay, c1x, c1y, c2x, c2y, bx, by) {
-      var t;
-      for (t = 0; t <= 1.001; t += 0.08) {
-        var u = 1 - t;
-        add(
-          u * u * u * ax + 3 * u * u * t * c1x + 3 * u * t * t * c2x + t * t * t * bx,
-          u * u * u * ay + 3 * u * u * t * c1y + 3 * u * t * t * c2y + t * t * t * by
-        );
       }
     }
     function spin() {
@@ -2432,59 +2419,69 @@
       return out;
     }
     if (type === "r") {
-      arcPoly(x1, y1, m - pad * 2, Math.PI, Math.PI * 1.5);
+      arcPoly(w, h, cell * 0.5, -Math.PI * 0.5, -Math.PI);
       return spin();
     }
     if (type === "w") {
-      var t;
-      var ax = x0;
-      var ay = y1 - (y1 - y0) * 0.18;
-      var cx = x0 + m * 0.1;
-      var cy = y0 + m * 0.1;
-      var bx = x1 - (x1 - x0) * 0.18;
-      var by = y0;
-      for (t = 0; t <= 1.001; t += 1 / 18) {
-        var u = 1 - t;
-        add(u * u * ax + 2 * u * t * cx + t * t * bx, u * u * ay + 2 * u * t * cy + t * t * by);
-      }
+      arcPoly(w, h, cell * 0.75, -Math.PI * 0.5, -Math.PI);
       return spin();
     }
     if (type === "H") {
-      var uR = Math.min(Math.max(w, h) * 0.48 - pad * 0.15, m * 0.58);
-      if (uR < m * 0.3) uR = m * 0.3;
-      if (r0 === 0) arcPoly(w * 0.5, y1, uR, Math.PI, Math.PI * 2);
-      else if (r0 === 1) arcPoly(x0, h * 0.5, uR, -Math.PI * 0.5, Math.PI * 0.5);
-      else if (r0 === 2) arcPoly(w * 0.5, y0, uR, Math.PI, 0);
-      else arcPoly(x1, h * 0.5, uR, Math.PI * 0.5, Math.PI * 1.5);
+      if (r0 === 0) arcPoly(w * 0.5, h, w * 0.25, Math.PI, Math.PI * 2);
+      else if (r0 === 1) arcPoly(0, h * 0.5, h * 0.25, -Math.PI * 0.5, Math.PI * 0.5);
+      else if (r0 === 2) arcPoly(w * 0.5, 0, w * 0.25, Math.PI, 0);
+      else arcPoly(w, h * 0.5, h * 0.25, Math.PI * 0.5, Math.PI * 1.5);
       return pts;
     }
     if (type === "C") {
-      bez(x0, h * 0.5, x0, y0, w * 0.62, y0, w * 0.5, h * 0.5);
-      bez(w * 0.5, h * 0.5, w * 0.38, y1, x1, y1, x1, h * 0.5);
+      var amp = cell * 0.16;
+      var n = 32;
+      var i;
+      for (i = 0; i <= n; i++) {
+        var t = i / n;
+        var env = Math.sin(t * Math.PI);
+        env *= env;
+        add(w * t, h * 0.5 - Math.sin(t * Math.PI * 2) * env * amp);
+      }
       return spin();
     }
-    if (w >= h) {
-      add(x0, h * 0.5);
-      add(x1, h * 0.5);
-    } else {
-      add(w * 0.5, y0);
-      add(w * 0.5, y1);
+    if (type === "S") {
+      if (r0 & 1) {
+        add(w * 0.5, 0);
+        add(w * 0.5, h);
+      } else {
+        add(0, h * 0.5);
+        add(w, h * 0.5);
+      }
+      return pts;
     }
+    add(0, h * 0.5);
+    add(w, h * 0.5);
     return spin();
   }
 
-  function tileIconSvg(type, rot, w, h) {
-    // Inline SVG in the tile. Canvas data-URLs stayed blank grey on
-    // live Chromebooks (only the yellow arrow showed).
-    var m = Math.min(w, h);
-    var ribbon = type === "C" ? m * 0.22 : m * 0.2;
+  function tileIconSvg(type, rot, w, h, onBoard) {
+    // Filled road in the tile. A stroked centerline looked like the
+    // old inset cartoon. Canvas data-URLs stayed blank on Chromebooks.
+    var r0 = (rot || 0) & 3;
+    var cols = 1;
+    var rows = 1;
+    if (type === "w") {
+      cols = 2;
+      rows = 2;
+    } else if (type === "S" || type === "H") {
+      if (r0 & 1) rows = 2;
+      else cols = 2;
+    }
+    var cell = Math.min(w / cols, h / rows);
+    var hw = cell * 0.18;
     var svg =
       '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' +
       w +
       " " +
       h +
       '" width="100%" height="100%" preserveAspectRatio="none">';
-    svg += '<rect width="' + w + '" height="' + h + '" fill="#6a655c"/>';
+    if (!onBoard) svg += '<rect width="' + w + '" height="' + h + '" fill="#6a655c"/>';
     if (type === "t") {
       svg +=
         '<circle cx="' +
@@ -2492,7 +2489,7 @@
         '" cy="' +
         h * 0.72 +
         '" r="' +
-        m * 0.16 +
+        cell * 0.16 +
         '" fill="#5a4030"/>';
       svg +=
         '<rect x="' +
@@ -2500,9 +2497,9 @@
         '" y="' +
         h * 0.5 +
         '" width="' +
-        m * 0.1 +
+        cell * 0.1 +
         '" height="' +
-        m * 0.24 +
+        cell * 0.24 +
         '" fill="#6a4020"/>';
       svg +=
         '<circle cx="' +
@@ -2510,7 +2507,7 @@
         '" cy="' +
         h * 0.4 +
         '" r="' +
-        m * 0.2 +
+        cell * 0.2 +
         '" fill="#3f8a32"/>';
       svg +=
         '<circle cx="' +
@@ -2518,7 +2515,7 @@
         '" cy="' +
         h * 0.36 +
         '" r="' +
-        m * 0.14 +
+        cell * 0.14 +
         '" fill="#4ea03c"/>';
       svg +=
         '<circle cx="' +
@@ -2526,94 +2523,222 @@
         '" cy="' +
         h * 0.34 +
         '" r="' +
-        m * 0.13 +
+        cell * 0.13 +
         '" fill="#4ea03c"/>';
       svg += "</svg>";
       return svg;
     }
     var pts = tileIconPts(type, rot, w, h);
-    var d = "";
-    var i;
-    if (pts.length) {
-      d = "M" + pts[0].x.toFixed(2) + "," + pts[0].y.toFixed(2);
-      for (i = 1; i < pts.length; i++) d += "L" + pts[i].x.toFixed(2) + "," + pts[i].y.toFixed(2);
+    var draw = pts.slice();
+    if (draw.length > 1) {
+      var pad = onBoard ? 3 : 0.5;
+      var ax = draw[0].x - draw[1].x;
+      var ay = draw[0].y - draw[1].y;
+      var al = Math.hypot(ax, ay) || 1;
+      draw[0] = { x: draw[0].x + (ax / al) * pad, y: draw[0].y + (ay / al) * pad };
+      var n1 = draw.length - 1;
+      var bx = draw[n1].x - draw[n1 - 1].x;
+      var by = draw[n1].y - draw[n1 - 1].y;
+      var bl = Math.hypot(bx, by) || 1;
+      draw[n1] = { x: draw[n1].x + (bx / bl) * pad, y: draw[n1].y + (by / bl) * pad };
     }
-    function path(color, width, dash) {
-      return (
+    function along(t) {
+      if (pts.length < 2) return { x: pts[0] ? pts[0].x : 0, y: pts[0] ? pts[0].y : 0, ang: 0 };
+      var total = 0;
+      var k;
+      for (k = 1; k < pts.length; k++) {
+        total += Math.hypot(pts[k].x - pts[k - 1].x, pts[k].y - pts[k - 1].y);
+      }
+      var want = total * (t < 0 ? 0 : t > 1 ? 1 : t);
+      var acc = 0;
+      for (k = 1; k < pts.length; k++) {
+        var dx = pts[k].x - pts[k - 1].x;
+        var dy = pts[k].y - pts[k - 1].y;
+        var seg = Math.hypot(dx, dy);
+        if (acc + seg >= want || k === pts.length - 1) {
+          var u = seg ? (want - acc) / seg : 0;
+          if (u < 0) u = 0;
+          if (u > 1) u = 1;
+          return { x: pts[k - 1].x + dx * u, y: pts[k - 1].y + dy * u, ang: Math.atan2(dy, dx) };
+        }
+        acc += seg;
+      }
+      return { x: pts[pts.length - 1].x, y: pts[pts.length - 1].y, ang: 0 };
+    }
+    function sideNorms(line) {
+      var nrm = [];
+      var i;
+      for (i = 0; i < line.length; i++) {
+        var dx;
+        var dy;
+        if (i === 0) {
+          dx = line[1].x - line[0].x;
+          dy = line[1].y - line[0].y;
+        } else if (i === line.length - 1) {
+          dx = line[i].x - line[i - 1].x;
+          dy = line[i].y - line[i - 1].y;
+        } else {
+          var axn = line[i].x - line[i - 1].x;
+          var ayn = line[i].y - line[i - 1].y;
+          var bxn = line[i + 1].x - line[i].x;
+          var byn = line[i + 1].y - line[i].y;
+          var la = Math.hypot(axn, ayn) || 1;
+          var lb = Math.hypot(bxn, byn) || 1;
+          dx = axn / la + bxn / lb;
+          dy = ayn / la + byn / lb;
+        }
+        var L = Math.hypot(dx, dy) || 1;
+        nrm.push({ x: -dy / L, y: dx / L });
+      }
+      return nrm;
+    }
+    function shift(line, amt) {
+      var nrm = sideNorms(line);
+      var out = [];
+      var i;
+      for (i = 0; i < line.length; i++) {
+        out.push({ x: line[i].x + nrm[i].x * amt, y: line[i].y + nrm[i].y * amt });
+      }
+      return out;
+    }
+    function poly(ring, fill) {
+      if (!ring.length) return "";
+      var d = "M" + ring[0].x.toFixed(2) + "," + ring[0].y.toFixed(2);
+      var i;
+      for (i = 1; i < ring.length; i++) d += "L" + ring[i].x.toFixed(2) + "," + ring[i].y.toFixed(2);
+      return '<path d="' + d + 'Z" fill="' + fill + '" stroke="none"/>';
+    }
+    function band(a, b) {
+      return a.concat(b.slice().reverse());
+    }
+    function bricks(inner, outer, step) {
+      if (inner.length < 2 || outer.length < 2) return "";
+      var acc = 0;
+      var flip = 0;
+      var out = "";
+      var i;
+      for (i = 1; i < inner.length && i < outer.length; i++) {
+        var seg = Math.hypot(inner[i].x - inner[i - 1].x, inner[i].y - inner[i - 1].y);
+        acc += seg;
+        if (acc < step && i < inner.length - 1) continue;
+        out += poly(
+          [inner[i - 1], inner[i], outer[i], outer[i - 1]],
+          flip ? "#fff6ee" : "#ff2038"
+        );
+        flip = 1 - flip;
+        acc = 0;
+      }
+      return out;
+    }
+    if (draw.length > 1) {
+      var runI = shift(draw, hw * 1.55);
+      var runO = shift(draw, -hw * 1.55);
+      var kerbI = shift(draw, hw * 1.18);
+      var kerbO = shift(draw, -hw * 1.18);
+      var roadI = shift(draw, hw);
+      var roadO = shift(draw, -hw);
+      svg += poly(band(runI, runO), "#8d97a6");
+      svg += poly(band(kerbI, kerbO), "#ff2038");
+      svg += bricks(roadI, kerbI, cell * 0.16);
+      svg += bricks(kerbO, roadO, cell * 0.16);
+      svg += poly(band(roadI, roadO), "#3a3e46");
+      var mid = "";
+      var mi;
+      for (mi = 0; mi < draw.length; mi++) {
+        mid += (mi ? "L" : "M") + draw[mi].x.toFixed(2) + "," + draw[mi].y.toFixed(2);
+      }
+      svg +=
         '<path d="' +
-        d +
-        '" fill="none" stroke="' +
-        color +
-        '" stroke-width="' +
-        width +
-        '" stroke-linecap="round" stroke-linejoin="round"' +
-        (dash ? ' stroke-dasharray="' + dash + '"' : "") +
-        "/>"
-      );
+        mid +
+        '" fill="none" stroke="#d7dbe2" stroke-width="' +
+        (cell * 0.025).toFixed(2) +
+        '" stroke-linecap="butt"/>';
     }
-    svg += path("#8d97a6", ribbon * 1.55);
-    svg += path("#ff2038", ribbon * 1.2);
-    svg += path("#fff6ee", ribbon * 1.2, m * 0.07 + " " + m * 0.07);
-    svg += path("#3a3e46", ribbon);
     if (pts.length > 1) {
-      var a = pts[pts.length - 2];
-      var b = pts[pts.length - 1];
-      var ang = Math.atan2(b.y - a.y, b.x - a.x);
-      var aw = m * 0.05;
-      var x1 = b.x + Math.cos(ang) * m * 0.02;
-      var y1 = b.y + Math.sin(ang) * m * 0.02;
-      var lx = Math.cos(ang + 2.4) * aw;
-      var ly = Math.sin(ang + 2.4) * aw;
-      var rx = Math.cos(ang - 2.4) * aw;
-      var ry = Math.sin(ang - 2.4) * aw;
+      var mark = along(0.62);
+      var aw = cell * 0.08;
+      var tip = cell * 0.11;
+      var x1 = mark.x + Math.cos(mark.ang) * tip;
+      var y1 = mark.y + Math.sin(mark.ang) * tip;
+      var lx = Math.cos(mark.ang + 2.45) * aw;
+      var ly = Math.sin(mark.ang + 2.45) * aw;
+      var rx = Math.cos(mark.ang - 2.45) * aw;
+      var ry = Math.sin(mark.ang - 2.45) * aw;
       svg +=
         '<polygon points="' +
         x1.toFixed(1) +
         "," +
         y1.toFixed(1) +
         " " +
-        (b.x + lx).toFixed(1) +
+        (mark.x + lx).toFixed(1) +
         "," +
-        (b.y + ly).toFixed(1) +
+        (mark.y + ly).toFixed(1) +
         " " +
-        (b.x + rx).toFixed(1) +
+        (mark.x + rx).toFixed(1) +
         "," +
-        (b.y + ry).toFixed(1) +
+        (mark.y + ry).toFixed(1) +
         '" fill="#ffe566"/>';
     }
-    if (type === "P") {
+    if (type === "P" && pts.length > 1) {
+      var pit = along(0.5);
+      var px = Math.cos(pit.ang);
+      var py = Math.sin(pit.ang);
+      var nx = -py;
+      var ny = px;
+      var pw = cell * 0.42;
+      var ph = cell * 0.2;
+      var cx = pit.x + nx * (hw + ph * 0.9);
+      var cy = pit.y + ny * (hw + ph * 0.9);
+      var hx = px * pw * 0.5;
+      var hy = py * pw * 0.5;
+      var vx = nx * ph * 0.5;
+      var vy = ny * ph * 0.5;
       svg +=
-        '<rect x="' +
-        w * 0.22 +
-        '" y="' +
-        h * 0.08 +
-        '" width="' +
-        w * 0.56 +
-        '" height="' +
-        h * 0.16 +
+        '<polygon points="' +
+        (cx - hx - vx).toFixed(1) +
+        "," +
+        (cy - hy - vy).toFixed(1) +
+        " " +
+        (cx + hx - vx).toFixed(1) +
+        "," +
+        (cy + hy - vy).toFixed(1) +
+        " " +
+        (cx + hx + vx).toFixed(1) +
+        "," +
+        (cy + hy + vy).toFixed(1) +
+        " " +
+        (cx - hx + vx).toFixed(1) +
+        "," +
+        (cy - hy + vy).toFixed(1) +
         '" fill="#2ec8c3"/>';
     }
-    if (type === "F") {
-      svg +=
-        '<rect x="' +
-        w * 0.42 +
-        '" y="' +
-        h * 0.22 +
-        '" width="' +
-        w * 0.05 +
-        '" height="' +
-        h * 0.56 +
-        '" fill="#fff6ee"/>';
-      svg +=
-        '<rect x="' +
-        w * 0.54 +
-        '" y="' +
-        h * 0.22 +
-        '" width="' +
-        w * 0.05 +
-        '" height="' +
-        h * 0.56 +
-        '" fill="#fff6ee"/>';
+    if (type === "F" && pts.length > 1) {
+      var fin = along(0.5);
+      var fx = Math.cos(fin.ang);
+      var fy = Math.sin(fin.ang);
+      var gx = -fy;
+      var gy = fx;
+      var half = hw * 0.92;
+      var gap = cell * 0.045;
+      function stripe(off) {
+        var sx = fin.x + fx * off;
+        var sy = fin.y + fy * off;
+        return (
+          '<line x1="' +
+          (sx - gx * half).toFixed(1) +
+          '" y1="' +
+          (sy - gy * half).toFixed(1) +
+          '" x2="' +
+          (sx + gx * half).toFixed(1) +
+          '" y2="' +
+          (sy + gy * half).toFixed(1) +
+          '" stroke="#fff6ee" stroke-width="' +
+          (cell * 0.055).toFixed(1) +
+          '" stroke-linecap="butt"/>'
+        );
+      }
+      svg += stripe(-gap);
+      svg += stripe(gap);
     }
     svg += "</svg>";
     return svg;
@@ -2653,7 +2778,12 @@
         var pt = pal[pi].getAttribute("data-tile");
         pal[pi].classList.toggle("picked", pt === tilePick);
         pal[pi].style.backgroundImage = "";
-        pal[pi].innerHTML = tileIconSvg(pt, 0, pt === "H" || pt === "S" ? 112 : 72, 72);
+        pal[pi].innerHTML = tileIconSvg(
+          pt,
+          0,
+          pt === "H" || pt === "S" || pt === "w" ? 144 : 72,
+          pt === "w" ? 144 : 72
+        );
         pal[pi].setAttribute("aria-label", TILE_LABEL[pt] || pt);
       }
     }
@@ -2704,7 +2834,7 @@
             " / span " +
             (maxy - miny + 1) +
             '">' +
-            tileIconSvg(p.t, p.r, 80 * (maxx - minx + 1), 80 * (maxy - miny + 1));
+            tileIconSvg(p.t, p.r, 80 * (maxx - minx + 1), 80 * (maxy - miny + 1), true);
           if (sel) {
             html += '<button type="button" class="tile-rot-handle" tabindex="-1" data-rot-handle="1" aria-label="Rotate 90 degrees">↻</button>';
           }
