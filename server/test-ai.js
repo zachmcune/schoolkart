@@ -121,6 +121,7 @@ var code = [
   sliceFn("joinColinearWall"),
   sliceFn("mergeColinearWalls"),
   sliceFn("placeWalls"),
+  sliceFn("onRaceRibbon"),
   sliceFn("inPitLane"),
   sliceFn("inPitGrab"),
   sliceFn("isDriveableLoop"),
