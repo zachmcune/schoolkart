@@ -6,7 +6,7 @@
   <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <!-- sk-build mp89: editor tiles meet at mid-edge ports so the board reads as one ribbon -->
+  <!-- sk-build mp90: editor tiles meet at mid-edge ports so the board reads as one ribbon -->
   <meta name="theme-color" content="#1a120e" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -16,7 +16,7 @@
   <link rel="manifest" href="manifest.json" />
   <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png" />
   <link rel="apple-touch-icon" href="apple-touch-icon.png" />
-  <link rel="stylesheet" href="css/style.css?v=mp89" />
+  <link rel="stylesheet" href="css/style.css?v=mp90" />
 </head>
 <body>
   <div id="game">
@@ -92,7 +92,7 @@
       <ul class="tips">
         <li><strong>W</strong> gas · <strong>Space</strong> brake · <strong>S</strong> reverse · A/D steer. Wind the straights. Late into the hairpin = dump. Lift in the chicane. Fresh tires to carry the sweeper.</li>
         <li><strong>Fuel is the clock.</strong> Ticks even if you coast. One box in 5 laps — skip it and limp home.</li>
-        <li><strong>Peel LEFT</strong> off the straight into a side pit lane (bypass). Halfway <em>in that lane</em> the crew grabs you, services, then you drive out and merge back.</li>
+        <li><strong>Peel LEFT</strong> off the straight — follow the curve into the side pit lane. Halfway <em>in that lane</em> the crew grabs you, services, then you drive the curve back out and merge.</li>
         <li><strong>Lights start:</strong> locked until GO. <strong>Hold W</strong> climbs the needle through the green — lift to catch it. Below or past the mark = SLUGGISH getaway on asphalt (~1.5s), not a spin onto grass. After GO: SLUGGISH / GOOD / GREAT.</li>
       </ul>
       <div class="lobby-row">
@@ -221,7 +221,7 @@
   </div>
 
   <script>
-    window.SK_BUILD = "mp89";
+    window.SK_BUILD = "mp90";
     try {
       if (window.caches) {
         caches.keys().then(function (keys) {
@@ -232,7 +232,7 @@
       }
     } catch (e) {}
     if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.register("sw.js?v=mp89").catch(function () {});
+      navigator.serviceWorker.register("sw.js?v=mp90").catch(function () {});
     }
   </script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.160.1/build/three.min.js"></script>
@@ -241,8 +241,8 @@
       document.write('<script src="https://unpkg.com/three@0.160.1/build/three.min.js"><\/script>');
     }
   </script>
-  <script src="js/config.js?v=mp89"></script>
-  <script src="js/net.js?v=mp89"></script>
-  <script src="js/game.js?v=mp89"></script>
+  <script src="js/config.js?v=mp90"></script>
+  <script src="js/net.js?v=mp90"></script>
+  <script src="js/game.js?v=mp90"></script>
 </body>
 </html>

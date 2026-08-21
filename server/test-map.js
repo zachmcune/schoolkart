@@ -64,6 +64,8 @@ var code = [
   "var PIT_LANE = { x0: 28, x1: 136, z0: -61.5, z1: -52.5 };",
   "var PIT_GRAB = { x0: 64, x1: 98, z0: -61.0, z1: -53.2 };",
   "var PIT_PAVE = [];",
+  "var PIT_PATH = [];",
+  "var PIT_HALF = 4.5;",
   "var PIT_META = { ax: 28, az: -57, bx: 136, bz: -57, on: true };",
   "var PATH = [];",
   "var TRACK_LEN = 0;",
@@ -90,6 +92,17 @@ var code = [
   sliceFn("canonType"),
   sliceFn("clamp"),
   sliceFn("inRect"),
+  sliceFn("pitSegLine"),
+  sliceFn("pitSegArc"),
+  sliceFn("pitLine"),
+  sliceFn("pitArc"),
+  sliceFn("pitSBend"),
+  sliceFn("onPitPath"),
+  sliceFn("pointOnPitPath"),
+  sliceFn("pitPathAhead"),
+  sliceFn("buildCampusPitPath"),
+  sliceFn("buildCustomPitPath"),
+  sliceFn("rebuildPitPath"),
   sliceFn("onPitPavement"),
   sliceFn("closestOnSeg"),
   sliceFn("carCorners"),
@@ -209,6 +222,7 @@ var code = [
   "  get WALLS() { return WALLS; },",
   "  get PIT_META() { return PIT_META; },",
   "  get PIT_PAVE() { return PIT_PAVE; },",
+  "  get PIT_PATH() { return PIT_PATH; },",
   "  get PIT_LANE() { return PIT_LANE; },",
   "  get PIT_GRAB() { return PIT_GRAB; },",
   "  get RIBBON_SEGS() { return RIBBON_SEGS; },",
@@ -578,6 +592,14 @@ assert(sim.PIT_META.on, "pit piece enables peel");
 var pitX = sim.PIT_META.ax + (sim.PIT_META.bx - sim.PIT_META.ax) * 0.65;
 var pitZ = sim.PIT_META.az + (sim.PIT_META.bz - sim.PIT_META.az) * 0.65;
 assert(sim.inPitGrab({ x: pitX, z: pitZ }), "pit grab works when the piece is present");
+var earlyIn = 0;
+var earlyOut = 0;
+var pe;
+for (pe = 0; pe < sim.PIT_PATH.length; pe++) {
+  if (sim.PIT_PATH[pe].name === "pitin" && sim.PIT_PATH[pe].type === "arc") earlyIn += 1;
+  if (sim.PIT_PATH[pe].name === "pitout" && sim.PIT_PATH[pe].type === "arc") earlyOut += 1;
+}
+assert(earlyIn >= 2 && earlyOut >= 2, "P piece has a track curving in and out");
 
 var trees = [];
 var tx;
@@ -837,6 +859,9 @@ assert(src.indexOf("z0: -74.0") === -1, "campus pit pave is not painted on the r
 assert(src.indexOf("z0: -71.6") === -1, "campus pit pave does not clip the asphalt edge");
 assert(src.indexOf("z0: -69.0") === -1, "campus pit is not a same-color strip beside the ribbon");
 assert(src.indexOf("function paintCampusPitLane") !== -1, "campus paints a visible left pit lane");
+assert(src.indexOf("function paintPitRibbon") !== -1, "pit path paints as a real asphalt ribbon");
+assert(src.indexOf("function buildCampusPitPath") !== -1 && src.indexOf("pitSBend") !== -1, "pit entry and exit are S-bends, not a slab");
+assert(src.indexOf("Actual track curves IN") !== -1, "pit has a track curving in and out");
 assert(src.indexOf("FORK. TWO ROADS.") !== -1, "pit is a fork of two roads, not a slide");
 assert(src.indexOf("0x5db844") !== -1, "grass median sits between ribbon and pit lane");
 assert(src.indexOf('pathLine(680, "start")') !== -1, "start road is long enough for W-only stay-right past 10s");
@@ -2024,6 +2049,22 @@ function provePitPaintOffRibbon() {
   assert(sim.onPitPavement(81, -57) && sim.inPitGrab({ x: 81, z: -57 }), "halfway into the visible left lane still grabs");
   assert(!sim.onPitPavement(74, -66.5), "grass median between ribbon and pit is not pit paint");
   assert(sim.PIT_LANE.z0 >= -61.51, "second asphalt road sits left of the median, z0=" + sim.PIT_LANE.z0);
+  var path = sim.PIT_PATH;
+  assert(path && path.length >= 5, "campus pit is a path, not a lone box, segs=" + (path ? path.length : 0));
+  var inArc = 0;
+  var outArc = 0;
+  var lane = 0;
+  for (i = 0; i < path.length; i++) {
+    if (path[i].name === "pitin" && path[i].type === "arc") inArc += 1;
+    if (path[i].name === "pitout" && path[i].type === "arc") outArc += 1;
+    if (path[i].name === "pitlane") lane += 1;
+  }
+  assert(inArc >= 2, "pit entry is an S-curve, arcs=" + inArc);
+  assert(outArc >= 2, "pit exit is an S-curve, arcs=" + outArc);
+  assert(lane >= 1, "pit lane still has a straight");
+  assert(sim.onPitPavement(23, -63), "entry curve is driveable asphalt");
+  assert(sim.onPitPavement(143, -63), "exit curve is driveable asphalt");
+  assert(!sim.inPitGrab({ x: 23, z: -63 }) && !sim.inPitGrab({ x: 143, z: -63 }), "in/out curves are not the grab box");
   sim.placeWalls();
   var sep = 0;
   var inLane = 0;
@@ -2537,6 +2578,15 @@ var pitMid = {
 };
 assert(sim.inPitGrab({ x: pitMid.x, z: pitMid.z }), "halfway in the P lane grabs");
 assert(!sim.inPitGrab({ x: 0, z: -80 }), "Campus S/F is not a ghost pit on a custom board");
+var customPit = sim.PIT_PATH || [];
+var customIn = 0;
+var customOut = 0;
+var ci;
+for (ci = 0; ci < customPit.length; ci++) {
+  if (customPit[ci].name === "pitin" && customPit[ci].type === "arc") customIn += 1;
+  if (customPit[ci].name === "pitout" && customPit[ci].type === "arc") customOut += 1;
+}
+assert(customIn >= 2 && customOut >= 2, "custom P piece curves into the box and back out, in=" + customIn + " out=" + customOut);
 
 sim.lockRacePath("");
 sim.placeWalls();

@@ -4,7 +4,8 @@
 
    Controls: W gas, Space brake, S reverse, A/D steer.
    Phones (landscape): right half = gas, left half = brake, tilt = steer.
-   Pit: FORK LEFT onto a second asphalt road. Halfway in, the car is grabbed
+   Pit: FORK LEFT onto a second asphalt road. A real track curves IN,
+   runs the box, then curves OUT. Halfway in, the car is grabbed
    and serviced ~2.5s, then released to drive out. One service per visit.
    Start: PRE-START blue flash, five reds at 1s, hold 0.2–3s all ON,
    lights out = GO. Fuel starts then. Car is locked to the grid until GO.
@@ -110,11 +111,14 @@
   // Stay on the ribbon = miss. Peel LEFT onto the second road = grab halfway.
   // Do not cut a hole in the racing line to fake the second road.
   // mp79/80/82/83: flags, strips, then a 90-void. Drive beat paper.
+  // Actual track curves IN (S-bend) then OUT (S-bend). Not a diagonal slab.
   var PIT_ENTRY = { x0: 8, x1: 28, z0: -70.0, z1: -61.0 };
   var PIT_EXIT = { x0: 128, x1: 160, z0: -68.0, z1: -58.0 };
   var PIT_LANE = { x0: 28, x1: 136, z0: -61.5, z1: -52.5 };
   var PIT_GRAB = { x0: 64, x1: 98, z0: -61.0, z1: -53.2 };
   var PIT_PAVE = [PIT_ENTRY, PIT_LANE, PIT_GRAB, PIT_EXIT];
+  var PIT_PATH = [];
+  var PIT_HALF = 4.5;
 
   var keys = Object.create(null);
   var drive = { up: false, down: false, left: false, right: false, space: false };
@@ -321,10 +325,21 @@
   }
 
   function onPitPavement(x, z) {
-    for (var i = 0; i < PIT_PAVE.length; i++) {
+    var i;
+    for (i = 0; i < PIT_PAVE.length; i++) {
       if (inRect(x, z, PIT_PAVE[i])) return true;
     }
-    return false;
+    if (!PIT_PATH.length || !onPitPath(x, z)) return false;
+    // The curve meets the left edge of the ribbon. The ribbon itself
+    // is never pit paint — stay-right / racing-line samples stay clean.
+    // Do not call onRaceRibbon here: that re-enters projectTrack.
+    if (!isDriveableLoop() && z <= SF_Z + ASPHALT) return false;
+    var segs = PATH.length ? PATH : MAP_SURF;
+    if (segs && segs.length) {
+      var race = projectOn(x, z, segs);
+      if (race && race.hit && Math.sqrt(race.hit.d2) <= ASPHALT) return false;
+    }
+    return true;
   }
 
   function formatTime(t) {
@@ -538,6 +553,168 @@
 
   var PIT_META = { ax: 28, az: -57, bx: 136, bz: -57, on: true };
 
+  function pitSegLine(ax, az, bx, bz, name) {
+    var startS = 0;
+    if (PIT_PATH.length) {
+      var prev = PIT_PATH[PIT_PATH.length - 1];
+      startS = (prev.startS || 0) + (prev.len || 0);
+    }
+    PIT_PATH.push({
+      type: "line",
+      ax: ax,
+      az: az,
+      bx: bx,
+      bz: bz,
+      len: Math.hypot(bx - ax, bz - az),
+      startS: startS,
+      name: name,
+    });
+  }
+
+  function pitSegArc(cx, cz, r, a0, a1, name) {
+    var startS = 0;
+    if (PIT_PATH.length) {
+      var prev = PIT_PATH[PIT_PATH.length - 1];
+      startS = (prev.startS || 0) + (prev.len || 0);
+    }
+    PIT_PATH.push({
+      type: "arc",
+      cx: cx,
+      cz: cz,
+      r: r,
+      a0: a0,
+      a1: a1,
+      len: Math.abs(a1 - a0) * r,
+      startS: startS,
+      name: name,
+    });
+  }
+
+  function pitLine(st, dist, name) {
+    var nx = st.x + Math.cos(st.h) * dist;
+    var nz = st.z + Math.sin(st.h) * dist;
+    pitSegLine(st.x, st.z, nx, nz, name);
+    st.x = nx;
+    st.z = nz;
+  }
+
+  function pitArc(st, r, deg, name) {
+    var rad = (deg * Math.PI) / 180;
+    var side = deg > 0 ? 1 : -1;
+    var cx = st.x + Math.cos(st.h + side * Math.PI * 0.5) * r;
+    var cz = st.z + Math.sin(st.h + side * Math.PI * 0.5) * r;
+    var a0 = Math.atan2(st.z - cz, st.x - cx);
+    var a1 = a0 + rad;
+    pitSegArc(cx, cz, r, a0, a1, name);
+    st.h += rad;
+    st.x = cx + Math.cos(a1) * r;
+    st.z = cz + Math.sin(a1) * r;
+  }
+
+  function pitSBend(st, leftOff, name) {
+    // Two equal arcs: shift `leftOff` to the left and restore heading.
+    var sign = leftOff >= 0 ? 1 : -1;
+    var off = Math.abs(leftOff);
+    if (off < 0.4) return;
+    var deg = 42;
+    var rad = (deg * Math.PI) / 180;
+    var r = off / (2 * (1 - Math.cos(rad)));
+    if (r < 10) {
+      deg = 55;
+      rad = (deg * Math.PI) / 180;
+      r = off / (2 * (1 - Math.cos(rad)));
+    }
+    pitArc(st, r, sign * deg, name);
+    pitArc(st, r, -sign * deg, name);
+  }
+
+  function onPitPath(x, z) {
+    if (!PIT_PATH.length) return false;
+    var i;
+    for (i = 0; i < PIT_PATH.length; i++) {
+      var seg = PIT_PATH[i];
+      var hit =
+        seg.type === "line"
+          ? closestOnSeg(x, z, seg.ax, seg.az, seg.bx, seg.bz)
+          : closestOnArc(x, z, seg.cx, seg.cz, seg.r, seg.a0, seg.a1);
+      if (hit && Math.sqrt(hit.d2) <= PIT_HALF) return true;
+    }
+    return false;
+  }
+
+  function pointOnPitPath(s) {
+    if (!PIT_PATH.length) return null;
+    var i;
+    for (i = 0; i < PIT_PATH.length; i++) {
+      var seg = PIT_PATH[i];
+      var len = seg.len || 0;
+      if (s <= (seg.startS || 0) + len || i === PIT_PATH.length - 1) {
+        return pointOnSeg(seg, clamp((s - (seg.startS || 0)) / (len || 1), 0, 1));
+      }
+    }
+    return pointOnSeg(PIT_PATH[0], 0);
+  }
+
+  function pitPathAhead(x, z, look) {
+    if (!PIT_PATH.length) return null;
+    var pr = projectOn(x, z, PIT_PATH);
+    if (!pr || !pr.hit) return null;
+    var last = PIT_PATH[PIT_PATH.length - 1];
+    var endS = (last.startS || 0) + (last.len || 0);
+    var s = pr.s + (look || 18);
+    if (s >= endS - 2) return null;
+    return pointOnPitPath(s);
+  }
+
+  function buildCampusPitPath() {
+    PIT_PATH.length = 0;
+    var laneZ = (PIT_LANE.z0 + PIT_LANE.z1) * 0.5;
+    var mouthZ = -70.8;
+    var st = { x: 6, z: mouthZ, h: 0 };
+    pitSBend(st, laneZ - st.z, "pitin");
+    var exitX = 116;
+    if (st.x < exitX) pitLine(st, exitX - st.x, "pitlane");
+    pitSBend(st, mouthZ - st.z, "pitout");
+  }
+
+  function buildCustomPitPath() {
+    PIT_PATH.length = 0;
+    if (!PIT_META.on) return;
+    var dx = PIT_META.bx - PIT_META.ax;
+    var dz = PIT_META.bz - PIT_META.az;
+    var len = Math.hypot(dx, dz) || 1;
+    var fx = dx / len;
+    var fz = dz / len;
+    var h = Math.atan2(fz, fx);
+    var lx = Math.cos(h + Math.PI * 0.5);
+    var lz = Math.sin(h + Math.PI * 0.5);
+    var inset = 12;
+    var rx = PIT_META.ax - lx * inset;
+    var rz = PIT_META.az - lz * inset;
+    var startOff = 1.8;
+    var back = 22;
+    var st = {
+      x: rx - fx * back + lx * startOff,
+      z: rz - fz * back + lz * startOff,
+      h: h,
+    };
+    pitSBend(st, inset - startOff, "pitin");
+    var along = (st.x - PIT_META.ax) * fx + (st.z - PIT_META.az) * fz;
+    var remain = len - along - 8;
+    if (remain > 4) pitLine(st, remain, "pitlane");
+    pitSBend(st, startOff - inset, "pitout");
+  }
+
+  function rebuildPitPath() {
+    PIT_PATH.length = 0;
+    if (!PIT_META.on) return;
+    if (PIT_LANE.x0 === 28 && PIT_LANE.x1 === 136 && PIT_LANE.z0 === -61.5) {
+      buildCampusPitPath();
+    } else {
+      buildCustomPitPath();
+    }
+  }
+
   function resetPathCursor() {
     PATH = [];
     TRACK_LEN = 0;
@@ -571,6 +748,7 @@
     PIT_META.bx = PIT_LANE.x1;
     PIT_META.bz = PIT_META.az;
     PIT_META.on = true;
+    rebuildPitPath();
   }
 
   function parkPitMouths() {
@@ -596,6 +774,7 @@
     PIT_GRAB.z1 = 10000;
     PIT_PAVE.length = 0;
     PIT_META.on = false;
+    PIT_PATH.length = 0;
   }
 
   function placePitHere() {
@@ -648,6 +827,7 @@
     parkPitMouths();
     PIT_PAVE.length = 0;
     PIT_PAVE.push(PIT_LANE, PIT_GRAB);
+    rebuildPitPath();
   }
 
   function autoClosePath() {
@@ -1230,6 +1410,7 @@
     parkPitMouths();
     PIT_PAVE.length = 0;
     PIT_PAVE.push(PIT_LANE, PIT_GRAB);
+    rebuildPitPath();
   }
 
   function findEnterPort(p, dir, cx, cy) {
@@ -1731,6 +1912,23 @@
     return mesh;
   }
 
+  function paintPitRibbon() {
+    if (!PIT_PATH.length || !trackRoot) return;
+    var asphaltMat = new THREE.MeshLambertMaterial({
+      color: 0x3a3e46,
+      emissive: 0x101214,
+      side: THREE.DoubleSide,
+    });
+    var asphalt = makeSurfRibbon(PIT_PATH, PIT_HALF, 0.12, asphaltMat);
+    var line = makeSurfRibbon(PIT_PATH, 0.28, 0.155, 0xd8d2c6);
+    if (asphalt) trackRoot.add(asphalt);
+    if (line) trackRoot.add(line);
+    var eL = makeSurfRibbon(PIT_PATH, 0.2, 0.16, 0xf4efe6, null, null, PIT_HALF - 0.2);
+    var eR = makeSurfRibbon(PIT_PATH, 0.2, 0.16, 0xf4efe6, null, null, -(PIT_HALF - 0.2));
+    if (eL) trackRoot.add(eL);
+    if (eR) trackRoot.add(eR);
+  }
+
   function paintCampusPitLane() {
     // FORK. TWO ROADS. The racing ribbon stays whole. Grass median,
     // then a second raised asphalt road to the LEFT. A hole in the
@@ -1743,8 +1941,7 @@
     addBox(laneX, 0.23, laneZ, laneW, 0.03, 0.46, 0xd8d2c6, trackRoot);
     addBox(laneX, 0.24, PIT_LANE.z0, laneW, 0.06, 0.5, 0xf4efe6, trackRoot);
     addBox(laneX, 0.24, PIT_LANE.z1, laneW, 0.06, 0.5, 0xf4efe6, trackRoot);
-    var fork = addBox(18, 0.13, -65.6, 24, 0.14, 8.4, 0x3a3e46, trackRoot);
-    fork.rotation.y = -0.42;
+    paintPitRibbon();
     addBox(12, 1.15, -67.4, 0.45, 2.3, 0.45, 0x2a2018, trackRoot);
     addBox(26, 1.15, -67.4, 0.45, 2.3, 0.45, 0x2a2018, trackRoot);
     addBox(62, 0.92, -51.2, 70, 1.7, 0.7, 0x2a2018, trackRoot);
@@ -1753,13 +1950,15 @@
     pitDecal.rotation.x = -Math.PI * 0.5;
     pitDecal.position.set(81, 0.28, -57.1);
     trackRoot.add(pitDecal);
+    var inPt = pointOnPitPath(18) || { x: 20, z: -64 };
+    var outPt = pointOnPitPath(PIT_PATH.length ? PIT_PATH[PIT_PATH.length - 1].startS + 12 : 0) || { x: 148, z: -64 };
     var inDecal = labelPlane("IN", 5.8, 2.4, "#102018", "#ffe566");
     inDecal.rotation.x = -Math.PI * 0.5;
-    inDecal.position.set(16, 0.26, -65.0);
+    inDecal.position.set(inPt.x, 0.26, inPt.z);
     trackRoot.add(inDecal);
     var outDecal = labelPlane("OUT", 6.0, 2.4, "#102018", "#7cffd4");
     outDecal.rotation.x = -Math.PI * 0.5;
-    outDecal.position.set(146, 0.26, -62.0);
+    outDecal.position.set(outPt.x, 0.26, outPt.z);
     trackRoot.add(outDecal);
     var hsh;
     for (hsh = 0; hsh < 5; hsh++) {
@@ -1838,9 +2037,12 @@
     var p;
     var pitCol = isDriveableLoop() ? 0x3d4a5c : 0x3a3e46;
     for (p = 0; p < PIT_PAVE.length; p++) {
-      var pv = paveRect(PIT_PAVE[p], 0.09, pitCol);
+      var pvBox = PIT_PAVE[p];
+      if (PIT_PATH.length && (pvBox === PIT_ENTRY || pvBox === PIT_EXIT)) continue;
+      var pv = paveRect(pvBox, 0.09, pitCol);
       trackRoot.add(pv);
     }
+    if (PIT_PATH.length && isDriveableLoop()) paintPitRibbon();
     if (PIT_META.on) {
       var grab = paveRect(PIT_GRAB, 0.13, TEAL);
       trackRoot.add(grab);
@@ -1982,7 +2184,7 @@
     // Campus: only the IN / OUT mouths. Opening the whole south
     // straight made the road slide right — that was not a left lane.
     if (!isDriveableLoop()) {
-      return inRect(wx, wz, PIT_ENTRY) || inRect(wx, wz, PIT_EXIT);
+      return inRect(wx, wz, PIT_ENTRY) || inRect(wx, wz, PIT_EXIT) || onPitPath(wx, wz);
     }
     if (onPitPavement(wx, wz) || inRect(wx, wz, PIT_LANE) || inRect(wx, wz, PIT_GRAB)) return true;
     var ix = p.x + nx * (ASPHALT + 1.6);
@@ -2667,32 +2869,49 @@
       var py = Math.sin(pit.ang);
       var nx = -py;
       var ny = px;
-      var pw = cell * 0.42;
-      var ph = cell * 0.2;
-      var cx = pit.x + nx * (ribbon * 0.85 + ph * 0.55);
-      var cy = pit.y + ny * (ribbon * 0.85 + ph * 0.55);
-      var hx = px * pw * 0.5;
-      var hy = py * pw * 0.5;
-      var vx = nx * ph * 0.5;
-      var vy = ny * ph * 0.5;
+      var bay = cell * 0.22;
+      var a0 = along(0.18);
+      var a1 = along(0.82);
+      var mid = along(0.5);
+      var dPit =
+        "M" +
+        a0.x.toFixed(1) +
+        "," +
+        a0.y.toFixed(1) +
+        " C" +
+        (a0.x + nx * bay).toFixed(1) +
+        "," +
+        (a0.y + ny * bay).toFixed(1) +
+        " " +
+        (mid.x + nx * (ribbon * 0.9 + bay)).toFixed(1) +
+        "," +
+        (mid.y + ny * (ribbon * 0.9 + bay)).toFixed(1) +
+        " " +
+        (mid.x + nx * (ribbon * 0.9 + bay) + px * cell * 0.08).toFixed(1) +
+        "," +
+        (mid.y + ny * (ribbon * 0.9 + bay) + py * cell * 0.08).toFixed(1) +
+        " L" +
+        (mid.x + nx * (ribbon * 0.9 + bay) - px * cell * 0.08).toFixed(1) +
+        "," +
+        (mid.y + ny * (ribbon * 0.9 + bay) - py * cell * 0.08).toFixed(1) +
+        " C" +
+        (mid.x + nx * (ribbon * 0.9 + bay)).toFixed(1) +
+        "," +
+        (mid.y + ny * (ribbon * 0.9 + bay)).toFixed(1) +
+        " " +
+        (a1.x + nx * bay).toFixed(1) +
+        "," +
+        (a1.y + ny * bay).toFixed(1) +
+        " " +
+        a1.x.toFixed(1) +
+        "," +
+        a1.y.toFixed(1);
       svg +=
-        '<polygon points="' +
-        (cx - hx - vx).toFixed(1) +
-        "," +
-        (cy - hy - vy).toFixed(1) +
-        " " +
-        (cx + hx - vx).toFixed(1) +
-        "," +
-        (cy + hy - vy).toFixed(1) +
-        " " +
-        (cx + hx + vx).toFixed(1) +
-        "," +
-        (cy + hy + vy).toFixed(1) +
-        " " +
-        (cx - hx + vx).toFixed(1) +
-        "," +
-        (cy - hy + vy).toFixed(1) +
-        '" fill="#2ec8c3"/>';
+        '<path d="' +
+        dPit +
+        '" fill="none" stroke="#2ec8c3" stroke-width="' +
+        (ribbon * 0.72).toFixed(1) +
+        '" stroke-linecap="round" stroke-linejoin="round"/>';
     }
     if (type === "F" && pts.length > 1) {
       var fin = along(0.5);
@@ -4500,8 +4719,14 @@
         var gz = (PIT_GRAB.z0 + PIT_GRAB.z1) * 0.5;
         if (Math.hypot(r.x - gx, r.z - gz) < 56 || onPitPavement(r.x, r.z)) {
           peeling = true;
-          tx = gx;
-          tz = gz;
+          var lookLoop = pitPathAhead(r.x, r.z, 20);
+          if (lookLoop) {
+            tx = lookLoop.x;
+            tz = lookLoop.z;
+          } else {
+            tx = gx;
+            tz = gz;
+          }
           want = Math.min(want, 18);
         }
       } else {
@@ -4509,8 +4734,14 @@
         var onSf = Math.abs(r.z - SF_Z) < 24 && r.x > -70 && r.x < PIT_GRAB.x1 + 2;
         if (east && onSf) {
           peeling = true;
-          tx = clamp(r.x + 28, PIT_LANE.x0 + 4, (PIT_GRAB.x0 + PIT_GRAB.x1) * 0.5);
-          tz = (PIT_LANE.z0 + PIT_LANE.z1) * 0.5;
+          var lookIn = pitPathAhead(r.x, r.z, 22);
+          if (lookIn) {
+            tx = lookIn.x;
+            tz = lookIn.z;
+          } else {
+            tx = clamp(r.x + 28, PIT_LANE.x0 + 4, (PIT_GRAB.x0 + PIT_GRAB.x1) * 0.5);
+            tz = (PIT_LANE.z0 + PIT_LANE.z1) * 0.5;
+          }
           want = Math.min(want, 18);
         }
       }
@@ -4529,8 +4760,14 @@
           tx = out.x;
           tz = out.z;
         } else {
-          tx = Math.min(r.x + 28, PIT_LANE.x1 + 24);
-          tz = SF_Z + 2;
+          var lookOut = pitPathAhead(r.x, r.z, 24);
+          if (lookOut) {
+            tx = lookOut.x;
+            tz = lookOut.z;
+          } else {
+            tx = Math.min(r.x + 28, PIT_LANE.x1 + 24);
+            tz = SF_Z + 2;
+          }
         }
         want = Math.min(want, 20);
       }
@@ -5415,14 +5652,34 @@
       ctx.lineWidth = 3.4;
       ctx.stroke();
     }
-    var pitA = miniXY(PIT_LANE.x0, (PIT_LANE.z0 + PIT_LANE.z1) * 0.5, w, h, 8);
-    var pitB = miniXY(PIT_LANE.x1, (PIT_LANE.z0 + PIT_LANE.z1) * 0.5, w, h, 8);
     ctx.strokeStyle = "#e8b86d";
     ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(pitA.x, pitA.y);
-    ctx.lineTo(pitB.x, pitB.y);
-    ctx.stroke();
+    if (PIT_PATH.length) {
+      ctx.beginPath();
+      var ps;
+      var first = true;
+      for (ps = 0; ps < PIT_PATH.length; ps++) {
+        var pseg = PIT_PATH[ps];
+        var n = Math.max(4, Math.round((pseg.len || 12) / 6));
+        var u;
+        for (u = 0; u <= n; u++) {
+          var ppt = pointOnSeg(pseg, u / n);
+          var pxy = miniXY(ppt.x, ppt.z, w, h, 8);
+          if (first) {
+            ctx.moveTo(pxy.x, pxy.y);
+            first = false;
+          } else ctx.lineTo(pxy.x, pxy.y);
+        }
+      }
+      ctx.stroke();
+    } else {
+      var pitA = miniXY(PIT_LANE.x0, (PIT_LANE.z0 + PIT_LANE.z1) * 0.5, w, h, 8);
+      var pitB = miniXY(PIT_LANE.x1, (PIT_LANE.z0 + PIT_LANE.z1) * 0.5, w, h, 8);
+      ctx.beginPath();
+      ctx.moveTo(pitA.x, pitA.y);
+      ctx.lineTo(pitB.x, pitB.y);
+      ctx.stroke();
+    }
     if (!mpMode) {
       eachCpu(function (r, i) {
         var hex = (SOLO_FIELD[i].color | 0).toString(16);
