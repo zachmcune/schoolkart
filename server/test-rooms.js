@@ -115,7 +115,7 @@ waitHealth()
         assert(html.indexOf('rel="manifest"') !== -1, "web app manifest link");
         assert(html.indexOf("apple-mobile-web-app-capable") !== -1, "iOS home screen capable");
         assert(html.indexOf('apple-mobile-web-app-title" content="SchoolKart"') !== -1, "iOS title");
-        assert(html.indexOf('SK_BUILD = "mp92"') !== -1, "cache bump mp92");
+        assert(html.indexOf('SK_BUILD = "mp93"') !== -1, "cache bump mp93");
         assert(html.indexOf("viewport-fit=cover") !== -1, "phone paints under the notch");
         assert(html.indexOf('maxlength="240"') !== -1, "share-string fits a full board");
         assert(html.indexOf('id="title-track"') !== -1, "title label matches Solo load");
@@ -150,7 +150,7 @@ waitHealth()
           .then(function (sr) {
             return sr.text().then(function (sw) {
               assert(sr.status === 200, "sw 200");
-              assert(sw.indexOf('BUILD = "mp92"') !== -1, "SW build matches cache");
+              assert(sw.indexOf('BUILD = "mp93"') !== -1, "SW build matches cache");
               assert(/cache:\s*"no-store"/.test(sw), "network-first no-store");
               assert(sw.indexOf("websocket") !== -1, "SW leaves websocket alone");
             });
@@ -219,7 +219,7 @@ waitHealth()
                   assert(js.indexOf("function pinGameBox") !== -1, "game root pins to the painted screen");
                   assert(js.indexOf("function tiltSide") !== -1 && js.indexOf("function tiltNum") !== -1, "tilt roll is landscape-stable");
                   assert(js.indexOf("Math.abs(gamma) > 40") === -1, "tilt does not swap axes mid-roll");
-                  assert(js.indexOf("var TILT_DEAD = 6") !== -1 && js.indexOf("var TILT_SPAN = 26") !== -1, "tilt deadzone is small");
+                  assert(js.indexOf("var TILT_DEAD = 4") !== -1 && js.indexOf("var TILT_SPAN = 18") !== -1, "tilt deadzone is small");
                   assert(js.indexOf("var dead = 18") === -1, "fat 18deg deadzone is gone");
                   assert(js.indexOf("gyroFilt") !== -1, "tilt steer is smoothed");
                   assert(js.indexOf("window.screen.orientation") !== -1, "orientation lock reads window.screen");

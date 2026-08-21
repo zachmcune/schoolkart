@@ -1321,7 +1321,7 @@ assert(artSrc.indexOf("tileIconSvg") !== -1, "palette injects SVG into the squar
 sim.lockRacePath("");
 assert(src.indexOf("function viewBox") !== -1 && src.indexOf("visualViewport") !== -1, "canvas follows the painted viewport");
 assert(src.indexOf("Math.abs(gamma) > 40") === -1, "tilt does not swap beta/gamma mid-roll");
-assert(src.indexOf("var TILT_DEAD = 6") !== -1, "tilt deadzone is 6deg not 18");
+assert(src.indexOf("var TILT_DEAD = 4") !== -1, "tilt deadzone is 4deg not 18");
 assert(src.indexOf("var dead = 18") === -1, "fat tilt deadzone is gone");
 assert(src.indexOf("window.screen.orientation") !== -1, "orientation reads window.screen not a bare global");
 
@@ -1342,7 +1342,7 @@ function proveTiltFeel() {
   var fn = new Function(
     "window",
     "touchCtl",
-    "var TILT_DEAD = 6; var TILT_SPAN = 26;" +
+    "var TILT_DEAD = 4; var TILT_SPAN = 18;" +
       sliceFn("clamp") +
       sliceFn("isLandscape") +
       sliceFn("screenAngle") +
@@ -1385,8 +1385,12 @@ function proveTiltFeel() {
   assert(Math.abs(ctl.steer) < 0.04, "inside the small deadzone stays straight, steer=" + ctl.steer);
   ctl.gyroNeedCal = true;
   api.applyGyro(0);
+  for (i = 0; i < 14; i++) api.applyGyro(12);
+  assert(Math.abs(ctl.steer) > 0.35, "a modest 12deg lean now steers, steer=" + ctl.steer);
+  ctl.gyroNeedCal = true;
+  api.applyGyro(0);
   for (i = 0; i < 14; i++) api.applyGyro(18);
-  assert(Math.abs(ctl.steer) > 0.25, "18deg used to be dead and now steers, steer=" + ctl.steer);
+  assert(Math.abs(ctl.steer) > 0.7, "18deg is near full lock, steer=" + ctl.steer);
   ctl.gyroNeedCal = true;
   api.applyGyro(0);
   for (i = 0; i < 14; i++) api.applyGyro(3);
