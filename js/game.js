@@ -57,7 +57,9 @@
   var TIRE_FLOOR = 22;
   var TEAL = 0x2ec8c3;
   var TEAL_DEEP = 0x148f8c;
-  var HIT_RADIUS = 3.45;
+  var CAR_NOSE = 3.2;
+  var CAR_TAIL = 2.15;
+  var CAR_SKIN = 1.05;
   var WALLS = [];
   var FX_MAX = 18;
 
@@ -76,7 +78,16 @@
   ];
 
   function gridSlot(i) {
-    return { x: -6 - i * 8, z: SF_Z + (i % 2 ? -2.7 : 2.7) };
+    if (isDriveableLoop() && TRACK_LEN > 8) {
+      var p = slotOnPath(Math.max(0, TRACK_LEN - 6 - i * 8), i % 2 ? 1 : -1);
+      return { x: p.x, z: p.z, h: p.h };
+    }
+    return { x: -6 - i * 8, z: SF_Z + (i % 2 ? -2.7 : 2.7), h: 0 };
+  }
+
+  function faceRaceAt(x, z) {
+    var pr = projectTrack(x, z);
+    return pr && isFinite(pr.h) ? pr.h : 0;
   }
 
   // F1 bypass, LEFT of the south S/F straight (infield / +Z).
@@ -321,6 +332,82 @@
     var ex = px - qx;
     var ez = pz - qz;
     return { x: qx, z: qz, d2: ex * ex + ez * ez, t: t, h: Math.atan2(dz, dx) };
+  }
+
+  function closestSegSeg(a0x, a0z, a1x, a1z, b0x, b0z, b1x, b1z) {
+    var ux = a1x - a0x;
+    var uz = a1z - a0z;
+    var vx = b1x - b0x;
+    var vz = b1z - b0z;
+    var wx = a0x - b0x;
+    var wz = a0z - b0z;
+    var uu = ux * ux + uz * uz;
+    var vv = vx * vx + vz * vz;
+    var uv = ux * vx + uz * vz;
+    var uw = ux * wx + uz * wz;
+    var vw = vx * wx + vz * wz;
+    var den = uu * vv - uv * uv;
+    var sN;
+    var sD = den;
+    var tN;
+    var tD = den;
+    if (den < 1e-8) {
+      sN = 0;
+      sD = 1;
+      tN = vw;
+      tD = vv;
+    } else {
+      sN = uv * vw - vv * uw;
+      tN = uu * vw - uv * uw;
+      if (sN < 0) {
+        sN = 0;
+        tN = vw;
+        tD = vv;
+      } else if (sN > sD) {
+        sN = sD;
+        tN = vw + uv;
+        tD = vv;
+      }
+    }
+    if (tN < 0) {
+      tN = 0;
+      if (-uw < 0) sN = 0;
+      else if (-uw > uu) {
+        sN = uu;
+        sD = uu;
+      } else {
+        sN = -uw;
+        sD = uu;
+      }
+    } else if (tN > tD) {
+      tN = tD;
+      if (-uw + uv < 0) sN = 0;
+      else if (-uw + uv > uu) {
+        sN = uu;
+        sD = uu;
+      } else {
+        sN = -uw + uv;
+        sD = uu;
+      }
+    }
+    var s = Math.abs(sD) < 1e-8 ? 0 : sN / sD;
+    var t = Math.abs(tD) < 1e-8 ? 0 : tN / tD;
+    var px = a0x + s * ux;
+    var pz = a0z + s * uz;
+    var qx = b0x + t * vx;
+    var qz = b0z + t * vz;
+    return { px: px, pz: pz, qx: qx, qz: qz, d: Math.hypot(px - qx, pz - qz) };
+  }
+
+  function carSeg(r) {
+    var c = Math.cos(r.heading);
+    var s = Math.sin(r.heading);
+    return {
+      ax: r.x - c * CAR_TAIL,
+      az: r.z - s * CAR_TAIL,
+      bx: r.x + c * CAR_NOSE,
+      bz: r.z + s * CAR_NOSE,
+    };
   }
 
   function closestOnArc(px, pz, cx, cz, r, a0, a1) {
@@ -3431,7 +3518,13 @@
   }
 
   function resetGrid() {
-    var pose = applyCustomGrid();
+    var pose = null;
+    if (mpMode && playerGridX != null && isFinite(playerGridX) && playerGridZ != null && isFinite(playerGridZ)) {
+      gridHeading = faceRaceAt(playerGridX, playerGridZ);
+    } else {
+      pose = applyCustomGrid();
+      gridHeading = faceRaceAt(playerGridX, playerGridZ);
+    }
     resetRacer(player, playerGridX, playerGridZ, gridHeading, TRACK_LEN - 14);
     if (pose) {
       cpuGrid[0] = slotOnPath(TRACK_LEN - 6, 1);
@@ -3444,13 +3537,13 @@
       resetRacer(cpus[0], cpuGrid[0].x, cpuGrid[0].z, 0, TRACK_LEN - 6);
       resetRacer(cpus[1], cpuGrid[1].x, cpuGrid[1].z, 0, TRACK_LEN - 22);
     }
+    function pinS(r) {
+      r.s = projectTrack(r.x, r.z).s;
+      r.lastS = r.s;
+      r.passedHalf = false;
+    }
+    pinS(player);
     if (pose) {
-      function pinS(r) {
-        r.s = projectTrack(r.x, r.z).s;
-        r.lastS = r.s;
-        r.passedHalf = false;
-      }
-      pinS(player);
       pinS(cpus[0]);
       pinS(cpus[1]);
     }
@@ -4140,42 +4233,66 @@
     }
   }
 
-  function bashCars(a, b) {
-    var dx = b.x - a.x;
-    var dz = b.z - a.z;
-    var d = Math.hypot(dx, dz);
-    if (d < 0.0001) {
-      dx = 1;
-      dz = 0;
-      d = 1;
+  function bashCars(a, b, holdB) {
+    if (!a || !b) return;
+    var sa = carSeg(a);
+    var sb = carSeg(b);
+    var hit = closestSegSeg(sa.ax, sa.az, sa.bx, sa.bz, sb.ax, sb.az, sb.bx, sb.bz);
+    var skin = CAR_SKIN * 2;
+    if (hit.d >= skin) return;
+    var nx;
+    var nz;
+    if (hit.d > 0.02) {
+      nx = (hit.qx - hit.px) / hit.d;
+      nz = (hit.qz - hit.pz) / hit.d;
+    } else {
+      nx = b.x - a.x;
+      nz = b.z - a.z;
+      var nlen = Math.hypot(nx, nz);
+      if (nlen < 0.0001) {
+        nx = 1;
+        nz = 0;
+        nlen = 1;
+      }
+      nx /= nlen;
+      nz /= nlen;
     }
-    if (d >= HIT_RADIUS) return;
-    var nx = dx / d;
-    var nz = dz / d;
-    var push = (HIT_RADIUS - d) * 0.62;
-    a.x -= nx * push;
-    a.z -= nz * push;
-    b.x += nx * push;
-    b.z += nz * push;
+    var overlap = skin - hit.d;
+    var push = Math.max(overlap * 0.5, 0.08);
+    if (holdB) {
+      a.x -= nx * overlap;
+      a.z -= nz * overlap;
+    } else {
+      a.x -= nx * push;
+      a.z -= nz * push;
+      b.x += nx * push;
+      b.z += nz * push;
+    }
 
     var avx = Math.cos(a.heading) * a.speed + -Math.sin(a.heading) * a.slide;
     var avz = Math.sin(a.heading) * a.speed + Math.cos(a.heading) * a.slide;
     var bvx = Math.cos(b.heading) * b.speed + -Math.sin(b.heading) * b.slide;
     var bvz = Math.sin(b.heading) * b.speed + Math.cos(b.heading) * b.slide;
     var rel = (avx - bvx) * nx + (avz - bvz) * nz;
-    if (rel >= 0) {
+    if (rel < 0) {
+      var j = -rel * 0.72;
+      avx += j * nx;
+      avz += j * nz;
+      bvx -= j * nx;
+      bvz -= j * nz;
+    }
+    var pace = Math.max(Math.hypot(avx, avz), Math.hypot(bvx, bvz), Math.abs(a.speed), Math.abs(b.speed));
+    var impact = Math.max(-rel, 0);
+    if (impact < pace * 0.22) {
+      impact = Math.max(impact, pace * clamp(overlap / skin, 0.22, 1) * 0.78);
+    }
+    if (impact < 1.4 && overlap < 0.28 && pace < 6) {
       poseCar(a);
       poseCar(b);
       return;
     }
-    var j = -rel * 0.72;
-    avx += j * nx;
-    avz += j * nz;
-    bvx -= j * nx;
-    bvz -= j * nz;
-    var impact = Math.abs(rel);
     hitCarFeel(a, avx, avz, -nx, -nz, impact);
-    hitCarFeel(b, bvx, bvz, nx, nz, impact);
+    if (!holdB) hitCarFeel(b, bvx, bvz, nx, nz, impact);
     poseCar(a);
     poseCar(b);
     if (impact > 4 && !(a.hitFxT > 0) && !(b.hitFxT > 0)) {
@@ -4903,12 +5020,12 @@
     camera.lookAt(8, 8, -20);
   }
 
-  function pinGrid(r, x, z) {
+  function pinGrid(r, x, z, h) {
     r.speed = 0;
     r.slide = 0;
     r.x = x;
     r.z = z;
-    r.heading = gridHeading;
+    r.heading = h != null && isFinite(h) ? h : faceRaceAt(x, z);
     poseCar(r);
   }
 
@@ -4989,12 +5106,8 @@
     if (!mpMode) {
       var g0 = cpuGrid[0];
       var g1 = cpuGrid[1];
-      var holdH = gridHeading;
-      gridHeading = g0.h != null ? g0.h : holdH;
-      pinGrid(cpus[0], g0.x, g0.z);
-      gridHeading = g1.h != null ? g1.h : holdH;
-      pinGrid(cpus[1], g1.x, g1.z);
-      gridHeading = holdH;
+      pinGrid(cpus[0], g0.x, g0.z, g0.h != null ? g0.h : faceRaceAt(g0.x, g0.z));
+      pinGrid(cpus[1], g1.x, g1.z, g1.h != null ? g1.h : faceRaceAt(g1.x, g1.z));
     }
     chaseCamera(dt);
   }
@@ -5033,7 +5146,7 @@
         var skin = SKINS[p.slot % SKINS.length];
         var g = gridSlot(p.slot);
         var r = createRacer("cpu", skin.color, p.name || skin.name, skin.num);
-        resetRacer(r, g.x, g.z, 0, TRACK_LEN - 6 - p.slot * 8);
+        resetRacer(r, g.x, g.z, g.h != null ? g.h : faceRaceAt(g.x, g.z), TRACK_LEN - 6 - p.slot * 8);
         hostBots[p.id] = r;
       }
       if (p.name && hostBots[p.id].name !== p.name) {
@@ -5086,12 +5199,13 @@
           if (net.players[j].id === ids[i]) meta = net.players[j];
         }
         var g = gridSlot(meta ? meta.slot : 0);
-        pinGrid(hostBots[ids[i]], g.x, g.z);
+        pinGrid(hostBots[ids[i]], g.x, g.z, g.h != null ? g.h : faceRaceAt(g.x, g.z));
       }
     } else if (state === "racing") {
       for (i = 0; i < ids.length; i++) {
         updateCpu(hostBots[ids[i]], dt);
         updateLaps(hostBots[ids[i]]);
+        bashCars(player, hostBots[ids[i]]);
         bashCars(player, hostBots[ids[i]]);
         bashAllWalls(hostBots[ids[i]]);
         emitRacerFx(hostBots[ids[i]], null, dt, false);
@@ -5189,7 +5303,7 @@
 
   function bashRemotes() {
     Object.keys(remotes).forEach(function (id) {
-      bashCars(player, remotes[id].r);
+      bashCars(player, remotes[id].r, true);
     });
   }
 
@@ -5280,11 +5394,12 @@
     var mine = (net.players || []).filter(function (p) {
       return p.id === net.id;
     })[0];
-    var slot = mine ? mine.slot : 1;
+    var slot = mine ? mine.slot : 0;
+    adoptRoomTrack();
     var g = gridSlot(slot);
     playerGridX = g.x;
     playerGridZ = g.z;
-    adoptRoomTrack();
+    gridHeading = g.h != null ? g.h : faceRaceAt(g.x, g.z);
     resetGrid();
     touchCtl.gyroNeedCal = true;
     state = "start";
@@ -5316,10 +5431,11 @@
     var you = (msg && msg.you) || {};
     var localMe = loadMe(net && net.room);
     var slot = you.slot != null ? you.slot : localMe && localMe.slot != null ? localMe.slot : 1;
+    adoptRoomTrack();
     var g = gridSlot(slot);
     playerGridX = g.x;
     playerGridZ = g.z;
-    adoptRoomTrack();
+    gridHeading = g.h != null ? g.h : faceRaceAt(g.x, g.z);
     resetGrid();
     var restore = null;
     if (msg && msg.rejoin && beenRacing(you)) restore = you;
@@ -5490,6 +5606,10 @@
         bashRemotes();
         bashRemotes();
         sendNetState();
+        if (!pitServicing && (input.throttle || input.reverse || drive.up || drive.down) && Math.abs(player.speed) <= 0.35) {
+          if (input.throttle || drive.up) player.speed += ACCEL * simDt;
+          else player.speed -= REVERSE_ACCEL * simDt;
+        }
       } else {
         updateCpu(cpus[0], simDt);
         updateCpu(cpus[1], simDt);

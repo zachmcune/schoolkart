@@ -76,7 +76,9 @@ var code = [
   "var launchCallT = 0;",
   "var LAPS = 5;",
   "var TRACK_CODE_MAX = 240;",
-  "var HIT_RADIUS = 3.45;",
+  "var CAR_NOSE = 3.2;",
+  "var CAR_TAIL = 2.15;",
+  "var CAR_SKIN = 1.05;",
   "var WALLS = [];",
   "var TYPE_ENC = { s: 'A', S: 'L', r: 'R', w: 'W', H: 'H', C: 'C', F: 'F', P: 'P', t: 'T' };",
   "var TYPE_DEC = { A:'s', a:'s', s:'s', L:'S', S:'S', R:'r', r:'r', W:'w', w:'w', H:'H', h:'H', C:'C', c:'C', F:'F', f:'F', P:'P', p:'P', T:'t', t:'t' };",
@@ -85,6 +87,8 @@ var code = [
   sliceFn("inRect"),
   sliceFn("onPitPavement"),
   sliceFn("closestOnSeg"),
+  sliceFn("closestSegSeg"),
+  sliceFn("carSeg"),
   sliceFn("closestOnArc"),
   sliceFn("addLine"),
   sliceFn("addArc"),
@@ -102,6 +106,7 @@ var code = [
   sliceFn("rebuildPath"),
   sliceFn("projectOn"),
   sliceFn("projectTrack"),
+  sliceFn("faceRaceAt"),
   sliceFn("rideHeight"),
   sliceFn("steerWheelYaw"),
   sliceFn("hitCarFeel"),
@@ -130,6 +135,8 @@ var code = [
   sliceFn("placeWalls"),
   "function puffHit() {}",
   "function poseCar(r) { if (r.mesh && r.mesh.position) r.mesh.position.set(r.x, 0, r.z); }",
+  "var gridHeading = 1.57;",
+  sliceFn("pinGrid"),
   sliceFn("hitKeepYaw"),
   sliceFn("bashCars"),
   sliceFn("bashWall"),
@@ -162,6 +169,9 @@ var code = [
   "  bashAllWalls: bashAllWalls,",
   "  bashWall: bashWall,",
   "  bashCars: bashCars,",
+  "  faceRaceAt: faceRaceAt,",
+  "  pinGrid: pinGrid,",
+  "  carSeg: carSeg,",
   "  setWalls: function (w) { WALLS.length = 0; var i; for (i = 0; i < w.length; i++) WALLS.push(w[i]); },",
   "  speedKph: speedKph,",
   "  menuTrackName: menuTrackName,",
@@ -742,7 +752,7 @@ var bCar = blankCar(0.4, 0.2, 0, 20);
 sim.bashCars(aCar, bCar);
 sim.bashCars(aCar, bCar);
 sim.bashCars(aCar, bCar);
-assert(Math.hypot(aCar.x - bCar.x, aCar.z - bCar.z) >= 3.2, "bots/player cannot occupy the same space");
+assert(Math.hypot(aCar.x - bCar.x, aCar.z - bCar.z) >= 1.95, "bots/player cannot occupy the same space");
 
 var grazeH = 0.22;
 var graze = blankCar(0, 2.7, grazeH, 24);
@@ -783,6 +793,11 @@ assert(src.indexOf("wallCutsRibbon") !== -1, "inside-corner wall chords cannot s
 assert(src.indexOf("ASPHALT + 3.0") !== -1, "inside rails that clip the chassis are dropped");
 assert(!/function bashWall\([\s\S]{0,700}heading = Math.atan2/.test(src), "bashWall does not snap heading to velocity");
 assert(!/function bashCars\([\s\S]{0,900}heading = Math.atan2/.test(src), "bashCars does not snap heading to velocity");
+assert(!/function bashCars\([\s\S]{0,1600}if \(rel >= 0\)/.test(src), "same-speed sidepod clip still feels");
+assert(src.indexOf("function carSeg") !== -1 && src.indexOf("function closestSegSeg") !== -1, "cars are capsules, not origin spheres");
+assert(/function pinGrid\([\s\S]{0,400}faceRaceAt/.test(src), "grid pin faces the ribbon, not leftover yaw");
+assert(src.indexOf("mpMode && playerGridX != null") !== -1, "room grid keeps the slot, not Campus P2");
+assert(src.indexOf("z: SF_Z + (i % 2 ? -2.7 : 2.7), h: 0") !== -1, "campus grid heading is east");
 assert(src.indexOf("function steerWheelYaw") !== -1 && src.indexOf("return -steer * 0.42") !== -1, "A = POINT LEFT, D = POINT RIGHT");
 assert(src.indexOf("function attachNameTag") !== -1 && src.indexOf("function layoutNameTags") !== -1, "halo nametags exist");
 assert(!/function attachNameTag\([\s\S]{0,500}new THREE\.Sprite/.test(src), "nametags are mesh billboards");
@@ -981,7 +996,7 @@ function proveDrive(pieces, label) {
   botB = blankCar(botB.x, botB.z, botB.h, 20);
   sim.bashCars(botA, botB);
   sim.bashCars(botA, botB);
-  assert(Math.hypot(botA.x - botB.x, botA.z - botB.z) >= 3.2, label + " bots do not occupy the player");
+  assert(Math.hypot(botA.x - botB.x, botA.z - botB.z) >= 1.95, label + " bots do not occupy the player");
   assert(wallClear(botB.x, botB.z) > 5, label + " pole bot is not in a wall");
 }
 
@@ -1707,6 +1722,52 @@ function proveLoopRibbonNotPit() {
   }
 }
 
+function proveSolidCars() {
+  sim.lockRacePath("");
+  var stuckA = blankCar(0, -80, 0, 24);
+  var stuckB = blankCar(0.2, -79.9, 0, 24);
+  sim.bashCars(stuckA, stuckB);
+  sim.bashCars(stuckA, stuckB);
+  assert(Math.hypot(stuckA.x - stuckB.x, stuckA.z - stuckB.z) >= 1.95, "two cars cannot occupy the same space");
+  var p = sim.centerlinePoint(40);
+  var hx = Math.cos(p.h);
+  var hz = Math.sin(p.h);
+  var sx = -hz;
+  var sz = hx;
+  var victim = blankCar(p.x + hx * 2.0, p.z + hz * 2.0, p.h, 24);
+  var bumper = blankCar(p.x + sx * 1.15, p.z + sz * 1.15, p.h, 24);
+  victim.fuel = bumper.fuel = 100;
+  victim.tires = bumper.tires = 100;
+  var hV = victim.heading;
+  var hB = bumper.heading;
+  sim.bashCars(bumper, victim);
+  var yaw = Math.max(Math.abs(angDiff(victim.heading, hV)), Math.abs(angDiff(bumper.heading, hB)));
+  assert(yaw > 0.005, "same-speed nose-in-sidepod at race pace yaws, dH=" + yaw.toFixed(4));
+  var qV = blankCar(p.x + hx * 1.6 + sx * 0.95, p.z + hz * 1.6 + sz * 0.95, p.h, 22);
+  var qB = blankCar(p.x, p.z, p.h, 28);
+  qV.fuel = qB.fuel = 100;
+  qV.tires = qB.tires = 100;
+  var hQ = qV.heading;
+  sim.bashCars(qB, qV);
+  assert(Math.abs(angDiff(qV.heading, hQ)) > 0.005, "rear-quarter clip at pace yaws, dH=" + Math.abs(angDiff(qV.heading, hQ)).toFixed(4));
+  var c1 = blankCar(p.x + sx * 2.4, p.z + sz * 2.4, p.h, 24);
+  var c2 = blankCar(p.x - sx * 2.4, p.z - sz * 2.4, p.h, 24);
+  var d0 = Math.hypot(c1.x - c2.x, c1.z - c2.z);
+  sim.bashCars(c1, c2);
+  assert(Math.abs(Math.hypot(c1.x - c2.x, c1.z - c2.z) - d0) < 0.2, "side-by-side does not rubber-band");
+}
+
+function proveGridFacesRace() {
+  sim.lockRacePath("");
+  var h = sim.faceRaceAt(-6, -77.3);
+  assert(Math.abs(angDiff(h, 0)) < 0.2, "campus grid faces race east, not left, h=" + h.toFixed(3));
+  var r = blankCar(-6, -77.3, 1.2, 8);
+  r.slide = 2;
+  sim.pinGrid(r, -6, -77.3);
+  assert(Math.abs(angDiff(r.heading, 0)) < 0.2, "pinGrid faces the ribbon, leftover yaw=" + r.heading.toFixed(3));
+  assert(r.speed === 0 && r.slide === 0, "grid pin is stopped, not pre-rolling");
+}
+
 function proveCarHits() {
   sim.lockRacePath("");
   sim.placeWalls();
@@ -1715,7 +1776,7 @@ function proveCarHits() {
   var hz = Math.sin(p.h);
   var sx = -hz;
   var sz = hx;
-  var victim = blankCar(p.x + hx * 2.4, p.z + hz * 2.4, p.h, 18);
+  var victim = blankCar(p.x + hx * 5.6, p.z + hz * 5.6, p.h, 18);
   var bumper = blankCar(p.x, p.z, p.h, 26);
   victim.fuel = bumper.fuel = 100;
   victim.tires = bumper.tires = 100;
@@ -1810,6 +1871,8 @@ proveSpeedSteer();
 proveUnweld();
 proveLoopRibbonNotPit();
 proveCarHits();
+proveSolidCars();
+proveGridFacesRace();
 proveTileIcons();
 provePitPctSticky();
 assert(src.indexOf("var amp = MAP_CELL * 0.1") !== -1, "chicane S stays in-cell");
