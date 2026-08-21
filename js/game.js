@@ -4523,27 +4523,36 @@
         r.hitYawT = 0.08;
         return;
       }
-      r.speed *= 0.68;
+      // Keep the crash shove; spin comes from yaw/slide, not a speed kill.
+      r.speed *= 0.9;
       r.heading += dir * clamp(impact * 0.028 * (0.45 + hip), 0.2, 0.85);
       r.slide += dir * clamp(impact * 0.28, 4, 14);
       r.hitYawT = 0.32;
       return;
     }
+    if (tail > 0.55) {
+      // Square rear: already launched along the ram. Small wiggle, no wall.
+      r.heading += dir * clamp(impact * 0.003, 0.004, 0.04);
+      r.slide += dir * clamp(impact * 0.05, 0, 1.8);
+      r.hitYawT = impact < 8 ? 0.08 : 0.12;
+      return;
+    }
     if (nose > 0.5) {
-      r.speed *= 0.78;
+      // Front shove, not a bounce-back wall. Leave leftover pace on a ram.
+      r.speed *= r.speed > 14 ? 0.91 : 0.8;
       r.slide += dir * clamp(impact * 0.08, 0, 2.2);
       r.heading += dir * clamp(impact * 0.002, 0, 0.03);
       r.hitYawT = 0.1;
       return;
     }
     if (impact > 15 && hip > 0.35) {
-      r.speed *= 0.62;
+      r.speed *= 0.82;
       r.heading += dir * clamp(impact * 0.022, 0.18, 0.7);
       r.slide += dir * clamp(impact * 0.28, 4, 12);
       r.hitYawT = 0.32;
       return;
     }
-    r.speed *= 0.85;
+    r.speed *= 0.9;
     r.slide += dir * clamp(impact * 0.1, 0, 2.8);
     r.heading += dir * clamp(impact * 0.005, 0, 0.05);
     r.hitYawT = 0.1;
@@ -4598,11 +4607,54 @@
     var bvz = Math.sin(b.heading) * b.speed + Math.cos(b.heading) * b.slide;
     var rel = (avx - bvx) * nx + (avz - bvz) * nz;
     if (rel > 0) {
-      var jimp = rel * 0.72;
-      avx -= jimp * nx;
-      avz -= jimp * nz;
-      bvx += jimp * nx;
-      bvz += jimp * nz;
+      // Speed-weighted inelastic crash. Faster car keeps going; the
+      // slower one is launched that way. Equal-mass j = rel*0.72 used
+      // to bounce a max-speed ram backwards like a pinball.
+      var aSpd = Math.hypot(avx, avz);
+      var bSpd = Math.hypot(bvx, bvz);
+      var leadA = aSpd >= bSpd;
+      var cx = leadA ? avx : bvx;
+      var cz = leadA ? avz : bvz;
+      var crashL = leadA ? aSpd : bSpd;
+      if (crashL > 1.2) {
+        cx /= crashL;
+        cz /= crashL;
+      } else {
+        cx = nx;
+        cz = nz;
+      }
+      var ma = 0.7 + 0.95 * clamp(aSpd / MAX_SPEED, 0, 1);
+      var mb = 0.7 + 0.95 * clamp(bSpd / MAX_SPEED, 0, 1);
+      var jimp = (1.16 * rel) / (1 / ma + 1 / mb);
+      avx -= (jimp / ma) * nx;
+      avz -= (jimp / ma) * nz;
+      bvx += (jimp / mb) * nx;
+      bvz += (jimp / mb) * nz;
+      if (crashL > 12 && Math.abs(aSpd - bSpd) > 4.5) {
+        var alongFast = leadA ? avx * cx + avz * cz : bvx * cx + bvz * cz;
+        var alongSlow = leadA ? bvx * cx + bvz * cz : avx * cx + avz * cz;
+        var floor = crashL * 0.26;
+        if (alongFast < floor) {
+          var add = floor - alongFast;
+          avx += cx * add;
+          avz += cz * add;
+          bvx += cx * add;
+          bvz += cz * add;
+          alongFast = floor;
+          alongSlow += add;
+        }
+        var wantSlow = Math.max(alongFast * 0.58, crashL * 0.3);
+        if (alongSlow < wantSlow) {
+          var kick = (wantSlow - alongSlow) * 0.75;
+          if (leadA) {
+            bvx += cx * kick;
+            bvz += cz * kick;
+          } else {
+            avx += cx * kick;
+            avz += cz * kick;
+          }
+        }
+      }
     }
     var pace = Math.max(Math.abs(a.speed), Math.abs(b.speed), Math.hypot(avx, avz), Math.hypot(bvx, bvz));
     var impact = Math.max(rel, 0, pace * 0.34, 2.6);

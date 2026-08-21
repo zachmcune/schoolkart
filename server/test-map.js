@@ -2298,6 +2298,35 @@ function proveCarHits() {
   sim.hitCarFeel(face, hx * 10, hz * 10, -hx, -hz, 16);
   assert(Math.abs(angDiff(face.heading, hF)) < 0.06, "front hit shoves, does not spin");
   assert(face.speed < spd0, "front hit dumps speed");
+
+  function alongH(r) {
+    var vx = Math.cos(r.heading) * r.speed + -Math.sin(r.heading) * r.slide;
+    var vz = Math.sin(r.heading) * r.speed + Math.cos(r.heading) * r.slide;
+    return vx * hx + vz * hz;
+  }
+  var rammer = blankCar(p.x, p.z, p.h, 48);
+  var prey = blankCar(p.x + hx * 2.5, p.z + hz * 2.5, p.h, 8);
+  rammer.fuel = prey.fuel = 100;
+  rammer.tires = prey.tires = 100;
+  sim.bashCars(rammer, prey);
+  assert(alongH(rammer) > 12, "max-speed rear ram does not bounce the faster car backward, along=" + alongH(rammer).toFixed(2));
+  assert(alongH(prey) > 14, "rear victim is launched the way the faster car was going, along=" + alongH(prey).toFixed(2));
+  assert(alongH(rammer) > 0 && alongH(prey) > 0, "rear ram keeps both cars going forward");
+  var tboner = blankCar(p.x, p.z, p.h, 48);
+  var cross = blankCar(p.x + hx * 2.6, p.z + hz * 2.6, p.h + Math.PI * 0.5, 10);
+  tboner.fuel = cross.fuel = 100;
+  tboner.tires = cross.tires = 100;
+  sim.bashCars(tboner, cross);
+  assert(alongH(tboner) > 10, "max T-bone does not bounce the faster car backward, along=" + alongH(tboner).toFixed(2));
+  assert(alongH(cross) > 8, "T-bone victim is crashed along the faster car, along=" + alongH(cross).toFixed(2));
+  var closer = blankCar(p.x, p.z, p.h, 48);
+  var oncoming = blankCar(p.x + hx * 2.5, p.z + hz * 2.5, p.h + Math.PI, 12);
+  closer.fuel = oncoming.fuel = 100;
+  closer.tires = oncoming.tires = 100;
+  sim.bashCars(closer, oncoming);
+  assert(alongH(closer) > 6, "faster car in a mismatch head-on keeps going, along=" + alongH(closer).toFixed(2));
+  assert(alongH(oncoming) > 2, "slower oncoming is turned the faster car's way, along=" + alongH(oncoming).toFixed(2));
+  assert(sliceFn("bashCars").indexOf("rel * 0.72") === -1, "car-car is not the old equal-mass bounce");
 }
 
 function proveTileIcons() {
