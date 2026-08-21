@@ -51,6 +51,8 @@
   var ASPHALT = 8.6;
   var RUNOFF = 3.8;
   var KERB_NAMES = ["the90", "hairpin", "chicane", "sweeper", "kink"];
+  var KERB_RAISE = 0.055;
+  var KERB_SURFACE_Y = 0.06;
   var GRASS_MAX = 8.5;
   var GRASS_ROLL = 4;
   var GRASS_DUMP = 40;
@@ -1635,6 +1637,50 @@
     return makeRibbon(half, y, color, onlyNames, uvStep, offset);
   }
 
+  function makeRaisedKerbBand(half, baseY, raise, color, onlyNames, uvStep, offset) {
+    var segs = RIBBON_SEGS;
+    var pos = [];
+    var idx = [];
+    var uvs = uvStep ? [] : null;
+    var used = 0;
+    var off = offset || 0;
+    var lastP = null;
+    var strip = 0;
+    for (var i = 0; i <= segs; i++) {
+      var p = centerlinePoint((i / segs) * TRACK_LEN);
+      if (onlyNames && onlyNames.indexOf(p.name) === -1) {
+        lastP = null;
+        strip = 0;
+        continue;
+      }
+      var nx = -Math.sin(p.h);
+      var nz = Math.cos(p.h);
+      pos.push(p.x + nx * (off + half), baseY + raise, p.z + nz * (off + half));
+      pos.push(p.x + nx * (off - half), baseY, p.z + nz * (off - half));
+      if (uvs) {
+        uvs.push(used * uvStep, 1);
+        uvs.push(used * uvStep, 0);
+      }
+      var jump = lastP && Math.hypot(p.x - lastP.x, p.z - lastP.z) > 22;
+      if (used > 0 && strip > 0 && !jump) {
+        var a = (used - 1) * 2;
+        idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
+        strip += 1;
+      } else {
+        strip = 1;
+      }
+      lastP = p;
+      used += 1;
+    }
+    if (used < 2) return null;
+    var geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+    geo.setIndex(idx);
+    if (uvs) geo.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
+    geo.computeVertexNormals();
+    return new THREE.Mesh(geo, ribbonMat(color));
+  }
+
   var _kerbTex = null;
   function kerbTex() {
     if (_kerbTex) return _kerbTex;
@@ -1785,8 +1831,8 @@
     var kn;
     for (kn = 0; kn < KERB_NAMES.length; kn++) {
       var names = [KERB_NAMES[kn]];
-      var kL = courseBand(0.9, 0.09, kerbMat, names, 0.42, +(ASPHALT + 0.55));
-      var kR = courseBand(0.9, 0.09, kerbMat, names, 0.42, -(ASPHALT + 0.55));
+      var kL = makeRaisedKerbBand(0.9, KERB_SURFACE_Y, KERB_RAISE, kerbMat, names, 0.42, +(ASPHALT + 0.55));
+      var kR = makeRaisedKerbBand(0.9, KERB_SURFACE_Y, KERB_RAISE, kerbMat, names, 0.42, -(ASPHALT + 0.55));
       if (kL) trackRoot.add(kL);
       if (kR) trackRoot.add(kR);
     }
@@ -3679,6 +3725,7 @@
     r.launchArmed = false;
     r.aiT = 0;
     r.hitYawT = 0;
+    r.kerbBump = 0;
     r.mesh.position.set(x, rideHeight(), z);
     r.mesh.rotation.set(0, -heading, 0);
   }
@@ -3888,11 +3935,37 @@
     return true;
   }
 
+  function kerbDepthAt(info) {
+    if (!info || !info.kerb) return 0;
+    return clamp((info.dist - (ASPHALT - 0.2)) / 1.1, 0, 1);
+  }
+
+  function sampleWheelKerbs(r) {
+    var spots = [[-1, -1], [-1, 1], [1, -1], [1, 1]];
+    var count = 0;
+    var depth = 0;
+    var wi;
+    for (wi = 0; wi < spots.length; wi++) {
+      var w = wheelWorld(r, spots[wi][0], spots[wi][1]);
+      var winfo = projectTrack(w.x, w.z);
+      if (winfo.kerb) {
+        count += 1;
+        var d = kerbDepthAt(winfo);
+        if (d > depth) depth = d;
+      }
+    }
+    return { count: count, depth: depth };
+  }
+
   function applyMotion(r, steer, throttle, brake, reverse, dt, isPlayer) {
     if (!isFinite(r.speed)) r.speed = 0;
     if (!isFinite(r.slide)) r.slide = 0;
     var info = projectTrack(r.x, r.z);
-    var surface = info.grass ? 0.5 : 1;
+    var wheelKerb = sampleWheelKerbs(r);
+    var onKerb = info.kerb || wheelKerb.count > 0;
+    var kerbDepth = wheelKerb.depth;
+    if (!kerbDepth && info.kerb) kerbDepth = kerbDepthAt(info);
+    var surface = info.grass ? 0.5 : onKerb ? 0.9 : 1;
     var tire = clamp(r.tires / 100, 0, 1);
     // Tires = sloppy handling on asphalt, never a speed cap. Grass keeps
     // enough steer to crawl back to the pit even when the rears are gone.
@@ -4001,12 +4074,17 @@
     }
     if (r.tires < TIRE_FLOOR) r.tires = TIRE_FLOOR;
     if (tire < 0.45) r.slide += (Math.random() - 0.5) * 4.2 * dt;
-    if (info.kerb) {
+    if (onKerb && kerbDepth > 0) {
       var dive = Math.abs(r.speed) / 36;
-      var bite = clamp((info.dist - (ASPHALT - 0.2)) / 1.1, 0.18, 1);
-      var wob = bite * dive;
+      var wob = kerbDepth * dive;
       r.slide += Math.sin((raceTime + r.x * 0.05) * 28) * 14 * wob * dt;
       r.heading += Math.sin((raceTime + r.z * 0.04) * 17) * 0.7 * wob * dt;
+      var wheelFrac = wheelKerb.count / 4;
+      r.tires -= (1.2 + 2.4 * wheelFrac) * dt * speed01 * kerbDepth;
+      var bumpTarget = KERB_RAISE * kerbDepth * (0.35 + 0.65 * wheelFrac) * (0.35 + 0.65 * speed01);
+      r.kerbBump = clamp((r.kerbBump || 0) * Math.pow(0.1, dt) + bumpTarget, 0, KERB_RAISE * 1.35);
+    } else {
+      r.kerbBump = (r.kerbBump || 0) * Math.pow(0.12, dt);
     }
 
     r.heading += steer * maxYaw * dt * (r.speed < 0 ? -1 : 1);
@@ -4016,10 +4094,9 @@
     r.z += Math.cos(r.heading) * r.slide * dt;
     r.slide *= Math.pow(0.07, dt);
 
-    r.mesh.position.set(r.x, rideHeight(), r.z);
-    r.mesh.rotation.set(0, -r.heading, 0);
-    r.mesh.rotation.x = 0;
-    r.mesh.rotation.z = 0;
+    var bump = r.kerbBump || 0;
+    r.mesh.position.set(r.x, rideHeight() + bump, r.z);
+    r.mesh.rotation.set(-bump * 3.4, -r.heading, bump * 0.65 * clamp(r.slide, -1, 1));
     var wheels = r.mesh.userData.wheels;
     if (wheels) {
       var spin = r.speed * dt * 2.4;
@@ -4729,18 +4806,91 @@
     var avz = Math.sin(a.heading) * a.speed + Math.cos(a.heading) * a.slide;
     var bvx = Math.cos(b.heading) * b.speed + -Math.sin(b.heading) * b.slide;
     var bvz = Math.sin(b.heading) * b.speed + Math.cos(b.heading) * b.slide;
-    var rel = (avx - bvx) * nx + (avz - bvz) * nz;
+    var dx = b.x - a.x;
+    var dz = b.z - a.z;
+    var dlen = Math.hypot(dx, dz) || 1;
+    dx /= dlen;
+    dz /= dlen;
+    var aSpd = Math.hypot(avx, avz);
+    var bSpd = Math.hypot(bvx, bvz);
+    var leadA = aSpd >= bSpd;
+    var cx = leadA ? avx : bvx;
+    var cz = leadA ? avz : bvz;
+    var crashL = leadA ? aSpd : bSpd;
+    if (crashL > 1.2) {
+      cx /= crashL;
+      cz /= crashL;
+    } else {
+      cx = dx;
+      cz = dz;
+    }
+    var cand = [
+      [nx, nz],
+      [dx, dz],
+      [cx, cz],
+    ];
+    var rel = -1;
+    var cnx = nx;
+    var cnz = nz;
+    var ci;
+    for (ci = 0; ci < cand.length; ci++) {
+      var rx = cand[ci][0];
+      var rz = cand[ci][1];
+      var rl = Math.hypot(rx, rz) || 1;
+      rx /= rl;
+      rz /= rl;
+      if (rx * dx + rz * dz < 0) {
+        rx = -rx;
+        rz = -rz;
+      }
+      var r = (avx - bvx) * rx + (avz - bvz) * rz;
+      if (r > rel) {
+        rel = r;
+        cnx = rx;
+        cnz = rz;
+      }
+    }
     if (rel > 0) {
-      var jimp = rel * 0.72;
-      avx -= jimp * nx;
-      avz -= jimp * nz;
-      bvx += jimp * nx;
-      bvz += jimp * nz;
+      // Speed-weighted inelastic crash. Faster car keeps going; the
+      // slower one is launched that way. Equal-mass j = rel*0.72 used
+      // to bounce a max-speed ram backwards like a pinball.
+      var ma = 0.7 + 0.95 * clamp(aSpd / MAX_SPEED, 0, 1);
+      var mb = 0.7 + 0.95 * clamp(bSpd / MAX_SPEED, 0, 1);
+      var jimp = (1.16 * rel) / (1 / ma + 1 / mb);
+      avx -= (jimp / ma) * cnx;
+      avz -= (jimp / ma) * cnz;
+      bvx += (jimp / mb) * cnx;
+      bvz += (jimp / mb) * cnz;
+      if (crashL > 12 && Math.abs(aSpd - bSpd) > 4.5) {
+        var alongFast = leadA ? avx * cx + avz * cz : bvx * cx + bvz * cz;
+        var alongSlow = leadA ? bvx * cx + bvz * cz : avx * cx + avz * cz;
+        var floor = crashL * 0.28;
+        if (alongFast < floor) {
+          var add = floor - alongFast;
+          avx += cx * add;
+          avz += cz * add;
+          bvx += cx * add;
+          bvz += cz * add;
+          alongFast = floor;
+          alongSlow += add;
+        }
+        var wantSlow = Math.max(alongFast * 0.7, crashL * 0.42);
+        if (alongSlow < wantSlow) {
+          var kick = (wantSlow - alongSlow) * 0.85;
+          if (leadA) {
+            bvx += cx * kick;
+            bvz += cz * kick;
+          } else {
+            avx += cx * kick;
+            avz += cz * kick;
+          }
+        }
+      }
     }
     var pace = Math.max(Math.abs(a.speed), Math.abs(b.speed), Math.hypot(avx, avz), Math.hypot(bvx, bvz));
     var impact = Math.max(rel, 0, pace * 0.34, 2.6);
-    hitCarFeel(a, avx, avz, -nx, -nz, impact);
-    hitCarFeel(b, bvx, bvz, nx, nz, impact);
+    hitCarFeel(a, avx, avz, -cnx, -cnz, impact);
+    hitCarFeel(b, bvx, bvz, cnx, cnz, impact);
     poseCar(a);
     poseCar(b);
     if (impact > 4 && !(a.hitFxT > 0) && !(b.hitFxT > 0)) {

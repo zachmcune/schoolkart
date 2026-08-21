@@ -813,6 +813,10 @@ assert(!/function bashWall\([\s\S]{0,700}heading = Math.atan2/.test(src), "bashW
 assert(!/function bashCars\([\s\S]{0,900}heading = Math.atan2/.test(src), "bashCars does not snap heading to velocity");
 assert(src.indexOf("function bashOtherCars") !== -1, "room Bowie is bashed from the race tick");
 assert(src.indexOf("function meshOverlap") !== -1 && src.indexOf("var MESH_HALF_W = 1.2") !== -1, "hit box is the visible mesh box, not a sausage");
+assert(src.indexOf("Speed-weighted inelastic crash") !== -1, "max-speed ram plows through, does not bounce back");
+assert(sliceFn("bashCars").indexOf("rel * 0.72") === -1, "car-car is not the old equal-mass bounce");
+assert(src.indexOf("var KERB_RAISE = 0.055") !== -1 && src.indexOf("function makeRaisedKerbBand") !== -1, "kerbs are raised steps, not flat ribbons");
+assert(src.indexOf("function sampleWheelKerbs") !== -1, "kerb feel samples all four wheels");
 assert(src.indexOf("var impact = Math.max(rel, 0, pace * 0.34, 2.6)") !== -1, "overlap at a crawl still yaws");
 assert(src.indexOf("if (impact < 1.1 && pace < 3)") === -1, "slow side-by-side does not skip feel");
 assert(/function pinGrid\([\s\S]{0,400}faceRaceAt/.test(src), "grid pin faces the ribbon, not leftover yaw");

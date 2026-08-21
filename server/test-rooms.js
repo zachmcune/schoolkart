@@ -201,6 +201,7 @@ waitHealth()
                   assert(js.indexOf("function meshOverlap") !== -1 && js.indexOf("var MESH_HALF_W = 1.2") !== -1, "hit box is the visible mesh, not a sausage");
                   assert(js.indexOf("function bashOtherCars") !== -1, "room Bowie is bashed from the race tick");
                   assert(js.indexOf("var impact = Math.max(rel, 0, pace * 0.34, 2.6)") !== -1, "crawl overlap still yaws");
+                  assert(js.indexOf("Speed-weighted inelastic crash") !== -1, "max-speed ram plows through, does not bounce back");
                   assert(js.indexOf("if (impact < 1.1 && pace < 3)") === -1, "slow side-by-side does not skip feel");
                   assert(js.indexOf("pitHudPct") !== -1 && js.indexOf("pitAwayT") !== -1, "pit % does not bounce while stuck");
                   assert(js.indexOf("function tileIconPts") !== -1 && js.indexOf("function tileIconSvg") !== -1, "90/sweeper/hairpin are in-square SVG silhouettes");
