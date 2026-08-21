@@ -222,6 +222,7 @@ waitHealth()
                   assert(js.indexOf("var TILT_DEAD = 6") !== -1 && js.indexOf("var TILT_SPAN = 26") !== -1, "tilt deadzone is small");
                   assert(js.indexOf("var dead = 18") === -1, "fat 18deg deadzone is gone");
                   assert(js.indexOf("gyroFilt") !== -1, "tilt steer is smoothed");
+                  assert(js.indexOf("window.screen.orientation") !== -1, "orientation lock reads window.screen");
                   assert(js.indexOf("isChromeOS") !== -1, "Chromebook UA still skips gas/brake overlay");
                   assert(js.indexOf("exitPortAfter") !== -1 && js.indexOf("campusRoot") !== -1, "custom start does not stack piece walls or campus volumes");
                   assert(js.indexOf("MAP_SURF = PATH.slice()") !== -1, "custom physics uses the raced PATH, not leftover pieces");

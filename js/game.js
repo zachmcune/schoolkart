@@ -6692,7 +6692,7 @@
   }
 
   function lockLandscape() {
-    var so = window.screen && screen.orientation;
+    var so = window.screen && window.screen.orientation;
     if (!so || typeof so.lock !== "function") return;
     try {
       var p = so.lock("landscape");
@@ -6701,7 +6701,7 @@
   }
 
   function unlockOrientation() {
-    var so = window.screen && screen.orientation;
+    var so = window.screen && window.screen.orientation;
     if (!so || typeof so.unlock !== "function") return;
     try {
       so.unlock();
@@ -6761,9 +6761,8 @@
   }
 
   function screenAngle() {
-    if (window.screen && screen.orientation && typeof screen.orientation.angle === "number") {
-      return screen.orientation.angle;
-    }
+    var so = window.screen && window.screen.orientation;
+    if (so && typeof so.angle === "number") return so.angle;
     if (typeof window.orientation === "number") return window.orientation;
     return isLandscape() ? 90 : 0;
   }
