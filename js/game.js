@@ -3717,9 +3717,8 @@
   }
 
   function inChicaneS(info) {
-    // The S, not the approach. A chicane name used to cover the Loop
-    // slab and the 88 before it — that locked A/D on the way in.
-    // Custom C tiles are a polyline S (no tight arcs).
+    // Geometry only: the S, not the approach slab or the 88 before it.
+    // Never a steer lock. Custom C tiles are a polyline S (no tight arcs).
     if (!info || info.grass || info.name !== "chicane") return false;
     if (onLongStraight(info.s)) return false;
     var seg = pathSegAt(info.s);
@@ -3824,13 +3823,10 @@
       var hpOver = (r.speed - 17) / 14;
       r.slide += (steer !== 0 ? steer : 1) * hpOver * 22 * dt;
       if (hpOver > 0.3) r.tires -= 2.8 * dt * hpOver;
-    } else if (inChicaneS(info) && r.speed > 24) {
-      // Space through the S. Hold W dumps. Do not crush A/D yaw —
-      // the approach and 90s stay steerable.
-      var chiOver = (r.speed - 24) / 12;
-      r.slide += (steer !== 0 ? steer : 1) * chiOver * 22 * dt;
-      if (chiOver > 0.3) r.tires -= 2.8 * dt * chiOver;
     }
+    // The S never dumps or crushes A/D. Too fast is a mistimed line:
+    // yaw rate cannot follow the kinks, so you run wide. Space is still
+    // how you make time to turn. inChicaneS is identity, not a lock.
     if (latDemand > maxLat && Math.abs(steer) > 0.05) {
       var slip = (latDemand - maxLat) / Math.max(6, maxLat);
       maxYaw *= 1 / (1 + slip * 2.1);
