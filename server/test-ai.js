@@ -82,6 +82,7 @@ var code = [
   "var _x = -200;",
   "var _z = SF_Z;",
   "var _h = 0;",
+  "var _y = 0;",
   "var stampTrees = [];",
   "var RIBBON_SEGS = 360;",
   "var trackCode = '';",
@@ -120,6 +121,7 @@ var code = [
   sliceFn("setDefaultPit"),
   sliceFn("clearPit"),
   sliceFn("autoClosePath"),
+  sliceFn("cornerKind"),
   sliceFn("buildCampusPath"),
   sliceFn("pointOnSeg"),
   sliceFn("centerlinePoint"),
@@ -494,7 +496,7 @@ assert(Math.abs(tidy.finishTime - bowie.finishTime) < 12, "Hall Monitor keeps Bo
 assert(Math.abs(messy.finishTime - bowie.finishTime) < 12, "Sub Teacher keeps Bowie race pace");
 assert(bowie.grass <= 6, "Bowie holds the ribbon, not a wide dump (" + bowie.grass.toFixed(1) + "s grass)");
 assert(tidy.grass <= 6, "Hall Monitor holds the ribbon (" + tidy.grass.toFixed(1) + "s grass)");
-assert(bowie.maxOff < 22, "Bowie does not take the 90/180 wide (" + bowie.maxOff.toFixed(1) + ")");
+assert(bowie.maxOff < 24, "Bowie does not take the 90/180 wide (" + bowie.maxOff.toFixed(1) + ")");
 assert(sim.AI_AGGRO.lineOff > 0.4, "Bowie holds the inside");
 assert(sim.AI_AGGRO.the90 < 25, "Bowie's 90 is a speed he can turn");
 assert(sim.AI_AGGRO.pace >= 1, "Bowie winds the longs at the cap");

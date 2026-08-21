@@ -491,6 +491,25 @@ kbd {
   padding: 10px 16px;
 }
 
+.circuit-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+  margin: 8px 0 4px;
+}
+
+.lobby-btn.circuit {
+  font-size: 13px;
+  letter-spacing: 0.06em;
+  padding: 6px 10px;
+}
+
+.lobby-btn.circuit.on {
+  border-color: var(--gold);
+  background: #2a2018;
+}
+
 .lobby-input {
   width: 140px;
   text-align: center;

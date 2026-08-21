@@ -56,6 +56,93 @@
   var ASPHALT = 8.6;
   var RUNOFF = 3.8;
   var KERB_NAMES = ["the90", "hairpin", "chicane", "sweeper", "kink"];
+  var CAMPUS_KERBS = ["the90", "hairpin", "chicane", "sweeper", "kink"];
+  var activeBuiltin = "campus";
+  var BUILTIN_KERBS = {
+    campus: CAMPUS_KERBS,
+    harbor: ["devote", "casino", "hairpin", "chicane", "pool", "rascasse", "harbor"],
+    park: ["rettifilo", "roggia", "lesmo", "ascari", "parabola"],
+    desert: ["t1", "oasis", "kink", "sweeper"],
+    forest: ["source", "eau", "raidillon", "busstop"],
+  };
+  var FLAG_TITLE = {
+    the90: "THE 90",
+    hairpin: "HAIRPIN",
+    chicane: "CHICANE",
+    sweeper: "SWEEPER",
+    kink: "KINK",
+    devote: "DEVOTE",
+    casino: "CASINO",
+    rettifilo: "FIRST",
+    pool: "POOL",
+    rascasse: "RASCASSE",
+    harbor: "HARBOR",
+    roggia: "ROGGIA",
+    lesmo: "LESMO",
+    ascari: "ASCARI",
+    parabola: "PARABOLA",
+    t1: "TURN 1",
+    oasis: "OASIS",
+    source: "SOURCE",
+    eau: "EAU",
+    raidillon: "RAIDILLON",
+    busstop: "BUS STOP",
+  };
+
+  function cornerKind(name) {
+    if (name === "hairpin" || name === "source" || name === "t1") return "hairpin";
+    if (
+      name === "chicane" ||
+      name === "pool" ||
+      name === "roggia" ||
+      name === "rettifilo" ||
+      name === "ascari" ||
+      name === "busstop" ||
+      name === "oasis"
+    ) {
+      return "chicane";
+    }
+    if (name === "sweeper" || name === "harbor" || name === "parabola" || name === "raidillon") return "sweeper";
+    if (
+      name === "the90" ||
+      name === "casino" ||
+      name === "lesmo" ||
+      name === "eau" ||
+      name === "devote" ||
+      name === "massenet" ||
+      name === "rascasse"
+    ) {
+      return "the90";
+    }
+    if (name === "kink" || name === "tunnel" || name === "tabac" || name === "forest") return "kink";
+    return name || "";
+  }
+
+  function builtinSpec(code) {
+    var k = String(code || "").toUpperCase();
+    if (!k || k === "CAMPUS") return { id: "campus", menu: "CAMPUS LOOP", label: "Campus Loop" };
+    if (k === "HARBOR") return { id: "harbor", menu: "HARBOR STREET", label: "Harbor Street" };
+    if (k === "PARK") return { id: "park", menu: "ROYAL PARK", label: "Royal Park" };
+    if (k === "DESERT") return { id: "desert", menu: "DESERT DUSK", label: "Desert Dusk" };
+    if (k === "FOREST") return { id: "forest", menu: "FOREST CLIMB", label: "Forest Climb" };
+    return null;
+  }
+
+  function isBuiltinCode(code) {
+    return !!builtinSpec(code);
+  }
+
+  function builtinId() {
+    if (isDriveableLoop()) return "";
+    return activeBuiltin || "campus";
+  }
+
+  function setTrackKerbs(id) {
+    var list = BUILTIN_KERBS[id] || CAMPUS_KERBS;
+    KERB_NAMES.length = 0;
+    var i;
+    for (i = 0; i < list.length; i++) KERB_NAMES.push(list[i]);
+  }
   var KERB_RAISE = 0.055;
   var KERB_SURFACE_Y = 0.06;
   var GRASS_MAX = 8.5;
@@ -150,6 +237,12 @@
   var trackCode = "";
   var trackRoot = null;
   var campusRoot = null;
+  var harborRoot = null;
+  var parkRoot = null;
+  var desertRoot = null;
+  var forestRoot = null;
+  var groundSkirt = null;
+  var groundDirt = null;
   var stampTrees = [];
   try {
     var pb = parseInt(localStorage.getItem("sk_body"), 10);
@@ -316,6 +409,8 @@
     tileBoard: document.getElementById("tile-board"),
     tileTrash: document.getElementById("tile-trash"),
     tileRot: document.getElementById("btn-tile-rot"),
+    circuitPicks: document.getElementById("circuit-picks"),
+    circuitPicksEditor: document.getElementById("circuit-picks-editor"),
     lights: [
       document.getElementById("rl0"),
       document.getElementById("rl1"),
@@ -532,7 +627,7 @@
     return String(raw || "").replace(/[^A-Za-z0-9]/g, "").slice(0, TRACK_CODE_MAX);
   }
 
-  function addLine(ax, az, bx, bz, name) {
+  function addLine(ax, az, bx, bz, name, y0, y1) {
     var len = Math.hypot(bx - ax, bz - az);
     PATH.push({
       type: "line",
@@ -540,6 +635,8 @@
       az: az,
       bx: bx,
       bz: bz,
+      y0: y0 || 0,
+      y1: y1 == null ? y0 || 0 : y1,
       len: len,
       startS: TRACK_LEN,
       name: name,
@@ -547,7 +644,7 @@
     TRACK_LEN += len;
   }
 
-  function addArc(cx, cz, r, a0, a1, name) {
+  function addArc(cx, cz, r, a0, a1, name, y0, y1) {
     var len = Math.abs(a1 - a0) * r;
     PATH.push({
       type: "arc",
@@ -556,6 +653,8 @@
       r: r,
       a0: a0,
       a1: a1,
+      y0: y0 || 0,
+      y1: y1 == null ? y0 || 0 : y1,
       len: len,
       startS: TRACK_LEN,
       name: name,
@@ -566,26 +665,31 @@
   var _x = -200;
   var _z = SF_Z;
   var _h = 0;
+  var _y = 0;
 
-  function pathLine(dist, name) {
+  function pathLine(dist, name, dy) {
+    dy = dy || 0;
     var nx = _x + Math.cos(_h) * dist;
     var nz = _z + Math.sin(_h) * dist;
-    addLine(_x, _z, nx, nz, name);
+    addLine(_x, _z, nx, nz, name, _y, _y + dy);
     _x = nx;
     _z = nz;
+    _y += dy;
   }
 
-  function pathArc(r, deg, name) {
+  function pathArc(r, deg, name, dy) {
+    dy = dy || 0;
     var rad = (deg * Math.PI) / 180;
     var side = deg > 0 ? 1 : -1;
     var cx = _x + Math.cos(_h + side * Math.PI * 0.5) * r;
     var cz = _z + Math.sin(_h + side * Math.PI * 0.5) * r;
     var a0 = Math.atan2(_z - cz, _x - cx);
     var a1 = a0 + rad;
-    addArc(cx, cz, r, a0, a1, name);
+    addArc(cx, cz, r, a0, a1, name, _y, _y + dy);
     _h += rad;
     _x = cx + Math.cos(a1) * r;
     _z = cz + Math.sin(a1) * r;
+    _y += dy;
   }
 
   function pathSnap(targetDeg, r, name) {
@@ -766,6 +870,7 @@
     _x = -200;
     _z = SF_Z;
     _h = 0;
+    _y = 0;
     stampTrees = [];
   }
 
@@ -908,6 +1013,134 @@
     var southLen = _z - sweepR - SF_Z;
     pathLine(southLen, "west");
     pathArc(sweepR, 90, "sweeper");
+  }
+
+  function flattenCloseToZero(name) {
+    var i;
+    for (i = 0; i < PATH.length; i++) {
+      if (PATH[i].name === "close") PATH[i].name = name || PATH[i].name;
+    }
+    if (Math.abs(_y) < 0.05) {
+      _y = 0;
+      return;
+    }
+    var start = Math.max(0, PATH.length - 4);
+    var y = PATH[start].y0 || 0;
+    for (i = start; i < PATH.length; i++) {
+      PATH[i].y0 = y;
+      PATH[i].y1 = i === PATH.length - 1 ? 0 : y + (0 - y) * ((i - start + 1) / (PATH.length - start));
+      y = PATH[i].y1;
+    }
+    _y = 0;
+  }
+
+  function goTo(x, z, headingDeg, name) {
+    var dx = x - _x;
+    var dz = z - _z;
+    var dist = Math.hypot(dx, dz);
+    if (dist > 2) {
+      pathSnap((Math.atan2(dz, dx) * 180) / Math.PI, 26, name);
+      pathLine(Math.hypot(x - _x, z - _z), name);
+    }
+    if (headingDeg != null) pathSnap(headingDeg, 26, name);
+  }
+
+  function closeWithSweeper(name) {
+    var R = 72;
+    goTo(-200 - R, SF_Z + R, -90, name);
+    pathArc(R, 90, name);
+    if (Math.hypot(-200 - _x, SF_Z - _z) > 6) autoClosePath();
+    flattenCloseToZero(name);
+  }
+
+  function buildHarborPath() {
+    // Monaco read, flat: port SF → Sainte-Devote → Casino → Fairmont
+    // hairpin → tunnel → Nouvelle chicane → Tabac → Pool → Rascasse → port.
+    pathLine(420, "start");
+    pathArc(15, -82, "devote");
+    pathLine(70, "climb");
+    pathArc(20, 75, "casino");
+    pathLine(46, "square");
+    pathArc(16, -55, "mirabeau");
+    pathLine(36, "drop");
+    pathArc(11, 176, "hairpin");
+    pathLine(28, "portier");
+    pathArc(18, -42, "portier");
+    pathLine(96, "tunnel");
+    pathArc(12, 78, "chicane");
+    pathLine(16, "chicane");
+    pathArc(11, -88, "chicane");
+    pathLine(36, "tabac");
+    pathArc(15, -48, "tabac");
+    pathLine(28, "pool");
+    pathArc(10, 86, "pool");
+    pathLine(14, "pool");
+    pathArc(10, -86, "pool");
+    pathLine(34, "rascasse");
+    pathArc(12, -92, "rascasse");
+    pathLine(50, "harbor");
+    closeWithSweeper("harbor");
+  }
+
+  function buildParkPath() {
+    // Monza read, flat: Rettifilo → Roggia → Lesmo 1/2 → Ascari → Parabolica.
+    pathLine(460, "start");
+    pathArc(12, 80, "rettifilo");
+    pathLine(16, "rettifilo");
+    pathArc(11, -95, "rettifilo");
+    pathLine(90, "biassono");
+    pathArc(12, 78, "roggia");
+    pathLine(14, "roggia");
+    pathArc(11, -88, "roggia");
+    pathLine(70, "short");
+    pathArc(18, -78, "lesmo");
+    pathLine(40, "lesmo");
+    pathArc(16, -70, "lesmo");
+    pathLine(220, "serraglio");
+    pathArc(13, 82, "ascari");
+    pathLine(18, "ascari");
+    pathArc(12, -90, "ascari");
+    pathLine(16, "ascari");
+    pathArc(14, 70, "ascari");
+    pathLine(80, "parabola");
+    closeWithSweeper("parabola");
+  }
+
+  function buildDesertPath() {
+    // Sakhir read, flat: floodlit pit straight → tight T1 → oasis 90s → kink → sweeper.
+    pathLine(520, "start");
+    pathArc(14, -95, "t1");
+    pathLine(90, "short");
+    pathArc(18, -70, "oasis");
+    pathLine(70, "oasis");
+    pathArc(16, 78, "oasis");
+    pathLine(60, "oasis");
+    pathArc(15, -72, "oasis");
+    pathLine(280, "back");
+    pathArc(20, -28, "kink");
+    pathLine(120, "kink");
+    closeWithSweeper("sweeper");
+  }
+
+  function buildForestPath() {
+    // Spa read: valley SF → La Source → drop → Eau Rouge / Raidillon climb
+    // → forest → downhill → bus-stop → valley return. Only built-in with dy.
+    pathLine(560, "start");
+    pathArc(13, -168, "source");
+    pathLine(80, "drop", -5);
+    pathArc(26, 58, "eau", 4);
+    pathArc(20, -52, "raidillon", 7);
+    pathLine(200, "raidillon", 8);
+    pathLine(220, "forest");
+    pathArc(18, -78, "lescombes");
+    pathLine(120, "forest", -3);
+    pathArc(16, -64, "pouhon");
+    pathLine(140, "forest", -3);
+    pathArc(12, 78, "busstop");
+    pathLine(16, "busstop");
+    pathArc(11, -86, "busstop");
+    pathLine(140, "return", -4);
+    closeWithSweeper("return");
   }
 
   function buildCodePath(code) {
@@ -1578,17 +1811,26 @@
     resetPathCursor();
     MAP_SURF = [];
     MAP_CLOSED = false;
-    if (code) {
+    var spec = builtinSpec(code);
+    if (code && !spec) {
       if (code.charAt(0) === "M") buildMapPath(code);
       else {
         buildCodePath(code);
         MAP_CLOSED = TRACK_LEN > 80;
       }
+      activeBuiltin = MAP_CLOSED ? "" : "campus";
+      setTrackKerbs("campus");
     } else {
       setDefaultPit();
-      buildCampusPath();
+      activeBuiltin = spec ? spec.id : "campus";
+      if (activeBuiltin === "harbor") buildHarborPath();
+      else if (activeBuiltin === "park") buildParkPath();
+      else if (activeBuiltin === "desert") buildDesertPath();
+      else if (activeBuiltin === "forest") buildForestPath();
+      else buildCampusPath();
+      setTrackKerbs(activeBuiltin);
     }
-    if (!code) RIBBON_SEGS = Math.max(360, Math.round(TRACK_LEN / 2.4));
+    if (!code || spec) RIBBON_SEGS = Math.max(360, Math.round(TRACK_LEN / 2.4));
     else RIBBON_SEGS = Math.max(180, Math.min(720, Math.round(Math.max(TRACK_LEN, 80) / 2.4)));
   }
 
@@ -1602,15 +1844,23 @@
   function lockRacePath(code) {
     code = cleanTrack(code || "");
     rebuildPath(code);
-    if (code && !MAP_CLOSED) rebuildPath("");
+    if (builtinSpec(code)) {
+      /* reserved built-in — do not bounce */
+    } else if (code && !MAP_CLOSED) rebuildPath("");
     return isDriveableLoop();
   }
 
   function pointOnSeg(seg, u) {
+    var y0 = seg.y0 || 0;
+    var y1 = seg.y1 == null ? y0 : seg.y1;
+    var y = y0 + (y1 - y0) * u;
+    var pitch = seg.len > 0.01 ? (y1 - y0) / seg.len : 0;
     if (seg.type === "line") {
       return {
         x: seg.ax + (seg.bx - seg.ax) * u,
         z: seg.az + (seg.bz - seg.az) * u,
+        y: y,
+        pitch: pitch,
         h: Math.atan2(seg.bz - seg.az, seg.bx - seg.ax),
         name: seg.name,
         r: 999,
@@ -1621,6 +1871,8 @@
     return {
       x: seg.cx + Math.cos(a) * seg.r,
       z: seg.cz + Math.sin(a) * seg.r,
+      y: y,
+      pitch: pitch,
       h: seg.a1 >= seg.a0 ? a + Math.PI * 0.5 : a - Math.PI * 0.5,
       name: seg.name,
       r: seg.r,
@@ -1630,7 +1882,7 @@
 
   function centerlinePoint(s) {
     if (!PATH.length || TRACK_LEN <= 0) {
-      return { x: 0, z: SF_Z, h: 0, name: "start", r: 999, left: 0 };
+      return { x: 0, z: SF_Z, y: 0, pitch: 0, h: 0, name: "start", r: 999, left: 0 };
     }
     s = ((s % TRACK_LEN) + TRACK_LEN) % TRACK_LEN;
     for (var i = 0; i < PATH.length; i++) {
@@ -1697,6 +1949,8 @@
       return {
         x: px,
         z: pz,
+        y: 0,
+        pitch: 0,
         dist: 999,
         h: 0,
         s: 0,
@@ -1718,9 +1972,27 @@
       dist > ASPHALT - 0.12 &&
       dist < ASPHALT + 1.5;
     var onRunoff = !onAsphalt && dist <= ASPHALT + RUNOFF;
+    var hitY = 0;
+    var hitPitch = 0;
+    var si;
+    for (si = 0; si < segs.length; si++) {
+      var sg = segs[si];
+      if (bestS >= (sg.startS || 0) - 0.01 && bestS <= (sg.startS || 0) + (sg.len || 0) + 0.01) {
+        var pu = sg.len ? (bestS - (sg.startS || 0)) / sg.len : 0;
+        if (pu < 0) pu = 0;
+        if (pu > 1) pu = 1;
+        var y0 = sg.y0 || 0;
+        var y1 = sg.y1 == null ? y0 : sg.y1;
+        hitY = y0 + (y1 - y0) * pu;
+        hitPitch = sg.len > 0.01 ? (y1 - y0) / sg.len : 0;
+        break;
+      }
+    }
     return {
       x: best.x,
       z: best.z,
+      y: hitY,
+      pitch: hitPitch,
       dist: dist,
       h: best.h,
       s: bestS,
@@ -1742,8 +2014,8 @@
       var p = centerlinePoint((i / segs) * TRACK_LEN);
       var nx = -Math.sin(p.h);
       var nz = Math.cos(p.h);
-      pos.push(p.x + nx * (inset + halfW), y, p.z + nz * (inset + halfW));
-      pos.push(p.x + nx * (inset - halfW), y, p.z + nz * (inset - halfW));
+      pos.push(p.x + nx * (inset + halfW), (p.y || 0) + y, p.z + nz * (inset + halfW));
+      pos.push(p.x + nx * (inset - halfW), (p.y || 0) + y, p.z + nz * (inset - halfW));
       if (used > 0) {
         var a = (used - 1) * 2;
         idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
@@ -1785,11 +2057,11 @@
       var nx = -Math.sin(p.h);
       var nz = Math.cos(p.h);
       if (sided) {
-        pos.push(p.x + nx * (off + half), y, p.z + nz * (off + half));
-        pos.push(p.x + nx * (off - half), y, p.z + nz * (off - half));
+        pos.push(p.x + nx * (off + half), (p.y || 0) + y, p.z + nz * (off + half));
+        pos.push(p.x + nx * (off - half), (p.y || 0) + y, p.z + nz * (off - half));
       } else {
-        pos.push(p.x + nx * half, y, p.z + nz * half);
-        pos.push(p.x - nx * half, y, p.z - nz * half);
+        pos.push(p.x + nx * half, (p.y || 0) + y, p.z + nz * half);
+        pos.push(p.x - nx * half, (p.y || 0) + y, p.z - nz * half);
       }
       if (uvs) {
         uvs.push(used * uvStep, 1);
@@ -1845,11 +2117,11 @@
         var nx = -Math.sin(p.h);
         var nz = Math.cos(p.h);
         if (sided) {
-          pos.push(p.x + nx * (off + half), y, p.z + nz * (off + half));
-          pos.push(p.x + nx * (off - half), y, p.z + nz * (off - half));
+          pos.push(p.x + nx * (off + half), (p.y || 0) + y, p.z + nz * (off + half));
+          pos.push(p.x + nx * (off - half), (p.y || 0) + y, p.z + nz * (off - half));
         } else {
-          pos.push(p.x + nx * half, y, p.z + nz * half);
-          pos.push(p.x - nx * half, y, p.z - nz * half);
+          pos.push(p.x + nx * half, (p.y || 0) + y, p.z + nz * half);
+          pos.push(p.x - nx * half, (p.y || 0) + y, p.z - nz * half);
         }
         if (uvs) {
           uvs.push(used * uvStep, 1);
@@ -1899,8 +2171,8 @@
       }
       var nx = -Math.sin(p.h);
       var nz = Math.cos(p.h);
-      pos.push(p.x + nx * (off + half), baseY + raise, p.z + nz * (off + half));
-      pos.push(p.x + nx * (off - half), baseY, p.z + nz * (off - half));
+      pos.push(p.x + nx * (off + half), (p.y || 0) + baseY + raise, p.z + nz * (off + half));
+      pos.push(p.x + nx * (off - half), (p.y || 0) + baseY, p.z + nz * (off - half));
       if (uvs) {
         uvs.push(used * uvStep, 1);
         uvs.push(used * uvStep, 0);
@@ -1952,6 +2224,228 @@
     mesh.position.set(x, y, z);
     (parent || scene).add(mesh);
     return mesh;
+  }
+
+  function addBoxYaw(x, y, z, w, h, d, color, parent, yaw) {
+    var m = addBox(x, y, z, w, h, d, color, parent);
+    if (yaw) m.rotation.y = yaw;
+    return m;
+  }
+
+  function namedPoint(name, u) {
+    var i;
+    for (i = 0; i < PATH.length; i++) {
+      if (PATH[i].name === name) {
+        var t = u == null ? 0.5 : u;
+        return centerlinePoint(PATH[i].startS + PATH[i].len * t);
+      }
+    }
+    return null;
+  }
+
+  function sideOf(p, dist) {
+    var nx = -Math.sin(p.h);
+    var nz = Math.cos(p.h);
+    return { x: p.x + nx * dist, z: p.z + nz * dist, y: p.y || 0, h: p.h };
+  }
+
+  function clearDress(g) {
+    if (!g) return;
+    while (g.children.length) {
+      var c = g.children[0];
+      clearDress(c);
+      g.remove(c);
+      if (c.geometry) c.geometry.dispose();
+    }
+  }
+
+  function stampTreesInstanced(spots, root, leafColor) {
+    if (!spots || !spots.length || !root) return;
+    var n = spots.length;
+    var trunks = new THREE.InstancedMesh(
+      new THREE.CylinderGeometry(0.4, 0.5, 3, 5),
+      new THREE.MeshLambertMaterial({ color: 0x6a4020, side: THREE.DoubleSide }),
+      n
+    );
+    var leaves = new THREE.InstancedMesh(
+      new THREE.ConeGeometry(2.4, 4.6, 6),
+      new THREE.MeshLambertMaterial({ color: leafColor || 0x3f7a30, side: THREE.DoubleSide }),
+      n
+    );
+    var dummy = new THREE.Object3D();
+    var i;
+    for (i = 0; i < n; i++) {
+      var s = spots[i];
+      var sc = s.s || 1;
+      dummy.position.set(s.x, (s.y || 0) + 1.5 * sc, s.z);
+      dummy.scale.setScalar(sc);
+      dummy.rotation.set(0, 0, 0);
+      dummy.updateMatrix();
+      trunks.setMatrixAt(i, dummy.matrix);
+      dummy.position.y = (s.y || 0) + 4.8 * sc;
+      dummy.updateMatrix();
+      leaves.setMatrixAt(i, dummy.matrix);
+    }
+    trunks.instanceMatrix.needsUpdate = true;
+    leaves.instanceMatrix.needsUpdate = true;
+    root.add(trunks);
+    root.add(leaves);
+  }
+
+  function treesAlong(names, side, dist, step, root, leafColor) {
+    var allow = {};
+    var i;
+    if (names) {
+      for (i = 0; i < names.length; i++) allow[names[i]] = 1;
+    }
+    var spots = [];
+    for (i = 0; i < PATH.length; i++) {
+      if (names && !allow[PATH[i].name]) continue;
+      var s;
+      for (s = PATH[i].startS; s < PATH[i].startS + PATH[i].len; s += step || 14) {
+        var p = centerlinePoint(s);
+        var off = sideOf(p, (side || 1) * (dist || 20));
+        spots.push({ x: off.x, z: off.z, y: p.y || 0, s: 0.8 + ((s * 13) % 7) * 0.05 });
+      }
+    }
+    stampTreesInstanced(spots, root, leafColor);
+  }
+
+  function walkNamed(names, step, fn) {
+    var allow = null;
+    var i;
+    if (names) {
+      allow = {};
+      for (i = 0; i < names.length; i++) allow[names[i]] = 1;
+    }
+    for (i = 0; i < PATH.length; i++) {
+      if (allow && !allow[PATH[i].name]) continue;
+      var s;
+      for (s = PATH[i].startS; s < PATH[i].startS + PATH[i].len; s += step || 16) {
+        fn(centerlinePoint(s), s, PATH[i]);
+      }
+    }
+  }
+
+  function buildingsAlong(names, side, dist, step, root, body, roof, w, h, d) {
+    w = w || 12;
+    h = h || 8;
+    d = d || 9;
+    walkNamed(names, step || 22, function (p) {
+      var o = sideOf(p, (side || 1) * (dist || 20));
+      addBoxYaw(o.x, (p.y || 0) + h * 0.5, o.z, w, h, d, body, root, p.h);
+      addBoxYaw(o.x, (p.y || 0) + h + 0.4, o.z, w + 1, 0.7, d + 1, roof, root, p.h);
+    });
+  }
+
+  function lanternsAlong(names, side, dist, step, root) {
+    walkNamed(names, step || 16, function (p) {
+      var o = sideOf(p, (side || 1) * (dist || 14));
+      addBox(o.x, (p.y || 0) + 2.4, o.z, 0.22, 4.8, 0.22, 0x2a2018, root);
+      addBox(o.x, (p.y || 0) + 4.9, o.z, 0.7, 0.35, 0.7, 0xf0d878, root);
+    });
+  }
+
+  function floodlightsAlong(names, side, dist, step, root) {
+    walkNamed(names, step || 28, function (p) {
+      var o = sideOf(p, (side || 1) * (dist || 20));
+      addFloodlight(o.x, o.z, root, p.y || 0);
+    });
+  }
+
+  function addRockTunnel(root) {
+    var i;
+    for (i = 0; i < PATH.length; i++) {
+      if (PATH[i].name !== "tunnel") continue;
+      var s;
+      for (s = PATH[i].startS; s < PATH[i].startS + PATH[i].len; s += 9) {
+        var p = centerlinePoint(s);
+        var L = sideOf(p, 13);
+        var R = sideOf(p, -13);
+        addBoxYaw(L.x, 5.4 + (p.y || 0), L.z, 11, 10.2, 11, 0x5a5048, root, p.h);
+        addBoxYaw(R.x, 6.2 + (p.y || 0), R.z, 13, 12.4, 13, 0x4a443c, root, p.h);
+        addBoxYaw(L.x + 3, 9 + (p.y || 0), L.z, 8, 6, 8, 0x6a6054, root, p.h + 0.2);
+      }
+      var mid = namedPoint("tunnel", 0.5);
+      if (mid) {
+        addBoxYaw(mid.x, 12 + (mid.y || 0), mid.z, Math.min(48, PATH[i].len * 0.85), 10, 24, 0x3a3630, root, mid.h);
+        addBoxYaw(mid.x, 16 + (mid.y || 0), mid.z, 22, 6, 18, 0x4a4038, root, mid.h);
+      }
+      var a = namedPoint("tunnel", 0.05);
+      var b = namedPoint("tunnel", 0.95);
+      if (a) addBoxYaw(a.x, 5.2 + (a.y || 0), a.z, 3.4, 8.6, 16, 0x1a1612, root, a.h);
+      if (b) addBoxYaw(b.x, 5.2 + (b.y || 0), b.z, 3.4, 8.6, 16, 0x1a1612, root, b.h);
+    }
+  }
+
+  function addBankingArc(cx, cz, r, steps, root) {
+    var k;
+    for (k = 0; k < steps; k++) {
+      var u = k / Math.max(1, steps - 1);
+      var ang = -0.15 + u * 2.35;
+      addBox(cx + Math.cos(ang) * r, 3.2 + Math.sin(u * Math.PI) * 4.2, cz + Math.sin(ang) * r, 14, 3.8, 7.2, 0x8a5040, root);
+    }
+  }
+
+  function addBuilding(x, y, z, w, h, d, body, roof, parent, yaw) {
+    addBoxYaw(x, y, z, w, h, d, body, parent, yaw);
+    addBoxYaw(x, y + h * 0.5 + 0.45, z, w + 1.1, 0.85, d + 1.1, roof, parent, yaw);
+    var rows = Math.max(1, Math.floor(h / 3.2));
+    var cols = Math.max(2, Math.floor(w / 4.2));
+    var r;
+    var c;
+    for (r = 0; r < rows; r++) {
+      for (c = 0; c < cols; c++) {
+        var wx = x - w * 0.35 + (c / Math.max(1, cols - 1)) * w * 0.7;
+        var wy = y - h * 0.28 + r * 2.4;
+        addBoxYaw(wx, wy, z + d * 0.52, 1.1, 1.15, 0.08, 0xf4efe6, parent, yaw);
+      }
+    }
+    return true;
+  }
+
+  function addGrandstand(x, y, z, w, d, yaw, parent, seat, roof) {
+    addBoxYaw(x, y + 1.1, z, w, 2.2, d, seat || 0x2a3038, parent, yaw);
+    addBoxYaw(x, y + 2.6, z - Math.cos(yaw || 0) * 0.6, w * 0.98, 1.4, d * 0.7, 0x3a2420, parent, yaw);
+    addBoxYaw(x, y + 4.2, z, w + 1.2, 0.35, d + 1.4, roof || 0xd8b48a, parent, yaw);
+  }
+
+  function addYacht(x, z, yaw, parent, scale) {
+    scale = scale || 1;
+    addBoxYaw(x, 0.7 * scale, z, 9 * scale, 1.1 * scale, 2.5 * scale, 0xf4efe6, parent, yaw);
+    addBoxYaw(x + Math.cos(yaw || 0) * 1.2, 1.5 * scale, z, 4.2 * scale, 0.9 * scale, 2.1 * scale, 0xe8d8c4, parent, yaw);
+    var mast = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.08 * scale, 0.1 * scale, 6 * scale, 5),
+      new THREE.MeshLambertMaterial({ color: 0x2a2018 })
+    );
+    mast.position.set(x, 4.2 * scale, z);
+    parent.add(mast);
+  }
+
+  function addFloodlight(x, z, parent, y0) {
+    y0 = y0 || 0;
+    addBox(x, y0 + 6.2, z, 0.35, 12.4, 0.35, 0x2a2a2e, parent);
+    var disc = new THREE.Mesh(
+      new THREE.CylinderGeometry(1.3, 1.3, 0.18, 8),
+      new THREE.MeshLambertMaterial({ color: 0xfff2c8, emissive: 0xaa8844 })
+    );
+    disc.position.set(x, y0 + 12.6, z);
+    parent.add(disc);
+  }
+
+  function applyTrackPalette() {
+    var id = isDriveableLoop() ? "campus" : builtinId() || "campus";
+    var pal = {
+      campus: { clear: 0xe87834, fog: 0xf08a48, skirt: 0x3f5c32, dirt: 0x6a655c },
+      harbor: { clear: 0xee8a4a, fog: 0xe07060, skirt: 0x1f6a6e, dirt: 0x2f7a80 },
+      park: { clear: 0x7aa8c8, fog: 0x90b8a8, skirt: 0x245828, dirt: 0x3d6a38 },
+      desert: { clear: 0xc24a20, fog: 0x6a2840, skirt: 0xc8a46a, dirt: 0x9a7848 },
+      forest: { clear: 0x6a7a6e, fog: 0x5a6a5c, skirt: 0x1e3a22, dirt: 0x2a4028 },
+    }[id] || { clear: 0xe87834, fog: 0xf08a48, skirt: 0x3f5c32, dirt: 0x6a655c };
+    renderer.setClearColor(pal.clear, 1);
+    if (scene.fog) scene.fog.color.setHex(pal.fog);
+    if (groundSkirt && groundSkirt.material) groundSkirt.material.color.setHex(pal.skirt);
+    if (groundDirt && groundDirt.material) groundDirt.material.color.setHex(pal.dirt);
   }
 
   function labelPlane(text, w, h, fg, bg) {
@@ -2061,10 +2555,14 @@
     scene.add(trackRoot);
 
     // Sand ONLY at the 180 and the chicane — discrete, not a beach around the lap.
-    var sandH = courseBand(ASPHALT + RUNOFF + 1.45, 0.018, 0xe0c888, ["hairpin"]);
-    var sandC = courseBand(ASPHALT + RUNOFF + 1.45, 0.018, 0xe0c888, ["chicane"]);
+    var sandNames = [];
+    var sn;
+    for (sn = 0; sn < KERB_NAMES.length; sn++) {
+      var kind = cornerKind(KERB_NAMES[sn]);
+      if (kind === "hairpin" || kind === "chicane") sandNames.push(KERB_NAMES[sn]);
+    }
+    var sandH = courseBand(ASPHALT + RUNOFF + 1.45, 0.018, 0xe0c888, sandNames);
     if (sandH) trackRoot.add(sandH);
-    if (sandC) trackRoot.add(sandC);
     // Painted runoff = lighter/cooler grey. Asphalt = darker. Must read apart.
     var runoffMat = new THREE.MeshLambertMaterial({
       color: 0x8d97a6,
@@ -2179,10 +2677,11 @@
       }
     }
 
-    function cornerFlag(x, z, title) {
-      addBox(x, 1.4, z, 0.2, 2.8, 0.2, 0x2a2018, trackRoot);
+    function cornerFlag(x, z, title, y0) {
+      y0 = y0 || 0;
+      addBox(x, y0 + 1.4, z, 0.2, 2.8, 0.2, 0x2a2018, trackRoot);
       var pl = labelPlane(title, 7.4, 2.2, "#f4efe6", "#148f8c");
-      pl.position.set(x, 3.2, z);
+      pl.position.set(x, y0 + 3.2, z);
       trackRoot.add(pl);
     }
     function flagOn(name, title, side) {
@@ -2199,12 +2698,12 @@
       var nx = -Math.sin(fp.h);
       var nz = Math.cos(fp.h);
       var flagOff = ASPHALT + RUNOFF + 2.3;
-      cornerFlag(fp.x + nx * flagOff * side, fp.z + nz * flagOff * side, title);
+      cornerFlag(fp.x + nx * flagOff * side, fp.z + nz * flagOff * side, title, fp.y || 0);
     }
-    flagOn("the90", "THE 90", -1);
-    flagOn("chicane", "CHICANE", 1);
-    flagOn("hairpin", "HAIRPIN", -1);
-    flagOn("sweeper", "SWEEPER", 1);
+    var fn;
+    for (fn = 0; fn < KERB_NAMES.length; fn++) {
+      flagOn(KERB_NAMES[fn], FLAG_TITLE[KERB_NAMES[fn]] || KERB_NAMES[fn].toUpperCase(), fn % 2 ? 1 : -1);
+    }
 
     for (var st = 0; st < stampTrees.length; st++) {
       var tree = stampTrees[st];
@@ -2258,7 +2757,8 @@
   }
 
   function wallKindFor(p, side) {
-    if (p.name !== "hairpin" && p.name !== "chicane" && p.name !== "sweeper") return "low";
+    var wk = cornerKind(p.name);
+    if (wk !== "hairpin" && wk !== "chicane" && wk !== "sweeper") return "low";
     var i;
     for (i = 0; i < PATH.length; i++) {
       var seg = PATH[i];
@@ -2432,15 +2932,16 @@
       var rotY = -Math.atan2(dz, dx);
       var mx = (w.ax + w.bx) * 0.5;
       var mz = (w.az + w.bz) * 0.5;
+      var wy = (projectTrack(mx, mz).y || 0);
       var tall = w.kind === "tall";
       var ch = tall ? 1.28 : 0.9;
       var cd = tall ? 0.64 : 0.58;
-      stamp(concrete, i, mx, ch * 0.5, mz, len, ch, cd, rotY);
+      stamp(concrete, i, mx, wy + ch * 0.5, mz, len, ch, cd, rotY);
       var r0 = ch + 0.16;
       var r1 = ch + (tall ? 0.5 : 0.38);
-      stamp(railLo, i, mx, r0, mz, len * 0.98, 0.08, 0.08, rotY);
-      stamp(railHi, i, mx, r1, mz, len * 0.98, 0.08, 0.08, rotY);
-      stamp(posts, i, w.ax, (r1 + 0.06) * 0.5, w.az, 0.1, r1 + 0.06, 0.1, rotY);
+      stamp(railLo, i, mx, wy + r0, mz, len * 0.98, 0.08, 0.08, rotY);
+      stamp(railHi, i, mx, wy + r1, mz, len * 0.98, 0.08, 0.08, rotY);
+      stamp(posts, i, w.ax, wy + (r1 + 0.06) * 0.5, w.az, 0.1, r1 + 0.06, 0.1, rotY);
     }
     concrete.instanceMatrix.needsUpdate = true;
     railLo.instanceMatrix.needsUpdate = true;
@@ -2475,6 +2976,7 @@
     skirt.rotation.x = -Math.PI * 0.5;
     skirt.position.set(dirtX, -0.12, dirtZ);
     scene.add(skirt);
+    groundSkirt = skirt;
 
     var dirt = new THREE.Mesh(
       new THREE.PlaneGeometry(dirtW, dirtD),
@@ -2483,61 +2985,65 @@
     dirt.rotation.x = -Math.PI * 0.5;
     dirt.position.set(dirtX, -0.06, dirtZ);
     scene.add(dirt);
+    groundDirt = dirt;
 
     campusRoot = new THREE.Group();
     campusRoot.name = "campusDressing";
     scene.add(campusRoot);
+    harborRoot = new THREE.Group();
+    harborRoot.name = "harborDressing";
+    scene.add(harborRoot);
+    parkRoot = new THREE.Group();
+    parkRoot.name = "parkDressing";
+    scene.add(parkRoot);
+    desertRoot = new THREE.Group();
+    desertRoot.name = "desertDressing";
+    scene.add(desertRoot);
+    forestRoot = new THREE.Group();
+    forestRoot.name = "forestDressing";
+    scene.add(forestRoot);
 
     addTrackMesh();
 
-    addBox(8, 4.2, SF_Z - 17, 36, 6.4, 7, 0x8a4030, campusRoot);
-    addBox(8, 7.6, SF_Z - 17, 38, 0.8, 8, 0xd8b48a, campusRoot);
-    for (var row = -2; row <= 2; row++) {
-      addBox(8 + row * 6, 4.4, SF_Z - 14.2, 5, 0.16, 0.16, 0xf4efe6, campusRoot);
-    }
+    addSkyBits();
+    rebuildTrackDressing();
+    syncCampusDressing();
+  }
 
-    addBox(-8, 5.4, -32, 16, 10.8, 12, 0xb4532e, campusRoot);
-    addBox(-8, 11.2, -32, 18, 1, 14, 0x8a3a22, campusRoot);
-    addBox(28, 4.8, -36, 14, 9.6, 16, 0xa34628, campusRoot);
-    addBox(28, 10, -36, 16, 0.9, 18, 0x7a301c, campusRoot);
-    addBox(-36, 3.8, -28, 18, 7.6, 10, 0xc4683a, campusRoot);
-    var grassMat = new THREE.MeshBasicMaterial({ color: 0x7aee58, side: THREE.DoubleSide });
-    var hallFoot = [
-      { x0: -17, x1: 1, z0: -39, z1: -25 },
-      { x0: 20, x1: 36, z0: -45, z1: -27 },
-      { x0: -45, x1: -27, z0: -33, z1: -23 },
-      { x0: 3.8, x1: 12.2, z0: -32.2, z1: -23.8 },
-      { x0: -10, x1: 26, z0: -101, z1: -93.5 },
-      { x0: -59, x1: -37, z0: 89, z1: 103 },
-    ];
-    function campusQuad(x, z, w, d) {
-      var x0 = x - w * 0.5;
-      var x1 = x + w * 0.5;
-      var z0 = z - d * 0.5;
-      var z1 = z + d * 0.5;
-      var i;
-      for (i = 0; i < hallFoot.length; i++) {
-        var b = hallFoot[i];
-        if (x0 < b.x1 && x1 > b.x0 && z0 < b.z1 && z1 > b.z0) return;
-      }
-      if (onPitPavement(x, z) || onPitPavement(x0, z0) || onPitPavement(x1, z1)) return;
-      var h = 0.48;
-      var mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), grassMat);
-      mesh.position.set(x, 0.2 + h * 0.5, z);
-      campusRoot.add(mesh);
+  function dressCampus() {
+    var root = campusRoot;
+    addBuilding(8, 4.2, SF_Z - 18, 38, 8.4, 9, 0x8a4030, 0xd8b48a, root, 0);
+    addBuilding(-22, 5.2, -34, 18, 10.4, 14, 0xb4532e, 0x8a3a22, root, 0);
+    addBuilding(28, 4.8, -38, 16, 9.6, 16, 0xa34628, 0x7a301c, root, 0);
+    addBuilding(-40, 3.8, -30, 20, 7.6, 12, 0xc4683a, 0x8a4030, root, 0);
+    addBuilding(52, 4.4, -42, 18, 8.2, 12, 0xa34628, 0xd8b48a, root, 0);
+    addBuilding(-8, 4.6, 12, 22, 8.8, 14, 0xb4532e, 0x8a3a22, root, 0);
+    addBuilding(90, 4.0, -36, 20, 7.8, 12, 0xc4683a, 0x8a4030, root, 0);
+    addBuilding(-70, 3.8, -28, 18, 7.4, 12, 0xa34628, 0xd8b48a, root, 0);
+    buildingsAlong(["start"], 1, 30, 36, root, 0xb4532e, 0x8a3a22, 16, 8.2, 12);
+    buildingsAlong(["north", "west"], 1, 28, 32, root, 0xa34628, 0x7a301c, 18, 7.6, 12);
+    addGrandstand(20, 0, SF_Z - 22, 48, 8, 0, root, 0x3a3030, 0xd8b48a);
+    addGrandstand(86, 0, SF_Z - 22, 28, 7, 0, root, 0x3a3030, 0xd8b48a);
+    var lot;
+    for (lot = 0; lot < 12; lot++) {
+      addBox(70 + (lot % 4) * 6.4, 0.22, -48 - Math.floor(lot / 4) * 8, 4.6, 0.12, 2.6, 0x2a2a2e, root);
+      addBox(70 + (lot % 4) * 6.4, 0.7, -48 - Math.floor(lot / 4) * 8, 3.4, 0.85, 1.6, [0x2ec8c3, 0xd8b48a, 0xc4683a, 0x3a5470][lot % 4], root);
     }
-    campusQuad(10.5, -40.5, 18, 15);
-    campusQuad(-21.5, -30.5, 9, 13);
-    campusQuad(58, -47, 40, 14);
-    addBox(-48, 4.4, 96, 22, 8.8, 14, 0xa34628, campusRoot);
-    addBox(-48, 9.2, 96, 24, 0.8, 16, 0x7a301c, campusRoot);
-
+    var hp = namedPoint("hairpin", 0.5);
+    if (hp) {
+      var gym = sideOf(hp, 28);
+      addBuilding(gym.x, 5.2, gym.z, 28, 10.4, 18, 0x8a4030, 0xd8b48a, root, hp.h);
+      var field = sideOf(hp, -26);
+      addBuilding(field.x, 3.4, field.z, 22, 6.8, 14, 0xa34628, 0x7a301c, root, hp.h);
+    }
+    var north = namedPoint("north", 0.4);
+    if (north) addBuilding(sideOf(north, 32).x, 4.2, sideOf(north, 32).z, 24, 8.4, 14, 0xb4532e, 0x8a3a22, root, north.h);
     var towerX = 8;
     var towerZ = -28;
-    addBox(towerX, 11, towerZ, 7.2, 22, 7.2, 0x9a3f2a, campusRoot);
-    addBox(towerX, 22.6, towerZ, 8.4, 1.4, 8.4, 0xd8b48a, campusRoot);
-    addBox(towerX, 25.2, towerZ, 3.2, 4.2, 3.2, 0x8a3a22, campusRoot);
-    addBox(towerX, 28.2, towerZ, 0.5, 2.4, 0.5, 0x2a2018, campusRoot);
+    addBox(towerX, 11, towerZ, 7.2, 22, 7.2, 0x9a3f2a, root);
+    addBox(towerX, 22.6, towerZ, 8.4, 1.4, 8.4, 0xd8b48a, root);
+    addBox(towerX, 25.2, towerZ, 3.2, 4.2, 3.2, 0x8a3a22, root);
+    addBox(towerX, 28.2, towerZ, 0.5, 2.4, 0.5, 0x2a2018, root);
     var clock = document.createElement("canvas");
     clock.width = 128;
     clock.height = 128;
@@ -2556,39 +3062,241 @@
     cctx.lineTo(92, 64);
     cctx.stroke();
     var clockTex = new THREE.CanvasTexture(clock);
-    for (var f = 0; f < 2; f++) {
+    var f;
+    for (f = 0; f < 2; f++) {
       var face = new THREE.Mesh(
         new THREE.PlaneGeometry(3.4, 3.4),
         new THREE.MeshBasicMaterial({ map: clockTex, side: THREE.DoubleSide })
       );
       face.position.set(towerX + (f ? 3.65 : -3.65), 18.4, towerZ);
       face.rotation.y = f ? Math.PI * 0.5 : -Math.PI * 0.5;
-      campusRoot.add(face);
+      root.add(face);
     }
-
-    for (var t = 0; t < 14; t++) {
-      var tx = -80 + (t % 7) * 36;
-      var tz = t < 7 ? 210 : -130;
-      var trunk = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.4, 0.5, 3, 5),
-        new THREE.MeshLambertMaterial({ color: 0x6a4020, side: THREE.DoubleSide })
-      );
-      trunk.position.set(tx, 1.5, tz);
-      campusRoot.add(trunk);
-      var leaf = new THREE.Mesh(
-        new THREE.ConeGeometry(2.4, 4.6, 6),
-        new THREE.MeshLambertMaterial({ color: 0x3f7a30, side: THREE.DoubleSide })
-      );
-      leaf.position.set(tx, 4.8, tz);
-      campusRoot.add(leaf);
+    var grassMat = new THREE.MeshBasicMaterial({ color: 0x7aee58, side: THREE.DoubleSide });
+    function lawn(x, z, w, d) {
+      var mesh = new THREE.Mesh(new THREE.BoxGeometry(w, 0.48, d), grassMat);
+      mesh.position.set(x, 0.44, z);
+      root.add(mesh);
     }
+    lawn(12, -44, 20, 16);
+    lawn(-24, -42, 14, 12);
+    lawn(58, -52, 36, 14);
+    lawn(-10, 20, 22, 16);
+    lawn(40, 8, 18, 12);
+    lawn(-56, -40, 20, 14);
+    lawn(110, -50, 24, 12);
+    treesAlong(["north", "start", "west", "sweeper"], 1, 22, 14, root, 0x3f7a30);
+    treesAlong(["north", "start", "west"], -1, 26, 15, root, 0x4a8a38);
+  }
 
-    addSkyBits();
-    syncCampusDressing();
+  function dressHarbor() {
+    var root = harborRoot;
+    var waterMat = new THREE.MeshLambertMaterial({ color: 0x2a8a8c, emissive: 0x0a3034, side: THREE.DoubleSide });
+    var sf = namedPoint("start", 0.35) || { x: 40, z: SF_Z, h: 0, y: 0 };
+    var port = sideOf(sf, -48);
+    var water = new THREE.Mesh(new THREE.PlaneGeometry(560, 240), waterMat);
+    water.rotation.x = -Math.PI * 0.5;
+    water.position.set(port.x, 0.02, port.z);
+    root.add(water);
+    var tabac = namedPoint("tabac", 0.5);
+    var poolPt = namedPoint("pool", 0.45);
+    if (tabac || poolPt) {
+      var harbor2 = tabac || poolPt;
+      var basinW = sideOf(harbor2, -36);
+      var water2 = new THREE.Mesh(new THREE.PlaneGeometry(220, 140), waterMat);
+      water2.rotation.x = -Math.PI * 0.5;
+      water2.position.set(basinW.x, 0.02, basinW.z);
+      root.add(water2);
+    }
+    var quay = sideOf(sf, -18);
+    addBoxYaw(quay.x, 0.7, quay.z, 260, 1.2, 6, 0xc8b8a0, root, sf.h);
+    var yi;
+    for (yi = 0; yi < 14; yi++) {
+      var yp = namedPoint("start", 0.06 + yi * 0.062);
+      if (!yp) continue;
+      var yo = sideOf(yp, -26 - (yi % 3) * 7);
+      addYacht(yo.x, yo.z, yp.h + (yi % 2 ? 0.25 : -0.18), root, 0.82 + (yi % 3) * 0.14);
+    }
+    buildingsAlong(["start"], 1, 20, 16, root, 0xe8c8a8, 0xc47858, 14, 10, 10);
+    buildingsAlong(["start"], 1, 36, 20, root, 0xf0d2b4, 0xd8a078, 12, 14, 9);
+    buildingsAlong(["climb", "square", "devote"], 1, 18, 16, root, 0xe8c8a8, 0xc47858, 12, 9, 9);
+    buildingsAlong(["climb", "square"], -1, 18, 18, root, 0xf0d2b4, 0xb87850, 11, 8, 8);
+    buildingsAlong(["portier", "tabac", "rascasse"], 1, 16, 14, root, 0xe8ddd0, 0xc4b49a, 11, 8, 8);
+    lanternsAlong(["start"], -1, 15, 14, root);
+    lanternsAlong(["start"], 1, 14, 18, root);
+    var cas = namedPoint("casino", 0.45);
+    if (cas) {
+      var hill = sideOf(cas, 34);
+      addBuilding(hill.x, 14, hill.z, 24, 16, 18, 0xe8d2a0, 0xc9a24a, root, cas.h);
+      addBoxYaw(hill.x, 24.5, hill.z, 12, 5, 12, 0xf0d878, root, cas.h);
+      var dome = new THREE.Mesh(
+        new THREE.SphereGeometry(5.4, 8, 6, 0, Math.PI * 2, 0, Math.PI * 0.55),
+        new THREE.MeshLambertMaterial({ color: 0xf0d878 })
+      );
+      dome.position.set(hill.x, 28, hill.z);
+      root.add(dome);
+      var t;
+      for (t = 0; t < 5; t++) {
+        var step = sideOf(cas, 26 - t * 2.6);
+        addBoxYaw(step.x, 1.1 + t * 0.85, step.z, 16 - t, 0.55, 7, 0xd8c4a0, root, cas.h);
+      }
+    }
+    var u;
+    for (u = 0; u <= 10; u++) {
+      var hp = namedPoint("hairpin", u / 10);
+      if (!hp) continue;
+      var wrap = sideOf(hp, 15);
+      addBuilding(wrap.x, 6.8 + (u % 3) * 0.6, wrap.z, 13, 9.4 + (u % 2) * 1.4, 8, 0xe8ddd0, 0xc4b49a, root, hp.h);
+    }
+    addRockTunnel(root);
+    var pool = namedPoint("pool", 0.45);
+    if (pool) {
+      var basin = sideOf(pool, 16);
+      addBoxYaw(basin.x, 0.16, basin.z, 18, 0.22, 9, 0x3ec8d8, root, pool.h);
+      addBoxYaw(basin.x + Math.cos(pool.h) * 14, 0.16, basin.z + Math.sin(pool.h) * 14, 14, 0.22, 8, 0x2ab0c4, root, pool.h);
+      addBoxYaw(sideOf(pool, 24).x, 3.4, sideOf(pool, 24).z, 12, 4.6, 9, 0xe8ddd0, root, pool.h);
+      addBoxYaw(sideOf(pool, 19).x, 4.6, sideOf(pool, 19).z, 0.4, 6.2, 1.8, 0xf4efe6, root, pool.h);
+    }
+    var ras = namedPoint("rascasse", 0.5);
+    if (ras) addBuilding(sideOf(ras, 17).x, 5.4, sideOf(ras, 17).z, 16, 9.2, 12, 0xe0c4a8, 0xb87850, root, ras.h);
+  }
+
+  function dressPark() {
+    var root = parkRoot;
+    treesAlong(["start", "biassono", "serraglio", "parabola"], 1, 20, 10, root, 0x2f6a30);
+    treesAlong(["start", "biassono", "serraglio", "parabola"], -1, 22, 11, root, 0x3a7a34);
+    treesAlong(["lesmo", "rettifilo", "roggia"], 1, 20, 9, root, 0x2a5a28);
+    treesAlong(["lesmo", "rettifilo", "roggia"], -1, 20, 9, root, 0x2a5a28);
+    var sf = namedPoint("start", 0.25) || { x: 0, z: SF_Z, h: 0, y: 0 };
+    addGrandstand(sideOf(sf, -22).x, 0, sideOf(sf, -22).z, 96, 11, sf.h, root, 0x2a3038, 0xc4a070);
+    var tower = sideOf(sf, 18);
+    addBoxYaw(tower.x, 13, tower.z, 4.4, 26, 4.4, 0xd8d2c6, root, sf.h);
+    addBoxYaw(tower.x, 26.4, tower.z, 7.2, 1.1, 7.2, 0x8a3a22, root, sf.h);
+    addBoxYaw(tower.x, 8, tower.z, 6.2, 2.2, 6.2, 0xc4b49a, root, sf.h);
+    var para = namedPoint("parabola", 0.55);
+    if (para) addGrandstand(sideOf(para, -24).x, 0, sideOf(para, -24).z, 52, 9, para.h, root, 0x2a3038, 0xc4a070);
+    var les = namedPoint("lesmo", 0.35);
+    var ser = namedPoint("serraglio", 0.35);
+    if (les && ser) addBankingArc((les.x + ser.x) * 0.5 - 20, (les.z + ser.z) * 0.5 + 8, 62, 14, root);
+    else if (les) addBankingArc(les.x - 40, les.z - 20, 56, 12, root);
+    var first = namedPoint("rettifilo", 0.35) || namedPoint("roggia", 0.3);
+    if (first) {
+      var villa = sideOf(first, 52);
+      addBuilding(villa.x, 6.2, villa.z, 30, 10.4, 20, 0xe8ddd0, 0xc4b090, root, first.h);
+      addBuilding(villa.x + Math.cos(first.h) * 22, 5, villa.z + Math.sin(first.h) * 22, 16, 8, 12, 0xd8c8b0, 0xb0a080, root, first.h);
+      addBoxYaw(sideOf(first, -18).x, 0.18, sideOf(first, -18).z, 22, 0.22, 10, 0xc4b080, root, first.h);
+    }
+    var second = namedPoint("roggia", 0.4);
+    if (second) addBoxYaw(sideOf(second, -18).x, 0.18, sideOf(second, -18).z, 20, 0.22, 9, 0xc4b080, root, second.h);
+    var lawn = new THREE.Mesh(
+      new THREE.PlaneGeometry(90, 48),
+      new THREE.MeshLambertMaterial({ color: 0x4a9a40, side: THREE.DoubleSide })
+    );
+    lawn.rotation.x = -Math.PI * 0.5;
+    if (first) lawn.position.set(sideOf(first, 26).x, 0.08, sideOf(first, 26).z);
+    else lawn.position.set(40, 0.08, 20);
+    root.add(lawn);
+  }
+
+  function dressDesert() {
+    var root = desertRoot;
+    var sf = namedPoint("start", 0.3) || { x: 20, z: SF_Z, h: 0, y: 0 };
+    var tower = sideOf(sf, 26);
+    addBoxYaw(tower.x, 3.2, tower.z, 16, 6.2, 16, 0xe8d8c0, root, sf.h);
+    addBoxYaw(tower.x, 10.4, tower.z, 12, 8.4, 12, 0xd8c8b0, root, sf.h);
+    addBoxYaw(tower.x, 16.2, tower.z, 11, 1.6, 11, 0xa8d0e0, root, sf.h);
+    addBoxYaw(tower.x, 22, tower.z, 8.2, 10, 8.2, 0xf4efe6, root, sf.h);
+    addBoxYaw(tower.x, 28.4, tower.z, 6.4, 4.8, 6.4, 0xd0e0e8, root, sf.h);
+    addBoxYaw(tower.x, 32.2, tower.z, 8, 1.2, 8, 0xc4a070, root, sf.h);
+    addGrandstand(sideOf(sf, -24).x, 0, sideOf(sf, -24).z, 110, 12, sf.h, root, 0x2a2420, 0xd8c4a0);
+    floodlightsAlong(["start", "t1", "oasis", "back"], 1, 20, 26, root);
+    floodlightsAlong(["start", "t1", "oasis", "back"], -1, 20, 26, root);
+    var t1 = namedPoint("t1", 0.4);
+    if (t1) {
+      addGrandstand(sideOf(t1, 26).x, 0, sideOf(t1, 26).z, 44, 9, t1.h, root, 0x2a2420, 0xd8c4a0);
+      var pal = sideOf(t1, -96);
+      pal.x += Math.cos(t1.h) * 36;
+      pal.z += Math.sin(t1.h) * 36;
+      addBuilding(pal.x, 6.2, pal.z, 24, 8.4, 18, 0xd4b080, 0xc49858, root, t1.h);
+      addBuilding(pal.x + 18, 4.6, pal.z + 10, 14, 6.8, 12, 0xc4a070, 0xb08848, root, t1.h);
+      var dome = new THREE.Mesh(
+        new THREE.SphereGeometry(8, 8, 6, 0, Math.PI * 2, 0, Math.PI * 0.52),
+        new THREE.MeshLambertMaterial({ color: 0xe8c878 })
+      );
+      dome.position.set(pal.x, 12.2, pal.z);
+      root.add(dome);
+    }
+    var names = ["t1", "oasis", "kink", "sweeper"];
+    var i;
+    for (i = 0; i < names.length; i++) {
+      var c = namedPoint(names[i], 0.5);
+      if (!c) continue;
+      addBoxYaw(sideOf(c, -22).x, 1.2, sideOf(c, -22).z, 22, 2.4, 9, 0xc4a06a, root, c.h);
+      addBoxYaw(sideOf(c, 24).x, 1.6, sideOf(c, 24).z, 16, 3.0, 8, 0x6a5840, root, c.h);
+      addBoxYaw(sideOf(c, -28).x, 0.7, sideOf(c, -28).z, 28, 1.2, 12, 0xd8b878, root, c.h);
+    }
+  }
+
+  function dressForest() {
+    var root = forestRoot;
+    treesAlong(null, 1, 18, 10, root, 0x2a5a28);
+    treesAlong(null, -1, 20, 11, root, 0x245224);
+    var sf = namedPoint("start", 0.3) || { x: 0, z: SF_Z, h: 0, y: 0 };
+    addGrandstand(sideOf(sf, -22).x, sf.y || 0, sideOf(sf, -22).z, 76, 10, sf.h, root, 0x2a3030, 0x8a7a60);
+    addBuilding(sideOf(sf, 22).x, 3.6 + (sf.y || 0), sideOf(sf, 22).z, 26, 6.6, 12, 0x8a8070, 0x6a6050, root, sf.h);
+    var source = namedPoint("source", 0.5);
+    if (source) addGrandstand(sideOf(source, -20).x, source.y || 0, sideOf(source, -20).z, 28, 7, source.h, root, 0x2a3030, 0x8a7a60);
+    var crest = namedPoint("raidillon", 0.85);
+    if (crest) {
+      var hotel = sideOf(crest, 20);
+      addBuilding(hotel.x, 5.4 + (crest.y || 0), hotel.z, 22, 8.8, 13, 0xd8d0c4, 0x8a4030, root, crest.h);
+      addBoxYaw(sideOf(crest, -18).x, 0.22 + (crest.y || 0), sideOf(crest, -18).z, 24, 0.32, 11, 0xe0c888, root, crest.h);
+    }
+    var mid = namedPoint("raidillon", 0.45) || namedPoint("forest", 0.35);
+    var drop = namedPoint("drop", 0.5);
+    if (mid) {
+      var village = sideOf(mid, -100);
+      var vy = drop && drop.y != null ? drop.y : 0;
+      addBuilding(village.x, 3.4 + vy, village.z, 12, 6, 10, 0x8a8a88, 0x6a6058, root, 0.4);
+      addBuilding(village.x + 16, 3.0 + vy, village.z + 8, 10, 5.4, 8, 0x7a7a76, 0x5a5048, root, 0.2);
+      addBuilding(village.x - 14, 2.6 + vy, village.z + 12, 9, 4.8, 8, 0x7a7068, 0x5a5048, root, 0.1);
+      addBox(village.x - 10, 10 + vy, village.z - 6, 2.4, 20, 2.4, 0x8a8a86, root);
+      addBox(village.x - 10, 21 + vy, village.z - 6, 0.4, 4, 0.4, 0x2a2018, root);
+    }
+  }
+
+  function rebuildTrackDressing() {
+    clearDress(campusRoot);
+    clearDress(harborRoot);
+    clearDress(parkRoot);
+    clearDress(desertRoot);
+    clearDress(forestRoot);
+    if (isDriveableLoop()) {
+      applyTrackPalette();
+      return;
+    }
+    var id = builtinId();
+    if (id === "harbor") dressHarbor();
+    else if (id === "park") dressPark();
+    else if (id === "desert") dressDesert();
+    else if (id === "forest") dressForest();
+    else dressCampus();
+    applyTrackPalette();
+  }
+
+  function syncTrackDressing() {
+    var id = isDriveableLoop() ? "" : builtinId();
+    if (campusRoot) campusRoot.visible = id === "campus";
+    if (harborRoot) harborRoot.visible = id === "harbor";
+    if (parkRoot) parkRoot.visible = id === "park";
+    if (desertRoot) desertRoot.visible = id === "desert";
+    if (forestRoot) forestRoot.visible = id === "forest";
+    applyTrackPalette();
   }
 
   function syncCampusDressing() {
-    if (campusRoot) campusRoot.visible = !isDriveableLoop();
+    rebuildTrackDressing();
+    syncTrackDressing();
   }
 
   function isCustomCircuit() {
@@ -2596,22 +3304,61 @@
   }
 
   function menuTrackName() {
-    return isCustomCircuit() ? "CUSTOM CIRCUIT" : "CAMPUS LOOP";
+    if (isCustomCircuit()) return "CUSTOM CIRCUIT";
+    var spec = builtinSpec(activeBuiltin === "campus" ? "" : String(activeBuiltin || "").toUpperCase());
+    if (activeBuiltin === "harbor") return "HARBOR STREET";
+    if (activeBuiltin === "park") return "ROYAL PARK";
+    if (activeBuiltin === "desert") return "DESERT DUSK";
+    if (activeBuiltin === "forest") return "FOREST CLIMB";
+    return spec && spec.menu ? spec.menu : "CAMPUS LOOP";
+  }
+
+  function menuTrackLabel() {
+    if (isCustomCircuit()) return "Custom circuit";
+    if (activeBuiltin === "harbor") return "Harbor Street";
+    if (activeBuiltin === "park") return "Royal Park";
+    if (activeBuiltin === "desert") return "Desert Dusk";
+    if (activeBuiltin === "forest") return "Forest Climb";
+    return "Campus Loop";
   }
 
   function refreshMenuTrackLabel() {
     var name = menuTrackName();
+    var label = menuTrackLabel();
     if (hud.titleTrack) {
-      hud.titleTrack.textContent = (isCustomCircuit() ? "Custom circuit" : "Campus Loop") + " · 5 laps · Car #7";
+      hud.titleTrack.textContent = label + " · 5 laps · Car #7";
     }
     if (hud.circuit) {
-      hud.circuit.textContent = (isCustomCircuit() ? "Custom" : "Campus Loop") + " · #7";
+      hud.circuit.textContent = (isCustomCircuit() ? "Custom" : label) + " · #7";
     }
+    paintCircuitPicks();
     return name;
   }
 
   function circuitLabel() {
     refreshMenuTrackLabel();
+  }
+
+  function paintCircuitPicks() {
+    var want = isCustomCircuit() ? "__custom__" : isBuiltinCode(trackCode) ? String(trackCode || "").toUpperCase() : "";
+    function paint(row) {
+      if (!row) return;
+      var btns = row.querySelectorAll("[data-circuit]");
+      var i;
+      for (i = 0; i < btns.length; i++) {
+        var id = btns[i].getAttribute("data-circuit") || "";
+        btns[i].classList.toggle("on", !isCustomCircuit() && id.toUpperCase() === want);
+      }
+    }
+    paint(hud.circuitPicks);
+    paint(hud.circuitPicksEditor);
+  }
+
+  function pickBuiltin(code) {
+    applyTrack(cleanTrack(code || ""), true, true);
+    if (net && net.active && net.isHost() && net.setTrack) {
+      net.setTrack(isDriveableLoop() || isBuiltinCode(trackCode) ? trackCode : "");
+    }
   }
 
   function persistTrackCode() {
@@ -2633,7 +3380,7 @@
     trackCode = code;
     if (persist !== false) persistTrackCode();
     lockRacePath(trackCode);
-    if (net) net.track = isDriveableLoop() ? trackCode : "";
+    if (net) net.track = isDriveableLoop() || isBuiltinCode(trackCode) ? trackCode : "";
     bakeMini();
     addTrackMesh();
     resetGrid();
@@ -2668,7 +3415,7 @@
     if (code === trackCode && trackRoot) return;
     trackCode = code;
     lockRacePath(trackCode);
-    if (net) net.track = isDriveableLoop() ? trackCode : "";
+    if (net) net.track = isDriveableLoop() || isBuiltinCode(trackCode) ? trackCode : "";
     bakeMini();
     addTrackMesh();
     circuitLabel();
@@ -3092,8 +3839,8 @@
 
   function paintTrackEditor() {
     if (!hud.trackView) return;
-    if (!trackCode) {
-      hud.trackView.textContent = "Campus Loop";
+    if (!trackCode || isBuiltinCode(trackCode)) {
+      hud.trackView.textContent = menuTrackLabel();
     } else if (trackCode.charAt(0) === "M") {
       var n = parseMap(trackCode).length;
       hud.trackView.textContent = isDriveableLoop()
@@ -3210,7 +3957,7 @@
     }
     pushTrackUndo();
     applyTrack(next, true);
-    if (net && net.active && net.isHost() && net.setTrack) net.setTrack(isDriveableLoop() ? trackCode : "");
+    if (net && net.active && net.isHost() && net.setTrack) net.setTrack(isDriveableLoop() || isBuiltinCode(trackCode) ? trackCode : "");
   }
 
   function pieceAt(x, y, pieces) {
@@ -3920,7 +4667,7 @@
       paintNameTag(r);
       // Halo sits at 0.8. Tiny tag just above it — not a floating HUD plaque,
       // and not up at chase-cam height (that put tags behind the lens).
-      var y = rideHeight() + 1.46;
+      var y = rideHeight(r.x, r.z) + 1.46;
       r.tag.position.set(r.x, y, r.z);
       r.tag.quaternion.copy(camera.quaternion);
       var dist = Math.hypot(r.x - cam.x, y - cam.y, r.z - cam.z);
@@ -4015,14 +4762,17 @@
     r.aiT = 0;
     r.hitYawT = 0;
     r.kerbBump = 0;
-    r.mesh.position.set(x, rideHeight(), z);
+    r.mesh.position.set(x, rideHeight(x, z), z);
     r.mesh.rotation.set(0, -heading, 0);
   }
 
-  function rideHeight() {
+  function rideHeight(x, z) {
     // Custom ribbon sits at y=0.055. Wheel center is 0.28, radius 0.32, so
     // contact is ride-0.04. 0.12 puts the open wheels ON the ribbon, not in it.
-    return isDriveableLoop() ? 0.12 : 0;
+    var base = isDriveableLoop() ? 0.12 : 0;
+    if (x == null || z == null || !PATH.length) return base;
+    var pr = projectTrack(x, z);
+    return base + (pr && pr.y ? pr.y : 0);
   }
 
   function slotOnPath(s, side) {
@@ -4217,7 +4967,7 @@
   function inChicaneS(info) {
     // Geometry only: the S, not the approach slab or the 88 before it.
     // Never a steer lock. Custom C tiles are a polyline S (no tight arcs).
-    if (!info || info.grass || info.name !== "chicane") return false;
+    if (!info || info.grass || cornerKind(info.name) !== "chicane") return false;
     if (onLongStraight(info.s)) return false;
     var seg = pathSegAt(info.s);
     if (seg && seg.type === "line" && seg.len > 40) return false;
@@ -4345,7 +5095,7 @@
     var maxYaw = STEER_RATE * yawFromSpeed * tireFeel * surface;
     var latDemand = Math.abs(steer) * Math.abs(r.speed) * 0.155;
     var maxLat = MAX_LAT * tireFeel * surface;
-    if (!info.grass && info.name === "hairpin" && r.speed > 17) {
+    if (!info.grass && (info.name === "hairpin" || info.name === "source" || info.name === "t1") && r.speed > 17) {
       var hpOver = (r.speed - 17) / 14;
       r.slide += (steer !== 0 ? steer : 1) * hpOver * 22 * dt;
       if (hpOver > 0.3) r.tires -= 2.8 * dt * hpOver;
@@ -4385,8 +5135,11 @@
     r.z += Math.cos(r.heading) * r.slide * dt;
     r.slide *= Math.pow(0.07, dt);
 
+    if (info.pitch && Math.abs(info.pitch) > 0.002 && Math.abs(r.speed) > 4) {
+      r.speed -= info.pitch * 12 * dt;
+    }
     var bump = r.kerbBump || 0;
-    r.mesh.position.set(r.x, rideHeight() + bump, r.z);
+    r.mesh.position.set(r.x, rideHeight() + (info.y || 0) + bump, r.z);
     r.mesh.rotation.set(0, -r.heading, 0);
     var wheels = r.mesh.userData.wheels;
     if (wheels) {
@@ -4611,19 +5364,20 @@
     var d;
     for (d = 0; d <= meters; d += 6) {
       var p = centerlinePoint(s + d);
-      if (p.name === "hairpin") {
+      var ck = cornerKind(p.name);
+      if (ck === "hairpin") {
         if (d < _scan.dHair) _scan.dHair = d;
         if (d <= _scan.dHair + _scan.hairLeft + 10) _scan.hairLeft = d - _scan.dHair;
-      } else if (p.name === "chicane") {
+      } else if (ck === "chicane") {
         if (d < _scan.dChi) _scan.dChi = d;
         if (d <= _scan.dChi + _scan.chiLeft + 10) _scan.chiLeft = d - _scan.dChi;
-      } else if (p.name === "sweeper") {
+      } else if (ck === "sweeper") {
         if (d < _scan.dSweep) _scan.dSweep = d;
         if (d <= _scan.dSweep + _scan.sweepLeft + 10) _scan.sweepLeft = d - _scan.dSweep;
-      } else if (p.name === "the90") {
+      } else if (ck === "the90") {
         if (d < _scan.d90) _scan.d90 = d;
         if (d <= _scan.d90 + _scan.d90Left + 10) _scan.d90Left = d - _scan.d90;
-      } else if (p.name === "kink" && d < _scan.dKink) _scan.dKink = d;
+      } else if (ck === "kink" && d < _scan.dKink) _scan.dKink = d;
       if (p.r < 160) {
         if (!_scan.inside && p.left) _scan.inside = p.left;
         if (d < _scan.dBend) {
@@ -4958,7 +5712,7 @@
       hunt.want = Math.max(hunt.want, Math.min(MAX_SPEED, want + 4));
       want = hunt.want;
     }
-    if (p.hunter && hunt.on && (scan.dHair < 50 || scan.dTight < 28 || scan.dBend < 36 || proj.name === "hairpin" || proj.name === "the90")) {
+    if (p.hunter && hunt.on && (scan.dHair < 50 || scan.dTight < 28 || scan.dBend < 36 || cornerKind(proj.name) === "hairpin" || cornerKind(proj.name) === "the90")) {
       // Close enough to bash, still make the corner. A 22-into-180 is a free pass.
       hunt.noLift = false;
       hunt.want = Math.min(hunt.want, want);
@@ -5505,7 +6259,7 @@
   }
 
   function poseCar(r) {
-    r.mesh.position.set(r.x, rideHeight(), r.z);
+    r.mesh.position.set(r.x, rideHeight(r.x, r.z), r.z);
     r.mesh.rotation.set(0, -r.heading, 0);
     r.mesh.rotation.x = 0;
     r.mesh.rotation.z = 0;
@@ -5996,19 +6750,20 @@
     var up = 2.12;
     var fx = Math.cos(camFollowH);
     var fz = Math.sin(camFollowH);
-    var desired = new THREE.Vector3(player.x - fx * back, up, player.z - fz * back);
-    desired.y = up;
+    var py = rideHeight(player.x, player.z);
+    var desired = new THREE.Vector3(player.x - fx * back, py + up, player.z - fz * back);
+    desired.y = py + up;
     var lx = Math.cos(player.heading);
     var lz = Math.sin(player.heading);
-    var look = new THREE.Vector3(player.x + lx * 24, 1.05, player.z + lz * 24);
+    var look = new THREE.Vector3(player.x + lx * 24, py + 1.05, player.z + lz * 24);
     camera.up.set(0, 1, 0);
-    if (camera.position.y > 10 || camera.position.distanceToSquared(desired) > 220) {
+    if (camera.position.y > py + 10 || camera.position.distanceToSquared(desired) > 220) {
       camera.position.copy(desired);
       camFollowH = player.heading;
     } else {
       camera.position.lerp(desired, 1 - Math.pow(0.00035, dt));
     }
-    camera.position.y = up;
+    camera.position.y = py + up;
     camera.lookAt(look);
   }
 
@@ -7662,7 +8417,7 @@
         return;
       }
       applyTrack(trackUndo.pop(), true);
-      if (net && net.active && net.isHost() && net.setTrack) net.setTrack(isDriveableLoop() ? trackCode : "");
+      if (net && net.active && net.isHost() && net.setTrack) net.setTrack(isDriveableLoop() || isBuiltinCode(trackCode) ? trackCode : "");
     });
   }
   if (btnTrackCampus) {
@@ -7670,6 +8425,16 @@
       restoreCampusLoop();
     });
   }
+  function bindCircuitRow(row) {
+    if (!row) return;
+    row.addEventListener("click", function (e) {
+      var btn = e.target && e.target.closest ? e.target.closest("[data-circuit]") : null;
+      if (!btn) return;
+      pickBuiltin(btn.getAttribute("data-circuit") || "");
+    });
+  }
+  bindCircuitRow(hud.circuitPicks);
+  bindCircuitRow(hud.circuitPicksEditor);
   if (btnTrackCopy) {
     btnTrackCopy.addEventListener("click", function () {
       var s = trackCode || "";
@@ -7686,7 +8451,7 @@
     btnTrackDone.addEventListener("click", function () {
       syncShareField();
       applyTrack(trackCode, true, true);
-      if (net && net.active && net.isHost() && net.setTrack) net.setTrack(isDriveableLoop() ? trackCode : "");
+      if (net && net.active && net.isHost() && net.setTrack) net.setTrack(isDriveableLoop() || isBuiltinCode(trackCode) ? trackCode : "");
       killGhost();
       tilePick = "";
       editorDrag = null;

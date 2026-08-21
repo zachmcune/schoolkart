@@ -248,7 +248,7 @@ waitHealth()
                   assert(js.indexOf("function attachNameTag") !== -1 && js.indexOf("function layoutNameTags") !== -1, "halo nametags");
                   assert(!/function attachNameTag\([\s\S]{0,500}new THREE\.Sprite/.test(js), "nametags are mesh billboards, not X-flip-killed sprites");
                   assert(js.indexOf('r.kind !== "player"') !== -1, "own nametag can stay off; others still show");
-                  assert(js.indexOf("rideHeight() + 1.46") !== -1, "tags sit tiny over the halo, not at chase-cam height");
+                  assert(js.indexOf("rideHeight(r.x, r.z) + 1.46") !== -1, "tags sit tiny over the halo, not at chase-cam height");
                   assert(/function playerInput\(\)[\s\S]{0,180}portraitRaceBlock/.test(js), "portrait zeros input before keyboard path");
                   assert(js.indexOf("#ff2038") !== -1 && js.indexOf("#3a3e46") !== -1, "asphalt + kerb piece art");
                 });
