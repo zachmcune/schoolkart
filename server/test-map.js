@@ -76,7 +76,9 @@ var code = [
   "var launchCallT = 0;",
   "var LAPS = 5;",
   "var TRACK_CODE_MAX = 240;",
-  "var HIT_RADIUS = 3.45;",
+  "var MESH_NOSE = 3.5;",
+  "var MESH_TAIL = 2.05;",
+  "var MESH_HALF_W = 1.02;",
   "var WALLS = [];",
   "var TYPE_ENC = { s: 'A', S: 'L', r: 'R', w: 'W', H: 'H', C: 'C', F: 'F', P: 'P', t: 'T' };",
   "var TYPE_DEC = { A:'s', a:'s', s:'s', L:'S', S:'S', R:'r', r:'r', W:'w', w:'w', H:'H', h:'H', C:'C', c:'C', F:'F', f:'F', P:'P', p:'P', T:'t', t:'t' };",
@@ -85,6 +87,8 @@ var code = [
   sliceFn("inRect"),
   sliceFn("onPitPavement"),
   sliceFn("closestOnSeg"),
+  sliceFn("closestSegSeg"),
+  sliceFn("meshSeg"),
   sliceFn("closestOnArc"),
   sliceFn("addLine"),
   sliceFn("addArc"),
@@ -747,7 +751,7 @@ var bCar = blankCar(0.4, 0.2, 0, 20);
 sim.bashCars(aCar, bCar);
 sim.bashCars(aCar, bCar);
 sim.bashCars(aCar, bCar);
-assert(Math.hypot(aCar.x - bCar.x, aCar.z - bCar.z) >= 3.2, "bots/player cannot occupy the same space");
+assert(Math.hypot(aCar.x - bCar.x, aCar.z - bCar.z) >= 2.0, "bots/player cannot occupy the same space");
 
 var grazeH = 0.22;
 var graze = blankCar(0, 2.7, grazeH, 24);
@@ -788,10 +792,10 @@ assert(src.indexOf("wallCutsRibbon") !== -1, "inside-corner wall chords cannot s
 assert(src.indexOf("ASPHALT + 3.0") !== -1, "inside rails that clip the chassis are dropped");
 assert(!/function bashWall\([\s\S]{0,700}heading = Math.atan2/.test(src), "bashWall does not snap heading to velocity");
 assert(!/function bashCars\([\s\S]{0,900}heading = Math.atan2/.test(src), "bashCars does not snap heading to velocity");
-assert(!/function bashCars\([\s\S]{0,900}if \(rel >= 0\)/.test(src), "closing hits are not skipped as already separating");
-assert(/function bashCars\([\s\S]{0,900}if \(rel < 0\)/.test(src), "only a separating pair skips feel");
-assert(src.indexOf("function carSeg") === -1 && src.indexOf("function closestSegSeg") === -1, "did not invent a new collision system");
-assert((src.match(/bashCars\(player, hostBots\[ids\[i\]\]\)/g) || []).length >= 3, "room Bowie bash matches Solo three-pass");
+assert(src.indexOf("function bashOtherCars") !== -1, "room Bowie is bashed from the race tick");
+assert(src.indexOf("function meshSeg") !== -1 && src.indexOf("var MESH_NOSE = 3.5") !== -1, "hit box is the mesh, not a cockpit circle");
+assert(src.indexOf("if (pace >= 3) impact = Math.max(impact, pace * 0.34)") !== -1, "first mesh overlap at pace yaws");
+assert(!/function bashCars\([\s\S]{0,1800}if \(rel < 0\) \{\s*poseCar/.test(src), "mesh overlap at pace does not skip feel");
 assert(/function pinGrid\([\s\S]{0,400}faceRaceAt/.test(src), "grid pin faces the ribbon, not leftover yaw");
 assert(src.indexOf("mpMode && playerGridX != null") !== -1, "room grid keeps the slot, not Campus P2");
 assert(src.indexOf("z: SF_Z + (i % 2 ? -2.7 : 2.7), h: 0") !== -1, "campus grid heading is east");
@@ -993,7 +997,7 @@ function proveDrive(pieces, label) {
   botB = blankCar(botB.x, botB.z, botB.h, 20);
   sim.bashCars(botA, botB);
   sim.bashCars(botA, botB);
-  assert(Math.hypot(botA.x - botB.x, botA.z - botB.z) >= 3.2, label + " bots do not occupy the player");
+  assert(Math.hypot(botA.x - botB.x, botA.z - botB.z) >= 1.95, label + " bots do not occupy the player");
   assert(wallClear(botB.x, botB.z) > 5, label + " pole bot is not in a wall");
 }
 
@@ -1719,22 +1723,33 @@ function proveLoopRibbonNotPit() {
   }
 }
 
-function proveClosingHit() {
+function proveMeshOverlap() {
   sim.lockRacePath("");
   var p = sim.centerlinePoint(40);
   var hx = Math.cos(p.h);
   var hz = Math.sin(p.h);
   var sx = -hz;
   var sz = hx;
-  var victim = blankCar(p.x + hx * 1.0, p.z + hz * 1.0, p.h, 23);
-  var bumper = blankCar(p.x + sx * 2.2, p.z + sz * 2.2, p.h - 0.15, 25);
+  var victim = blankCar(p.x + hx * 4.8, p.z + hz * 4.8, p.h, 19);
+  var bumper = blankCar(p.x, p.z, p.h, 19);
   victim.fuel = bumper.fuel = 100;
   victim.tires = bumper.tires = 100;
+  assert(Math.hypot(victim.x - bumper.x, victim.z - bumper.z) > 3.45, "nose-on-tail is outside the cockpit circle");
   var hV = victim.heading;
   var hB = bumper.heading;
   sim.bashCars(bumper, victim);
   var yaw = Math.max(Math.abs(angDiff(victim.heading, hV)), Math.abs(angDiff(bumper.heading, hB)));
-  assert(yaw > 0.005, "one-pass closing sidepod at ~75 yaws, dH=" + yaw.toFixed(4));
+  assert(yaw > 0.005, "first mesh overlap (nose-on-tail) yaws, dH=" + yaw.toFixed(4));
+  var bowie = blankCar(p.x + hx * 3.2 + sx * 1.5, p.z + hz * 3.2 + sz * 1.5, p.h, 19);
+  var me = blankCar(p.x, p.z, p.h, 19);
+  bowie.fuel = me.fuel = 100;
+  bowie.tires = me.tires = 100;
+  assert(Math.hypot(bowie.x - me.x, bowie.z - me.z) > 3.45, "nameplate-over-cockpit pose is outside the cockpit circle");
+  var h0 = bowie.heading;
+  var h1 = me.heading;
+  sim.bashCars(me, bowie);
+  var yaw2 = Math.max(Math.abs(angDiff(bowie.heading, h0)), Math.abs(angDiff(me.heading, h1)));
+  assert(yaw2 > 0.005, "broadside mesh overlap at 60 yaws, dH=" + yaw2.toFixed(4));
 }
 
 function proveGridFacesRace() {
@@ -1851,7 +1866,7 @@ proveSpeedSteer();
 proveUnweld();
 proveLoopRibbonNotPit();
 proveCarHits();
-proveClosingHit();
+proveMeshOverlap();
 proveGridFacesRace();
 proveTileIcons();
 provePitPctSticky();

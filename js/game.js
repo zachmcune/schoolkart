@@ -57,7 +57,9 @@
   var TIRE_FLOOR = 22;
   var TEAL = 0x2ec8c3;
   var TEAL_DEEP = 0x148f8c;
-  var HIT_RADIUS = 3.45;
+  var MESH_NOSE = 3.5;
+  var MESH_TAIL = 2.05;
+  var MESH_HALF_W = 1.02;
   var WALLS = [];
   var FX_MAX = 18;
 
@@ -330,6 +332,82 @@
     var ex = px - qx;
     var ez = pz - qz;
     return { x: qx, z: qz, d2: ex * ex + ez * ez, t: t, h: Math.atan2(dz, dx) };
+  }
+
+  function closestSegSeg(a0x, a0z, a1x, a1z, b0x, b0z, b1x, b1z) {
+    var ux = a1x - a0x;
+    var uz = a1z - a0z;
+    var vx = b1x - b0x;
+    var vz = b1z - b0z;
+    var wx = a0x - b0x;
+    var wz = a0z - b0z;
+    var uu = ux * ux + uz * uz;
+    var vv = vx * vx + vz * vz;
+    var uv = ux * vx + uz * vz;
+    var uw = ux * wx + uz * wz;
+    var vw = vx * wx + vz * wz;
+    var den = uu * vv - uv * uv;
+    var sN;
+    var sD = den;
+    var tN;
+    var tD = den;
+    if (den < 1e-8) {
+      sN = 0;
+      sD = 1;
+      tN = vw;
+      tD = vv;
+    } else {
+      sN = uv * vw - vv * uw;
+      tN = uu * vw - uv * uw;
+      if (sN < 0) {
+        sN = 0;
+        tN = vw;
+        tD = vv;
+      } else if (sN > sD) {
+        sN = sD;
+        tN = vw + uv;
+        tD = vv;
+      }
+    }
+    if (tN < 0) {
+      tN = 0;
+      if (-uw < 0) sN = 0;
+      else if (-uw > uu) {
+        sN = uu;
+        sD = uu;
+      } else {
+        sN = -uw;
+        sD = uu;
+      }
+    } else if (tN > tD) {
+      tN = tD;
+      if (-uw + uv < 0) sN = 0;
+      else if (-uw + uv > uu) {
+        sN = uu;
+        sD = uu;
+      } else {
+        sN = -uw + uv;
+        sD = uu;
+      }
+    }
+    var s = Math.abs(sD) < 1e-8 ? 0 : sN / sD;
+    var t = Math.abs(tD) < 1e-8 ? 0 : tN / tD;
+    var px = a0x + s * ux;
+    var pz = a0z + s * uz;
+    var qx = b0x + t * vx;
+    var qz = b0z + t * vz;
+    return { px: px, pz: pz, qx: qx, qz: qz, d: Math.hypot(px - qx, pz - qz) };
+  }
+
+  function meshSeg(r) {
+    var c = Math.cos(r.heading);
+    var s = Math.sin(r.heading);
+    return {
+      ax: r.x - c * MESH_TAIL,
+      az: r.z - s * MESH_TAIL,
+      bx: r.x + c * MESH_NOSE,
+      bz: r.z + s * MESH_NOSE,
+    };
   }
 
   function closestOnArc(px, pz, cx, cz, r, a0, a1) {
@@ -4156,18 +4234,30 @@
   }
 
   function bashCars(a, b) {
-    var dx = b.x - a.x;
-    var dz = b.z - a.z;
-    var d = Math.hypot(dx, dz);
-    if (d < 0.0001) {
-      dx = 1;
-      dz = 0;
-      d = 1;
+    if (!a || !b) return;
+    var sa = meshSeg(a);
+    var sb = meshSeg(b);
+    var hit = closestSegSeg(sa.ax, sa.az, sa.bx, sa.bz, sb.ax, sb.az, sb.bx, sb.bz);
+    var skin = MESH_HALF_W * 2;
+    if (hit.d >= skin) return;
+    var nx;
+    var nz;
+    if (hit.d > 0.02) {
+      nx = (hit.qx - hit.px) / hit.d;
+      nz = (hit.qz - hit.pz) / hit.d;
+    } else {
+      nx = b.x - a.x;
+      nz = b.z - a.z;
+      var nlen = Math.hypot(nx, nz);
+      if (nlen < 0.0001) {
+        nx = 1;
+        nz = 0;
+        nlen = 1;
+      }
+      nx /= nlen;
+      nz /= nlen;
     }
-    if (d >= HIT_RADIUS) return;
-    var nx = dx / d;
-    var nz = dz / d;
-    var push = (HIT_RADIUS - d) * 0.62;
+    var push = (skin - hit.d) * 0.5;
     a.x -= nx * push;
     a.z -= nz * push;
     b.x += nx * push;
@@ -4177,20 +4267,22 @@
     var avz = Math.sin(a.heading) * a.speed + Math.cos(a.heading) * a.slide;
     var bvx = Math.cos(b.heading) * b.speed + -Math.sin(b.heading) * b.slide;
     var bvz = Math.sin(b.heading) * b.speed + Math.cos(b.heading) * b.slide;
-    // n is a→b. rel > 0 means a is closing on b. The old skip treated
-    // that as already separating, so yaw never ran on a dive-in.
     var rel = (avx - bvx) * nx + (avz - bvz) * nz;
-    if (rel < 0) {
+    if (rel > 0) {
+      var jimp = rel * 0.72;
+      avx -= jimp * nx;
+      avz -= jimp * nz;
+      bvx += jimp * nx;
+      bvz += jimp * nz;
+    }
+    var pace = Math.max(Math.abs(a.speed), Math.abs(b.speed), Math.hypot(avx, avz), Math.hypot(bvx, bvz));
+    var impact = Math.max(rel, 0);
+    if (pace >= 3) impact = Math.max(impact, pace * 0.34);
+    if (impact < 1.1 && pace < 3) {
       poseCar(a);
       poseCar(b);
       return;
     }
-    var j = rel * 0.72;
-    avx -= j * nx;
-    avz -= j * nz;
-    bvx += j * nx;
-    bvz += j * nz;
-    var impact = rel;
     hitCarFeel(a, avx, avz, -nx, -nz, impact);
     hitCarFeel(b, bvx, bvz, nx, nz, impact);
     poseCar(a);
@@ -4199,6 +4291,18 @@
       a.hitFxT = 0.16;
       b.hitFxT = 0.16;
       puffHit((a.x + b.x) * 0.5, (a.z + b.z) * 0.5, nx, nz);
+    }
+  }
+
+  function bashOtherCars() {
+    var id;
+    for (id in hostBots) {
+      if (Object.prototype.hasOwnProperty.call(hostBots, id)) bashCars(player, hostBots[id]);
+    }
+    for (id in remotes) {
+      if (!Object.prototype.hasOwnProperty.call(remotes, id)) continue;
+      if (hostBots[id]) continue;
+      bashCars(player, remotes[id].r);
     }
   }
 
@@ -5308,6 +5412,7 @@
     playerGridZ = g.z;
     gridHeading = g.h != null ? g.h : faceRaceAt(g.x, g.z);
     resetGrid();
+    adoptHostBots();
     touchCtl.gyroNeedCal = true;
     state = "start";
     setScreen("start");
@@ -5344,6 +5449,7 @@
     playerGridZ = g.z;
     gridHeading = g.h != null ? g.h : faceRaceAt(g.x, g.z);
     resetGrid();
+    adoptHostBots();
     var restore = null;
     if (msg && msg.rejoin && beenRacing(you)) restore = you;
     else if (beenRacing(you)) restore = you;
@@ -5510,9 +5616,7 @@
       if (mpMode) {
         poseRemotes();
         tickHostBots(simDt);
-        bashRemotes();
-        bashRemotes();
-        bashRemotes();
+        bashOtherCars();
         sendNetState();
         if (!pitServicing && (input.throttle || input.reverse || drive.up || drive.down) && Math.abs(player.speed) <= 0.35) {
           if (input.throttle || drive.up) player.speed += ACCEL * simDt;
@@ -6099,6 +6203,7 @@
     });
     net.on("go", goOnline);
     net.on("snap", function (msg) {
+      if (mpMode && net && net.isHost()) adoptHostBots();
       ingestSnap(msg.cars);
       if (
         mpMode &&

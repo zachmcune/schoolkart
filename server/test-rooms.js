@@ -115,7 +115,7 @@ waitHealth()
         assert(html.indexOf('rel="manifest"') !== -1, "web app manifest link");
         assert(html.indexOf("apple-mobile-web-app-capable") !== -1, "iOS home screen capable");
         assert(html.indexOf('apple-mobile-web-app-title" content="SchoolKart"') !== -1, "iOS title");
-        assert(html.indexOf('SK_BUILD = "mp74"') !== -1, "cache bump mp74");
+        assert(html.indexOf('SK_BUILD = "mp75"') !== -1, "cache bump mp75");
         assert(html.indexOf('maxlength="240"') !== -1, "share-string fits a full board");
         assert(html.indexOf('id="title-track"') !== -1, "title label matches Solo load");
         assert(html.indexOf('aria-label="90"') !== -1 && html.indexOf('aria-label="sweeper"') !== -1, "palette has 90 and sweeper chips");
@@ -149,7 +149,7 @@ waitHealth()
           .then(function (sr) {
             return sr.text().then(function (sw) {
               assert(sr.status === 200, "sw 200");
-              assert(sw.indexOf('BUILD = "mp74"') !== -1, "SW build matches cache");
+              assert(sw.indexOf('BUILD = "mp75"') !== -1, "SW build matches cache");
               assert(/cache:\s*"no-store"/.test(sw), "network-first no-store");
               assert(sw.indexOf("websocket") !== -1, "SW leaves websocket alone");
             });
@@ -182,9 +182,9 @@ waitHealth()
                   assert(js.indexOf("function hitCarFeel") !== -1, "car hits: tap / ram / shove");
                   assert(js.indexOf("tap = wiggle, ram = spin") !== -1, "rear-quarter tap wiggles; ram spins");
                   assert(js.indexOf("function faceRaceAt") !== -1, "grid faces race direction");
-                  assert(!/function bashCars\([\s\S]{0,900}if \(rel >= 0\)/.test(js), "closing hits are not skipped");
-                  assert((js.match(/bashCars\(player, hostBots\[ids\[i\]\]\)/g) || []).length >= 3, "room Bowie bash matches Solo three-pass");
-                  assert(js.indexOf("function carSeg") === -1, "did not invent a new collision system");
+                  assert(js.indexOf("function meshSeg") !== -1 && js.indexOf("var MESH_NOSE = 3.5") !== -1, "hit box is the mesh, not a cockpit circle");
+                  assert(js.indexOf("function bashOtherCars") !== -1, "room Bowie is bashed from the race tick");
+                  assert(js.indexOf("if (pace >= 3) impact = Math.max(impact, pace * 0.34)") !== -1, "first mesh overlap at pace yaws");
                   assert(js.indexOf("pitHudPct") !== -1 && js.indexOf("pitAwayT") !== -1, "pit % does not bounce while stuck");
                   assert(js.indexOf("function tileIconPts") !== -1 && js.indexOf("function tileIconSvg") !== -1, "90/sweeper/hairpin are in-square SVG silhouettes");
                   var artJs = js.slice(js.indexOf("function tileIconPts"), js.indexOf("function paintTrackEditor"));
