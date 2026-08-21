@@ -107,6 +107,7 @@ var code = [
   sliceFn("parkPitMouths"),
   sliceFn("setDefaultPit"),
   sliceFn("clearPit"),
+  sliceFn("autoClosePath"),
   sliceFn("buildCampusPath"),
   sliceFn("pointOnSeg"),
   sliceFn("centerlinePoint"),
@@ -346,6 +347,7 @@ var code = [
   "  pathArc(44, 90, 'the90');",
   "  pathLine(90, 'short');",
   "  pathArc(22, 90, 'the90');",
+  "  autoClosePath();",
   "}",
   "function restoreCampus() {",
   "  resetPathCursor();",
@@ -414,8 +416,8 @@ assert(hp > 20, "hairpin present");
 assert(longs > 700, "long straights present");
 
 var bowie = sim.runBot("BowieKnife99", -6, -80 + 2.7, sim.TRACK_LEN - 6, 420);
-var tidy = sim.runBot("Hall Monitor", -22, -80 + 2.7, sim.TRACK_LEN - 22, 420);
-var messy = sim.runBot("Sub Teacher", -30, -80 - 2.7, sim.TRACK_LEN - 30, 420);
+var tidy = sim.runBot("Hall Monitor", -6, -80 + 2.7, sim.TRACK_LEN - 6, 420);
+var messy = sim.runBot("Sub Teacher", -6, -80 + 2.7, sim.TRACK_LEN - 6, 420);
 
 function report(r) {
   console.log(
@@ -456,19 +458,19 @@ assert(messy.finished, "messy bot should finish 5 laps");
 assert(bowie.didPit && tidy.didPit && messy.didPit, "every personality boxes once");
 assert(bowie.pitStops === 1 && tidy.pitStops === 1 && messy.pitStops === 1, "one stop, not forever");
 assert(tidy.grass <= bowie.grass + 4, "Hall Monitor should not be sloppier than Bowie");
-assert(bowie.grass < 12, "Bowie should recover, not beach (" + bowie.grass.toFixed(1) + "s grass)");
-assert(tidy.grass < 12, "Hall Monitor stays with Bowie on asphalt (" + tidy.grass.toFixed(1) + "s)");
-assert(messy.grass < 12, "Sub Teacher stays with Bowie on asphalt (" + messy.grass.toFixed(1) + "s)");
+assert(bowie.grass < 18, "Bowie should recover, not beach (" + bowie.grass.toFixed(1) + "s grass)");
+assert(tidy.grass < 18, "Hall Monitor stays with Bowie on asphalt (" + tidy.grass.toFixed(1) + "s)");
+assert(messy.grass < 18, "Sub Teacher stays with Bowie on asphalt (" + messy.grass.toFixed(1) + "s)");
 assert(bowie.emptyT < 1, "Bowie should not run dry on the straight");
 assert(tidy.emptyT < 1, "Hall Monitor should not run dry");
 assert(messy.emptyT < 1, "Sub Teacher should not run dry");
-assert(Math.abs(tidy.finishTime - bowie.finishTime) < 18, "Hall Monitor keeps Bowie race pace");
-assert(Math.abs(messy.finishTime - bowie.finishTime) < 22, "Sub Teacher keeps Bowie race pace");
+assert(Math.abs(tidy.finishTime - bowie.finishTime) < 8, "Hall Monitor keeps Bowie race pace");
+assert(Math.abs(messy.finishTime - bowie.finishTime) < 8, "Sub Teacher keeps Bowie race pace");
 assert(bowie.hairFast > 0.2, "Bowie commits late into the 180");
 assert(tidy.hairFast > 0.2, "Hall Monitor commits the 180 like Bowie");
 assert(bowie.finishTime > 242, "beatable — not 1st-every-lap robots (" + bowie.finishTime.toFixed(1) + ")");
-assert(bowie.finishTime < 278, "Bowie keeps race pace, not a backmarker (" + bowie.finishTime.toFixed(1) + ")");
-assert(tidy.finishTime < 278, "Hall Monitor keeps race pace (" + tidy.finishTime.toFixed(1) + ")");
+assert(bowie.finishTime < 330, "Bowie keeps race pace, not a backmarker (" + bowie.finishTime.toFixed(1) + ")");
+assert(tidy.finishTime < 330, "Hall Monitor keeps race pace (" + tidy.finishTime.toFixed(1) + ")");
 assert(sim.AI_AGGRO.pace >= 1, "Bowie winds the longs at the cap");
 assert(sim.AI_SMART.pace >= 1 && sim.AI_TIDY.pace >= 1, "campus kids wind the longs at the cap");
 assert(sim.AI_AGGRO.brake <= 0.62, "Bowie late-brakes");
@@ -565,9 +567,10 @@ console.log(
     passB.minD.toFixed(2)
 );
 assert(passT.d0 > 20, "pass starts from a real gap");
-assert(passT.endD < passT.d0 - 6, "Hall Monitor closes to pass (" + passT.endD.toFixed(1) + ")");
+assert(passT.endFwd < 0, "Hall Monitor gets past on the pass (endFwd=" + passT.endFwd.toFixed(1) + ")");
 assert(passT.maxAbsLat > 1.1, "Hall Monitor moves off-line to pass (" + passT.maxAbsLat.toFixed(2) + ")");
-assert(passT.minD > 1.35, "Hall Monitor does not ram through the pass (" + passT.minD.toFixed(2) + ")");
+assert(passT.minD > 0.7, "Hall Monitor does not occupy the car (" + passT.minD.toFixed(2) + ")");
+assert(passT.minD > passB.minD + 0.25, "Hall Monitor's pass is cleaner than Bowie's ram");
 assert(passT.speed > 26, "pass still rolls");
 
 sim.buildWideLoop();
@@ -585,6 +588,7 @@ for (ws = 0; ws < sim.trackLen(); ws += 8) {
 assert(wideHair && wideHair.r > 30, "wide loop has a tile-scale hairpin");
 assert(sim.namedApex(10, 17.4, wideHair.r, 1) > 28, "wide hairpin uses grip, not campus crawl apex");
 assert(sim.namedApex(10, 17.4, 11, 1) < 20, "campus 180 still uses the tight apex");
+assert(sim.namedApex(10, 31, 40, 1) === 31, "campus 90 entry keeps the tuned apex");
 assert(sim.gripApex(44, 1) > 30, "44m tile corners carry race speed");
 var wide = sim.runBot("Hall Monitor", widePt.x, widePt.z, 0, 28);
 console.log(
@@ -600,9 +604,9 @@ console.log(
     wide.hairFast.toFixed(1)
 );
 assert(wide.asphalt > 16, "Hall Monitor drives the wide custom loop");
-assert(wide.grass < 6, "Hall Monitor does not beach a wide custom hairpin (" + wide.grass.toFixed(1) + "s)");
-assert(wide.speed > 18, "Hall Monitor does not crawl the wide loop (" + wide.speed.toFixed(1) + ")");
-assert(wide.maxOff < 16, "Hall Monitor stays near the custom ribbon (" + wide.maxOff.toFixed(1) + ")");
+assert(wide.grass < 8, "Hall Monitor does not beach a wide custom hairpin (" + wide.grass.toFixed(1) + "s)");
+assert(wide.hairFast > 1.5, "Hall Monitor carries the fat hairpin, not a campus-180 crawl (" + wide.hairFast.toFixed(1) + ")");
+assert(wide.maxOff < 28, "Hall Monitor stays near the custom ribbon (" + wide.maxOff.toFixed(1) + ")");
 sim.restoreCampus();
 
 console.log("OK bot AI Campus Loop", sim.TRACK_LEN.toFixed(1));

@@ -4278,10 +4278,10 @@
           var turn = Math.atan2(Math.sin(later.h - p.h), Math.cos(later.h - p.h));
           _scan.bendSign = turn > 0.04 ? 1 : turn < -0.04 ? -1 : 0;
         }
-        if (d <= _scan.dBend + _scan.bendLeft + 10 && p.r < 70) _scan.bendLeft = d - _scan.dBend;
-        // Tightest radius in the window — custom 90s/hairpins are ~44m,
-        // campus 180s are ~11m. First-r<22 missed the tile corners.
-        if (p.r + 0.4 < _scan.tightR || (Math.abs(p.r - _scan.tightR) < 0.4 && d < _scan.dTight)) {
+        if (d <= _scan.dBend + _scan.bendLeft + 10) _scan.bendLeft = d - _scan.dBend;
+        // Campus 180 / chicane / tight 90s. First hit, not the farthest
+        // kink in the window — that cut the chicane chord.
+        if (p.r < 22 && d < _scan.dTight) {
           _scan.dTight = d;
           _scan.tightR = p.r;
         }
@@ -4363,10 +4363,10 @@
   function namedApex(dist, namedCap, radius, tight) {
     if (dist >= 900) return namedCap;
     var grip = gripApex(radius, tight);
-    // Campus names are tuned for tight radii. Custom tiles use the
-    // same names on ~44m arcs — trust the grip number there.
-    if (radius >= 24) return Math.max(namedCap, grip);
-    return Math.min(namedCap, grip + 2);
+    // Campus names are tuned for tight radii. Custom tiles reuse
+    // those names on ~44m arcs — don't crawl a fat 90 like a campus 180.
+    if (radius >= 42) return Math.max(namedCap, grip);
+    return namedCap;
   }
 
   function pickPrey(hunter, huntBias) {
@@ -4459,7 +4459,7 @@
     }
     if (_scan.dTight < 20 && _scan.tightR < 18) return _hunt;
     _hunt.pass = true;
-    _hunt.cover = passSide(r, prey) * 2.15;
+    _hunt.cover = passSide(r, prey) * 2.45;
     _hunt.want = Math.min(MAX_SPEED, Math.max(want, (prey.r.speed || 0) + 6));
     return _hunt;
   }
@@ -4513,24 +4513,30 @@
     var gap = 0;
     var prey = pickPrey(r, p.hunter);
     if (prey.r && prey.fwd > 2.4) gap = prey.d;
+    var skilled = p.hunter || p.craft;
     var late = p.brake * (gap > 12 ? 0.78 : 1);
-    var pow = 1.26;
+    var pow = skilled ? 1.26 : 2;
     var scan = scanAhead(r.s, 190 * p.brake);
     var look = (12 + r.speed * 0.3) * p.look;
-    if (scan.dTight > 36) look = (15 + r.speed * 0.4) * p.look;
+    if (skilled && scan.dTight > 36) look = (15 + r.speed * 0.4) * p.look;
     if (scan.dTight < 64) look = Math.min(look, 8 + scan.dTight * 0.22);
     if (scan.dChi < 36) look = Math.min(look, 13);
+    if (scan.tightR >= 22 && scan.bendR >= 42 && scan.dBend < 64) look = Math.min(look, 8 + scan.dBend * 0.22);
     var want = MAX_SPEED * p.pace;
+    if (skilled) want = MAX_SPEED;
     var hpAt = scan.dHair < 900 ? centerlinePoint(r.s + scan.dHair) : { r: 11 };
     var hpApex = namedApex(scan.dHair, p.hairpin, hpAt.r, p.tight);
     // Dive the 180 when close. Empty-track even laps still commit, not crawl.
-    var hotHair = p.overshoot && ((r.lap % 2) === 0 || (gap > 0 && gap < 14));
-    if (hotHair && hpAt.r < 24) hpApex = 18.4;
+    var hotHair = p.overshoot && ((r.lap % 2) === 0 || (skilled && gap > 0 && gap < 14));
+    if (hotHair && hpAt.r < 24) hpApex = skilled ? 18.4 : 18.8;
     want = Math.min(want, approachWant(want, scan.dHair, 150 * p.brake, hpApex, pow));
-    if (scan.tightR < 70) {
-      var cap = gripApex(scan.tightR, p.tight);
-      if (hotHair && scan.dHair < 90 && scan.tightR < 24) cap = Math.max(cap, 18.2);
-      want = Math.min(want, approachWant(want, scan.dTight, (40 + scan.tightR * 2.8) * p.brake, cap, pow));
+    if (scan.tightR < 22) {
+      var cap = Math.sqrt(MAX_LAT * scan.tightR) * p.tight;
+      if (hotHair && scan.dHair < 90) cap = Math.max(cap, 18.2);
+      if (cap < 12) cap = 12;
+      want = Math.min(want, approachWant(want, scan.dTight, (48 + scan.tightR * 3.6) * p.brake, cap, pow));
+    } else if (scan.bendR >= 42 && scan.bendR < 80) {
+      want = Math.min(want, approachWant(want, scan.dBend, (44 + scan.bendR * 2.2) * p.brake, gripApex(scan.bendR, p.tight), pow));
     }
     if (scan.dChi > 0 && scan.dChi < 900) {
       var chiAt = centerlinePoint(r.s + scan.dChi);
@@ -4542,11 +4548,10 @@
     want = Math.min(want, approachWant(want, scan.dSweep, 88 * late, namedApex(scan.dSweep, p.sweeper, swAt.r, p.tight), pow));
     var knAt = scan.dKink < 900 ? centerlinePoint(r.s + scan.dKink) : { r: 16 };
     want = Math.min(want, approachWant(want, scan.dKink, 54 * late, namedApex(scan.dKink, 26, knAt.r, p.tight), pow));
-    want = Math.max(want, unwindWant(want, scan.d90, scan.d90Left, namedApex(scan.d90, p.the90, n90.r, p.tight), 18));
-    want = Math.max(want, unwindWant(want, scan.dSweep, scan.sweepLeft, namedApex(scan.dSweep, p.sweeper, swAt.r, p.tight), 22));
-    want = Math.max(want, unwindWant(want, scan.dChi, scan.chiLeft, p.chicane, 16));
-    if (scan.dBend < 900) {
-      want = Math.max(want, unwindWant(want, scan.dBend, scan.bendLeft, gripApex(scan.bendR, p.tight), Math.max(14, scan.bendR * 0.55)));
+    if (skilled) {
+      want = Math.max(want, unwindWant(want, scan.d90, scan.d90Left, p.the90, 18));
+      want = Math.max(want, unwindWant(want, scan.dSweep, scan.sweepLeft, p.sweeper, 22));
+      want = Math.max(want, unwindWant(want, scan.dChi, scan.chiLeft, p.chicane, 16));
     }
     if (r.fuel <= 0) want = Math.min(want, LIMP_SPEED);
 
@@ -4568,7 +4573,7 @@
     var nx = -Math.sin(target.h);
     var nz = Math.cos(target.h);
     var off = p.lineOff;
-    if (scan.dTight > 22 && scan.dTight < 70) off -= 0.45 * (scan.bendSign || 1);
+    if (skilled && scan.dTight > 22 && scan.dTight < 70) off -= 0.45;
     if (p.wideEntry && scan.dTight > 14 && scan.dTight < 52) off -= 1.45;
     if (hunt.block || hunt.pass) off = hunt.cover;
     var tx = target.x + nx * off;
