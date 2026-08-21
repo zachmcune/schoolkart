@@ -3813,10 +3813,12 @@
     }
 
     var speed01 = Math.abs(r.speed) / MAX_SPEED;
-    // Rolling to turn. Parked A/D is dead. More speed = more yaw,
-    // not a tank spin. Reverse uses |speed| so S still unsticks.
+    // Rolling to turn. Parked A/D is dead. Bite as you roll, then
+    // wash out — max W cannot snap a 90. Reverse uses |speed|.
     var roll = Math.abs(r.speed);
-    var yawFromSpeed = roll < 0.35 ? 0 : clamp(roll / 14, 0.42, 1);
+    var bite = roll < 0.35 ? 0 : clamp(roll / 9, 0.5, 1);
+    var wash = 1 - 0.7 * speed01;
+    var yawFromSpeed = bite * wash;
     var maxYaw = STEER_RATE * yawFromSpeed * tireFeel * surface;
     var latDemand = Math.abs(steer) * Math.abs(r.speed) * 0.155;
     var maxLat = MAX_LAT * tireFeel * surface;

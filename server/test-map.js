@@ -1577,6 +1577,8 @@ assert(src.indexOf('pathLine(150, "chicane")') === -1, "Loop approach slab is no
 assert(src.indexOf('pathLine(150, "short")') !== -1, "Loop approach slab steers like a straight");
 assert(src.indexOf("function inChicaneS") !== -1 && src.indexOf("seg.len > 40") !== -1, "S dump does not cover a long approach slab");
 assert(src.indexOf("yawFromSpeed") !== -1, "A/D yaw comes from speed, not a tank spin");
+assert(src.indexOf("var wash = 1 - 0.7 * speed01") !== -1, "max W washes yaw out so 90s need Space");
+assert(src.indexOf("clamp(roll / 14, 0.42, 1)") === -1, "yaw no longer saturates at crawl pace");
 assert(src.indexOf("function hitCarFeel") !== -1, "car-car: tap wiggles, ram spins, front shoves");
 
 var dumpAt = src.indexOf("else if (inChicaneS(info) && r.speed > 24)");
@@ -1777,16 +1779,32 @@ function proveSpeedSteer() {
   var h0 = parked.heading;
   sim.applyMotion(parked, 1, false, false, false, 1 / 60, true);
   assert(Math.abs(angDiff(parked.heading, h0)) < 0.001, "A/D does nothing at 0 kph");
-  var slow = blankCar(start.x, start.z, start.h, 8);
-  slow.fuel = 100;
-  slow.tires = 100;
-  var fast = blankCar(start.x, start.z, start.h, 28);
-  fast.fuel = 100;
-  fast.tires = 100;
-  var dSlow = yawProbe(slow, 1);
-  var dFast = yawProbe(fast, 1);
-  assert(dSlow > 0.006, "rolling yaw, dH=" + dSlow.toFixed(4));
-  assert(dFast > dSlow * 1.15, "more speed = more yaw, slow=" + dSlow.toFixed(4) + " fast=" + dFast.toFixed(4));
+  var crawl = blankCar(start.x, start.z, start.h, 5);
+  crawl.fuel = 100;
+  crawl.tires = 100;
+  var mid = blankCar(start.x, start.z, start.h, 16);
+  mid.fuel = 100;
+  mid.tires = 100;
+  var top = blankCar(start.x, start.z, start.h, 48);
+  top.fuel = 100;
+  top.tires = 100;
+  var dCrawl = yawProbe(crawl, 1);
+  var dMid = yawProbe(mid, 1);
+  var dTop = yawProbe(top, 1);
+  assert(dCrawl > 0.006, "rolling yaw, dH=" + dCrawl.toFixed(4));
+  assert(dMid > dCrawl * 1.12, "bite as you roll, crawl=" + dCrawl.toFixed(4) + " mid=" + dMid.toFixed(4));
+  assert(dTop < dMid * 0.62, "max W yaws less than mid, mid=" + dMid.toFixed(4) + " top=" + dTop.toFixed(4));
+  var hold = blankCar(start.x, start.z, start.h, 48);
+  hold.fuel = 100;
+  hold.tires = 100;
+  var hHold = hold.heading;
+  var tHold;
+  for (tHold = 0; tHold < 0.8; tHold += 1 / 60) {
+    hold.speed = 48;
+    sim.applyMotion(hold, 1, true, false, false, 1 / 60, true);
+  }
+  var dHold = Math.abs(angDiff(hold.heading, hHold));
+  assert(dHold < 0.72, "0.8s of full A at max W is not a snap 90, dH=" + dHold.toFixed(3));
   var parkRev = blankCar(start.x, start.z, start.h, 0);
   parkRev.fuel = 100;
   parkRev.tires = 100;
