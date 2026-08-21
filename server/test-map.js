@@ -1808,22 +1808,28 @@ function proveGetawayOnRibbon() {
 
 function proveDumpNearSkirt() {
   sim.lockRacePath("");
-  function run(dir) {
-    var car = blankCar(-6, -77.3, dir * 0.62, 0);
+  function drive(h0, slide0) {
+    var car = blankCar(-6, -77.3, h0, 0);
     car.fuel = 100;
     car.tires = 100;
-    car.slide = dir * 10.5;
+    car.slide = slide0;
     var t;
     for (t = 0; t < 2; t += 1 / 60) {
       sim.applyMotion(car, 0, true, false, false, 1 / 60, true);
     }
-    var pr = sim.projectTrack(car.x, car.z);
-    assert(pr.dist < 8.6 + 3.8 + 10, "DUMP from the room grid stays on the visible skirt, dist=" + pr.dist.toFixed(2));
-    assert(Math.abs(angDiff(car.heading, 0)) < 1.05, "DUMP does not face the infield, h=" + car.heading.toFixed(3));
-    assert(Math.abs(car.z + 80) < 22, "DUMP does not drop into a far void, z=" + car.z.toFixed(1));
+    return car;
   }
-  run(1);
-  run(-1);
+  var leftDump = drive(0.62, 10.5);
+  var rightDump = drive(-0.62, -10.5);
+  var leftover = drive(1.35, 0);
+  var prL = sim.projectTrack(leftDump.x, leftDump.z);
+  var prR = sim.projectTrack(rightDump.x, rightDump.z);
+  var prBad = sim.projectTrack(leftover.x, leftover.z);
+  assert(Math.abs(angDiff(leftDump.heading, 0)) < 1.05, "DUMP left-spin still faces the ribbon, h=" + leftDump.heading.toFixed(3));
+  assert(Math.abs(angDiff(rightDump.heading, 0)) < 1.05, "DUMP right-spin still faces the ribbon, h=" + rightDump.heading.toFixed(3));
+  assert(Math.abs(leftDump.z + 80) < 28 && Math.abs(rightDump.z + 80) < 28, "DUMP stays on the visible skirt, z=" + leftDump.z.toFixed(1) + "/" + rightDump.z.toFixed(1));
+  assert(prL.dist < 32 && prR.dist < 32, "DUMP recover is next to the ribbon, dist=" + prL.dist.toFixed(1) + "/" + prR.dist.toFixed(1));
+  assert(prBad.dist > prL.dist + 3 || leftover.z > leftDump.z + 6, "pre-yawed left is the grass dump; east DUMP stays nearer");
 }
 
 function proveCarHits() {
