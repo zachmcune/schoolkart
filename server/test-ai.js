@@ -41,13 +41,13 @@ function sliceAssign(name) {
 var code = [
   "var LAPS = 5;",
   "var MAX_SPEED = 48;",
-  "var ACCEL = 16;",
-  "var BRAKE_DECEL = 20;",
-  "var COAST = 5;",
-  "var REVERSE_ACCEL = 18;",
+  "var ACCEL = 5;",
+  "var BRAKE_DECEL = 6;",
+  "var COAST = 2;",
+  "var REVERSE_ACCEL = 7;",
   "var REVERSE_MAX = 12;",
   "var LIMP_SPEED = 13;",
-  "var LIMP_ACCEL = 6;",
+  "var LIMP_ACCEL = 2;",
   "var STEER_RATE = 2.35;",
   "var MAX_LAT = 28;",
   "var IDLE_FUEL = 0.46;",
@@ -141,6 +141,7 @@ var code = [
   sliceFn("scanAhead"),
   sliceFn("approachWant"),
   sliceFn("unwindWant"),
+  sliceFn("brakeWindow"),
   sliceFn("eachRival"),
   sliceFn("avoidRams"),
   "var _prey = { r: null, d: 999, fwd: 0, lat: 0 };",
@@ -350,9 +351,9 @@ for (var d = 0; d < sim.TRACK_LEN; d += 4) {
 assert(hp > 20, "hairpin present");
 assert(longs > 700, "long straights present");
 
-var bowie = sim.runBot("BowieKnife99", -6, -80 + 2.7, sim.TRACK_LEN - 6, 420);
-var tidy = sim.runBot("Hall Monitor", -22, -80 + 2.7, sim.TRACK_LEN - 22, 420);
-var messy = sim.runBot("Sub Teacher", -30, -80 - 2.7, sim.TRACK_LEN - 30, 420);
+var bowie = sim.runBot("BowieKnife99", -6, -80 + 2.7, sim.TRACK_LEN - 6, 520);
+var tidy = sim.runBot("Hall Monitor", -22, -80 + 2.7, sim.TRACK_LEN - 22, 520);
+var messy = sim.runBot("Sub Teacher", -30, -80 - 2.7, sim.TRACK_LEN - 30, 520);
 
 function report(r) {
   console.log(
@@ -401,12 +402,13 @@ assert(tidy.emptyT < 1, "tidy should not run dry");
 assert(messy.emptyT < 4, "messy may limp briefly but not sit empty forever");
 assert(bowie.finishTime < tidy.finishTime, "Bowie beats the tidy bot");
 assert(tidy.finishTime < messy.finishTime, "messy is slower, pack stays alive");
-assert(bowie.hairFast > 0.2, "Bowie commits late into the 180");
-assert(tidy.hairFast < bowie.hairFast, "Hall Monitor brakes earlier than Bowie");
-assert(bowie.finishTime > 242, "beatable — not 1st-every-lap robots (" + bowie.finishTime.toFixed(1) + ")");
-assert(bowie.finishTime < 278, "Bowie keeps race pace, not a backmarker (" + bowie.finishTime.toFixed(1) + ")");
+assert(bowie.grass <= 6, "Bowie holds the ribbon, not a wide dump (" + bowie.grass.toFixed(1) + "s grass)");
+assert(bowie.maxOff < 22, "Bowie does not take the 90/180 wide (" + bowie.maxOff.toFixed(1) + ")");
+assert(sim.AI_AGGRO.lineOff > 0.4, "Bowie holds the inside");
+assert(sim.AI_AGGRO.the90 < 25, "Bowie's 90 is a speed he can turn");
 assert(sim.AI_AGGRO.pace >= 1, "Bowie winds the longs at the cap");
-assert(sim.AI_AGGRO.brake <= 0.62, "Bowie late-brakes");
+assert(bowie.finishTime > 290, "beatable — heavy car, not a ghost (" + bowie.finishTime.toFixed(1) + ")");
+assert(bowie.finishTime < 410, "Bowie is the car to beat, not a backmarker (" + bowie.finishTime.toFixed(1) + ")");
 assert(bowie.pitAt && tidy.pitAt && bowie.pitAt.t < messy.pitAt.t, "tidy/Bowie box before the messy late stop");
 assert(sim.AI_AGGRO.brake < sim.AI_TIDY.brake, "Bowie brakes later");
 assert(sim.AI_AGGRO.pitFuel < sim.AI_TIDY.pitFuel, "Bowie pits later");
@@ -447,8 +449,8 @@ assert(hunt.minD < 1.0, "Bowie closes to wreck range (" + hunt.minD.toFixed(2) +
 assert(dodge.minD > hunt.minD + 0.35, "tidy does not divebomb the player");
 assert(hunt.hitT > 0, "Bowie reaches bash radius");
 
-var catchB = sim.runCatch("BowieKnife99", 3.2);
-var catchT = sim.runCatch("Hall Monitor", 3.2);
+var catchB = sim.runCatch("BowieKnife99", 5.0);
+var catchT = sim.runCatch("Hall Monitor", 5.0);
 console.log(
   "catch Bowie d0=" +
     catchB.d0.toFixed(1) +

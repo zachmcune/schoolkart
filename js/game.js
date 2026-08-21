@@ -3907,21 +3907,21 @@
   }
 
   var AI_AGGRO = {
-    // Wind the longs. Late-brake. Inside line. Same physics cap as you.
+    // Heavy car + washout. Hit the apex, hold the inside. Same cap as you.
     pace: 1,
-    look: 0.94,
-    brake: 0.58,
-    hairpin: 17.4,
-    chicane: 25.5,
-    the90: 31,
-    sweeper: 43,
-    tight: 1,
-    lineOff: -0.32,
+    look: 1.08,
+    brake: 0.94,
+    hairpin: 16.3,
+    chicane: 21,
+    the90: 23,
+    sweeper: 37,
+    tight: 0.92,
+    lineOff: 0.58,
     pitLap: 3,
-    pitFuel: 18,
+    pitFuel: 21,
     pitTires: 26,
     launch: 0.88,
-    wobble: 0.05,
+    wobble: 0,
     overshoot: 1,
     hunter: 1,
   };
@@ -4122,6 +4122,17 @@
     return Math.max(want, apex + (MAX_SPEED - apex) * u * u);
   }
 
+  function brakeWindow(vNow, vApex, mul) {
+    // Heavy brakes bite ~0.6 of BRAKE_DECEL at speed. Window is the
+    // real stop, not a leftover from the old 20-decel kart.
+    if (!(mul > 0)) mul = 1;
+    var a = Math.max(2.6, BRAKE_DECEL * 0.62);
+    var v0 = Math.max(vApex + 0.5, vNow);
+    var d = (v0 * v0 - vApex * vApex) / (2 * a);
+    if (d < 12) d = 12;
+    return (d + 14) * mul;
+  }
+
   function eachRival(self, fn) {
     function one(o) {
       if (!o || o === self || !o.mesh || !o.mesh.visible || o.finished) return;
@@ -4282,55 +4293,73 @@
       if (r.lap >= p.pitLap || r.fuel < p.pitFuel || r.tires < p.pitTires) r.wantPit = true;
     }
 
-    var gap = 0;
-    if (p.hunter) {
-      var prey = pickPrey(r);
-      if (prey.r && prey.fwd > 2.4) gap = prey.d;
-    }
-    var late = p.brake * (gap > 12 ? 0.78 : 1);
-    var pow = p.hunter ? 1.26 : 2;
-    var scan = scanAhead(r.s, 190 * p.brake);
+    var pow = p.hunter ? 1.7 : 2;
+    var bMul = p.hunter ? 0.7 : p.brake;
+    var scanMeters = p.hunter ? Math.max(260, brakeWindow(MAX_SPEED, 15, 1.15) + 40) : 190 * p.brake;
+    var scan = scanAhead(r.s, scanMeters);
     var look = (12 + r.speed * 0.3) * p.look;
-    if (p.hunter && scan.dTight > 36) look = (15 + r.speed * 0.4) * p.look;
+    if (p.hunter) {
+      look = (18 + r.speed * 0.48) * p.look;
+      if (scan.dTight < 88 && scan.dTight > 16) look = Math.min(look, 11 + scan.dTight * 0.32);
+    }
     if (scan.dTight < 64) look = Math.min(look, 8 + scan.dTight * 0.22);
     if (scan.dChi < 36) look = Math.min(look, 13);
     var want = MAX_SPEED * p.pace;
     if (p.hunter) want = MAX_SPEED;
     var hpApex = p.hairpin;
-    // Dive the 180 when close. Empty-track even laps still commit, not crawl.
-    var hotHair = p.overshoot && ((r.lap % 2) === 0 || (p.hunter && gap > 0 && gap < 14));
-    if (hotHair) hpApex = p.hunter ? 18.4 : 18.8;
-    want = Math.min(want, approachWant(want, scan.dHair, 150 * p.brake, hpApex, pow));
-    if (scan.tightR < 22) {
-      var cap = Math.sqrt(MAX_LAT * scan.tightR) * p.tight;
-      if (hotHair && scan.dHair < 90) cap = Math.max(cap, 18.2);
-      if (cap < 12) cap = 12;
-      want = Math.min(want, approachWant(want, scan.dTight, (48 + scan.tightR * 3.6) * p.brake, cap, pow));
-    }
-    if (scan.dChi > 0 && scan.dChi < 900) {
-      want = Math.min(want, approachWant(want, scan.dChi, 58 * late, p.chicane, pow));
-    }
-    want = Math.min(want, approachWant(want, scan.d90, 68 * late, p.the90, pow));
-    want = Math.min(want, approachWant(want, scan.dSweep, 88 * late, p.sweeper, pow));
-    want = Math.min(want, approachWant(want, scan.dKink, 54 * late, 26, pow));
+    // Empty-track 180: make it. Hot overshoot dumps wide and hands the pass.
+    var hotHair = p.overshoot && !p.hunter && (r.lap % 2) === 0;
+    if (hotHair) hpApex = 18.8;
     if (p.hunter) {
-      want = Math.max(want, unwindWant(want, scan.d90, scan.d90Left, p.the90, 18));
-      want = Math.max(want, unwindWant(want, scan.dSweep, scan.sweepLeft, p.sweeper, 22));
-      want = Math.max(want, unwindWant(want, scan.dChi, scan.chiLeft, p.chicane, 16));
+      want = Math.min(want, approachWant(want, scan.dHair, brakeWindow(want, hpApex, bMul), hpApex, pow));
+      if (scan.tightR < 22) {
+        var cap = Math.sqrt(MAX_LAT * scan.tightR) * p.tight;
+        if (cap < 12) cap = 12;
+        if (cap > hpApex + 3 && scan.dHair < 120) cap = hpApex + 1.2;
+        want = Math.min(want, approachWant(want, scan.dTight, brakeWindow(want, cap, bMul), cap, pow));
+      }
+      want = Math.min(want, approachWant(want, scan.dChi, brakeWindow(want, p.chicane, bMul), p.chicane, pow));
+      want = Math.min(want, approachWant(want, scan.d90, brakeWindow(want, p.the90, bMul), p.the90, pow));
+      want = Math.min(want, approachWant(want, scan.dSweep, brakeWindow(want, p.sweeper, bMul * 0.9), p.sweeper, pow));
+      want = Math.min(want, approachWant(want, scan.dKink, brakeWindow(want, 22, bMul), 22, pow));
+      want = Math.max(want, unwindWant(want, scan.d90, scan.d90Left, p.the90, 20));
+      want = Math.max(want, unwindWant(want, scan.dSweep, scan.sweepLeft, p.sweeper, 24));
+      want = Math.max(want, unwindWant(want, scan.dChi, scan.chiLeft, p.chicane, 14));
+    } else {
+      var late = p.brake;
+      want = Math.min(want, approachWant(want, scan.dHair, 150 * p.brake, hpApex, pow));
+      if (scan.tightR < 22) {
+        var cap2 = Math.sqrt(MAX_LAT * scan.tightR) * p.tight;
+        if (hotHair && scan.dHair < 90) cap2 = Math.max(cap2, 18.5);
+        if (cap2 < 12) cap2 = 12;
+        want = Math.min(want, approachWant(want, scan.dTight, (48 + scan.tightR * 3.6) * p.brake, cap2, pow));
+      }
+      if (scan.dChi > 0 && scan.dChi < 900) {
+        want = Math.min(want, approachWant(want, scan.dChi, 58 * late, p.chicane, pow));
+      }
+      want = Math.min(want, approachWant(want, scan.d90, 68 * late, p.the90, pow));
+      want = Math.min(want, approachWant(want, scan.dSweep, 88 * late, p.sweeper, pow));
+      want = Math.min(want, approachWant(want, scan.dKink, 54 * late, 26, pow));
     }
     if (r.fuel <= 0) want = Math.min(want, LIMP_SPEED);
 
     var hunt = planHunt(r, p, want);
-    if (p.hunter && hunt.on && (scan.dHair < 88 || proj.name === "hairpin")) {
+    if (p.hunter && hunt.on && scan.dTight > 36 && scan.dHair > 50) {
       hunt.dive = true;
       hunt.noLift = true;
-      hunt.want = Math.max(hunt.want, 22);
+      hunt.want = Math.max(hunt.want, Math.min(MAX_SPEED, want + 4));
       want = hunt.want;
     }
-    if (hunt.catchUp && scan.dHair > 42 && scan.dTight > 26) {
+    if (p.hunter && hunt.on && (scan.dHair < 50 || scan.dTight < 28 || proj.name === "hairpin" || proj.name === "the90")) {
+      // Close enough to bash, still make the corner. A 22-into-180 is a free pass.
+      hunt.noLift = false;
+      hunt.want = Math.min(hunt.want, want);
+      want = hunt.want;
+    }
+    if (hunt.catchUp && scan.dHair > 90 && scan.dTight > 60 && scan.d90 > 80 && scan.dChi > 50) {
       want = Math.max(want, hunt.want);
     }
-    if (hunt.block && scan.dHair > 36 && scan.dTight > 22) {
+    if (hunt.block && scan.dHair > 50 && scan.dTight > 36 && scan.d90 > 50) {
       want = Math.max(want, hunt.want);
     }
 
@@ -4338,9 +4367,12 @@
     var nx = -Math.sin(target.h);
     var nz = Math.cos(target.h);
     var off = p.lineOff;
-    if (p.hunter && scan.dTight > 22 && scan.dTight < 70) off -= 0.45;
+    if (p.hunter && scan.dTight < 86) off += 0.5;
     if (p.wideEntry && scan.dTight > 14 && scan.dTight < 52) off -= 1.45;
-    if (hunt.block) off = hunt.cover;
+    if (hunt.block) {
+      off = p.lineOff;
+      if (Math.abs(hunt.cover) > 0.45) off = clamp(p.lineOff + hunt.cover * 0.62, -2.35, 2.1);
+    }
     var tx = target.x + nx * off;
     var tz = target.z + nz * off;
     if (hunt.on) {
@@ -4394,7 +4426,7 @@
 
     var desiredH = Math.atan2(tz - r.z, tx - r.x);
     var err = Math.atan2(Math.sin(desiredH - r.heading), Math.cos(desiredH - r.heading));
-    var steer = clamp(err * (hunt.on ? 2.05 : hunt.block ? 1.9 : p.hunter ? 1.72 : 1.5), -1, 1);
+    var steer = clamp(err * (hunt.on ? 2.05 : hunt.block ? 2.0 : p.hunter ? 2.18 : 1.5), -1, 1);
     var recover = proj.grass || proj.dist > 4.6;
     var keepHit = p.hunter && hunt.on && hunt.noLift && !proj.grass;
     if (recover && !peeling && !keepHit) {
@@ -4415,8 +4447,8 @@
       var out = Math.cos(r.heading) * (proj.x - r.x) + Math.sin(r.heading) * (proj.z - r.z);
       if (out < -0.15) reverse = true;
     }
-    var slack = p.hunter && want > MAX_SPEED * 0.88 ? 3.1 : 2.2;
-    var throttle = !reverse && r.speed < want - (p.hunter ? 0.06 : 0.4);
+    var slack = p.hunter ? (want > MAX_SPEED * 0.88 ? 2.4 : 1.05) : 2.2;
+    var throttle = !reverse && r.speed < want - (p.hunter ? 0.05 : 0.4);
     var brake = !reverse && r.speed > want + slack;
     if (hunt.on && hunt.noLift) {
       throttle = !reverse;
@@ -4916,9 +4948,9 @@
     var roll = Math.random();
     var kind;
     if (p && p.hunter) {
-      if (roll < 0.08) kind = "DUMP";
-      else if (roll < 0.16) kind = "SLUGGISH";
-      else if (roll < 0.56) kind = "GOOD";
+      if (roll < 0.05) kind = "DUMP";
+      else if (roll < 0.1) kind = "SLUGGISH";
+      else if (roll < 0.45) kind = "GOOD";
       else kind = "GREAT";
     } else if (p && p.launch >= 1) {
       if (roll < 0.1) kind = "SLUGGISH";
