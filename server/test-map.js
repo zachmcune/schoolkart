@@ -812,6 +812,9 @@ assert(src.indexOf("if (launchCall === \"DUMP\") launchCall = \"SLUGGISH\"") !==
 assert(!/function applyLaunch\([\s\S]{0,500}dumpLaunch/.test(src), "lights-out does not spin onto grass");
 assert(!/function applyCpuLaunch\([\s\S]{0,900}dumpLaunch/.test(src), "room Bowie does not dump-spin at GO");
 assert(src.indexOf("function slotHeading") !== -1 && src.indexOf("gridHeading = slotHeading(g)") !== -1, "room grid keeps the slot heading");
+assert(src.indexOf("return inRect(r.x, r.z, PIT_GRAB)") !== -1, "campus pit grab is the halfway box, not a fat ribbon corridor");
+assert(src.indexOf("var onRace = ribbon && ribbon.dist <= ASPHALT") !== -1, "full racing ribbon is on-race, not a 5.2m strip");
+assert(src.indexOf("r.z > leftOfRace && r.z < PIT_LANE.z1 + 4") === -1, "pit grab does not eat toward the racing line");
 assert(src.indexOf("launchT = GETAWAY_T") !== -1 && src.indexOf("var GETAWAY_T = 1.5") !== -1, "SLUGGISH is a 1.5s getaway, not a grass limp");
 assert(src.indexOf("mpMode && playerGridX != null") !== -1, "room grid keeps the slot, not Campus P2");
 assert(src.indexOf("z: SF_Z + (i % 2 ? GRID_OUT_B : GRID_OUT_A), h: 0") !== -1, "campus room grid is outside the pit peel");
@@ -1733,11 +1736,61 @@ function proveUnweld() {
 function proveLoopRibbonNotPit() {
   sim.lockRacePath("");
   var s;
-  for (s = 0; s <= 100; s += 10) {
+  for (s = 0; s <= sim.TRACK_LEN; s += 8) {
     var p = sim.centerlinePoint(s);
-    var car = blankCar(p.x, p.z, p.h, 0);
-    assert(!sim.inPitGrab(car), "Campus racing line s=" + s + " is not a pit grab");
+    var hx = Math.cos(p.h);
+    var hz = Math.sin(p.h);
+    var sx = -hz;
+    var sz = hx;
+    var sides = [0, 2.4, 5.2, 8.2, -2.4, -5.2, -8.2];
+    var i;
+    for (i = 0; i < sides.length; i++) {
+      var car = blankCar(p.x + sx * sides[i], p.z + sz * sides[i], p.h, 0);
+      assert(!sim.inPitGrab(car), "ribbon/right-of-peel is not a pit grab s=" + s + " lat=" + sides[i]);
+    }
   }
+  assert(sim.inPitGrab({ x: 74, z: -62 }), "halfway into the LEFT pit lane still grabs");
+  assert(!sim.inPitGrab({ x: 74, z: -80 }), "racing line at pit-x does not grab");
+  assert(!sim.inPitGrab({ x: 74, z: -82.4 }), "right of the peel does not grab");
+  assert(!sim.inPitGrab({ x: 20, z: -62 }), "peel entry is not halfway");
+}
+
+function proveStayRightNoGrab() {
+  sim.lockRacePath("");
+  var g = sim.gridSlot(0);
+  var car = blankCar(g.x, g.z, sim.slotHeading(g), 0);
+  car.fuel = 100;
+  car.tires = 100;
+  var t;
+  var grabbed = 0;
+  var on = 0;
+  var n = 0;
+  for (t = 0; t < 4; t += 1 / 60) {
+    sim.applyMotion(car, 0, true, false, false, 1 / 60, true);
+    if (sim.inPitGrab(car)) grabbed += 1;
+  }
+  assert(grabbed === 0, "holding W with no steer on the south straight does not auto-grab");
+  assert(sim.projectTrack(car.x, car.z).onAsphalt, "still on asphalt past the peel mouth");
+  assert(car.z < -80, "no-A getaway stays right of the peel, z=" + car.z.toFixed(2));
+
+  car = blankCar(g.x, g.z, sim.slotHeading(g), 0);
+  car.fuel = 100;
+  car.tires = 100;
+  grabbed = 0;
+  for (t = 0; t < 10; t += 1 / 60) {
+    var pr = sim.projectTrack(car.x, car.z);
+    var err = angDiff(pr.h, car.heading);
+    var steer = 0;
+    if (err > 0.05) steer = 1;
+    else if (err < -0.05) steer = -1;
+    sim.applyMotion(car, steer, true, false, false, 1 / 60, true);
+    n += 1;
+    if (sim.inPitGrab(car)) grabbed += 1;
+    if (sim.projectTrack(car.x, car.z).onAsphalt) on += 1;
+  }
+  assert(grabbed === 0, "10s on the racing line never auto-grabs, grabs=" + grabbed);
+  assert(on / n > 0.88, "following the ribbon past 8s stays on asphalt, on=" + on + "/" + n);
+  assert(!sim.inPitGrab(car), "after 10s still not in the pit box");
 }
 
 function proveMeshOverlap() {
@@ -1956,6 +2009,7 @@ proveChicaneSteer(sim.encodeMap(kitPieces()), "custom kit chicane+sweeper");
 proveSpeedSteer();
 proveUnweld();
 proveLoopRibbonNotPit();
+proveStayRightNoGrab();
 proveCarHits();
 proveMeshOverlap();
 proveGridFacesRace();

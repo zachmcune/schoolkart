@@ -3575,29 +3575,25 @@
 
   function inPitLane(r) {
     if (isDriveableLoop()) return PIT_META.on && (inRect(r.x, r.z, PIT_LANE) || onPitPavement(r.x, r.z));
-    var leftOfRace = SF_Z + ASPHALT + 1;
-    return (
-      inRect(r.x, r.z, PIT_LANE) ||
-      (r.x >= PIT_LANE.x0 - 4 &&
-        r.x <= PIT_LANE.x1 + 8 &&
-        r.z > leftOfRace &&
-        r.z < PIT_LANE.z1 + 3)
-    );
+    // Campus: the teal lane only. Not a fat corridor that eats the ribbon.
+    return inRect(r.x, r.z, PIT_LANE) || inRect(r.x, r.z, PIT_GRAB);
   }
 
   function inPitGrab(r) {
     if (isDriveableLoop()) {
-      if (!PIT_META.on || !onPitPavement(r.x, r.z)) return false;
+      if (!PIT_META.on) return false;
+      var ribbon = projectTrack(r.x, r.z);
+      if (ribbon && ribbon.dist <= ASPHALT) return false;
+      if (!onPitPavement(r.x, r.z) && !inRect(r.x, r.z, PIT_GRAB)) return false;
       var dx = PIT_META.bx - PIT_META.ax;
       var dz = PIT_META.bz - PIT_META.az;
       var len2 = dx * dx + dz * dz || 1;
       var t = ((r.x - PIT_META.ax) * dx + (r.z - PIT_META.az) * dz) / len2;
       return t >= 0.5 && t <= 1.15;
     }
-    var mid = (PIT_LANE.x0 + PIT_LANE.x1) * 0.5;
-    var leftOfRace = SF_Z + ASPHALT + 1.2;
-    // Off the racing line, into the LEFT split, past halfway — that is the box.
-    return r.x >= mid && r.x <= PIT_LANE.x1 + 10 && r.z > leftOfRace && r.z < PIT_LANE.z1 + 4;
+    // LEFT peel, halfway into the pit lane only. Staying on the ribbon
+    // or right of the peel must never auto-grab.
+    return inRect(r.x, r.z, PIT_GRAB);
   }
 
   function updateLaps(r) {
@@ -5563,7 +5559,7 @@
         else player.speed -= REVERSE_ACCEL * simDt;
       }
       var ribbon = projectTrack(player.x, player.z);
-      var onRace = ribbon && ribbon.onAsphalt && ribbon.dist < 5.2;
+      var onRace = ribbon && ribbon.dist <= ASPHALT;
       if (!pitServicing && !pitUsedVisit && inPitGrab(player) && !onRace) {
         pitServicing = true;
         pitVisit = true;
