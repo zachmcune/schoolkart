@@ -1,6 +1,6 @@
 /* SchoolKart SW — installable chrome only. Network-first. Offline not required.
    BUILD must match window.SK_BUILD / ?v= so a new deploy kills the old worker. */
-var BUILD = "mp89";
+var BUILD = "mp90";
 
 self.addEventListener("install", function () {
   self.skipWaiting();
