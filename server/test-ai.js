@@ -104,6 +104,7 @@ var code = [
   sliceFn("resetPathCursor"),
   sliceFn("parkPitMouths"),
   sliceFn("setDefaultPit"),
+  sliceFn("clearPit"),
   sliceFn("buildCampusPath"),
   sliceFn("pointOnSeg"),
   sliceFn("centerlinePoint"),
@@ -136,12 +137,13 @@ var code = [
   sliceAssign("AI_LAB"),
   sliceAssign("AI_WILD"),
   sliceAssign("AI_WIDE"),
-  "var _scan = { dHair: 999, dChi: 999, dSweep: 999, d90: 999, dKink: 999, dTight: 999, tightR: 99, hairLeft: 0, chiLeft: 0, sweepLeft: 0, d90Left: 0 };",
+  "var _scan = { dHair: 999, dChi: 999, dSweep: 999, d90: 999, dKink: 999, dTight: 999, tightR: 99, hairLeft: 0, chiLeft: 0, sweepLeft: 0, d90Left: 0, dBend: 999, bendR: 99, inside: 1 };",
   sliceFn("aiOf"),
   sliceFn("scanAhead"),
   sliceFn("approachWant"),
   sliceFn("unwindWant"),
   sliceFn("brakeWindow"),
+  sliceFn("apexFromRadius"),
   sliceFn("eachRival"),
   sliceFn("avoidRams"),
   "var _prey = { r: null, d: 999, fwd: 0, lat: 0 };",
@@ -153,7 +155,17 @@ var code = [
   "function dumpLaunch() {}",
   "function applyCpuLaunch(r) { r.launchArmed = true; r.launchMul = 1; r.launchT = 0; }",
   sliceFn("updateCpu"),
+  sliceFn("isDriveableLoop"),
   "function poseCar(r) { if (r.mesh) { r.mesh.position.x = r.x; r.mesh.position.z = r.z; } }",
+  "function trackLen() { return TRACK_LEN; }",
+  "function sealCustom() { MAP_CLOSED = true; MAP_SURF = PATH.slice(); }",
+  "function restoreCampus() {",
+  "  MAP_CLOSED = false;",
+  "  MAP_SURF = [];",
+  "  resetPathCursor();",
+  "  setDefaultPit();",
+  "  buildCampusPath();",
+  "}",
   "setDefaultPit();",
   "buildCampusPath();",
   "return {",
@@ -163,9 +175,21 @@ var code = [
   "  runHunt: runHunt,",
   "  runCatch: runCatch,",
   "  runBlock: runBlock,",
+  "  resetPathCursor: resetPathCursor,",
+  "  pathLine: pathLine,",
+  "  pathArc: pathArc,",
+  "  clearPit: clearPit,",
+  "  setDefaultPit: setDefaultPit,",
+  "  buildCampusPath: buildCampusPath,",
+  "  apexFromRadius: apexFromRadius,",
   "  gradeLaunch: gradeLaunch,",
   "  centerlinePoint: centerlinePoint,",
   "  projectTrack: projectTrack,",
+  "  scanAhead: scanAhead,",
+  "  trackLen: trackLen,",
+  "  sealCustom: sealCustom,",
+  "  restoreCampus: restoreCampus,",
+  "  isDriveableLoop: isDriveableLoop,",
   "  WALLS: WALLS,",
   "  placeWalls: placeWalls,",
   "  AI_AGGRO: AI_AGGRO,",
@@ -177,10 +201,10 @@ var code = [
   "  AI_WILD: AI_WILD,",
   "  AI_WIDE: AI_WIDE",
   "};",
-  "function runBot(name, gridX, gridZ, s0, seconds) {",
+  "function runBot(name, gridX, gridZ, s0, seconds, heading) {",
   "  var r = {",
   "    kind: 'cpu', name: name,",
-  "    x: gridX, z: gridZ, heading: 0, speed: 0, slide: 0,",
+  "    x: gridX, z: gridZ, heading: heading || 0, speed: 0, slide: 0,",
   "    fuel: 100, tires: 100, lap: 1, passedHalf: false, lastX: gridX, s: s0, lastS: s0,",
   "    brakeHold: 0, finished: false, finishTime: 0,",
   "    wantPit: false, didPit: false, pitServicing: false, pitTimer: 0, pitUsedVisit: false,",
@@ -487,3 +511,135 @@ assert(blockB.z - blockB.z0 > (blockT.z - blockT.z0) + 0.25, "tidy does not defe
 assert(blockB.speed > 28, "block still rolls, not a park");
 
 console.log("OK bot AI Campus Loop", sim.TRACK_LEN.toFixed(1));
+
+assert(sim.apexFromRadius(12, 0.92) < 20, "Campus decreasing 90 stays a real slow corner");
+assert(sim.apexFromRadius(44, 0.92) > 26, "custom map 90 (r=44) is not crawled like a 12m Campus 90");
+assert(sim.apexFromRadius(132, 0.9) > 30, "custom sweeper is a sweeper, not a 90");
+
+function buildRectLoop(dir, r, name) {
+  sim.resetPathCursor();
+  sim.clearPit();
+  var turn = dir * 90;
+  sim.pathLine(180, "start");
+  sim.pathArc(r, turn, name || "the90");
+  sim.pathLine(140, "short");
+  sim.pathArc(r, turn, name || "the90");
+  sim.pathLine(180, "short");
+  sim.pathArc(r, turn, name || "the90");
+  sim.pathLine(140, "short");
+  sim.pathArc(r, turn, name || "the90");
+  sim.sealCustom();
+}
+
+function buildHairpinLoop(dir) {
+  sim.resetPathCursor();
+  sim.clearPit();
+  sim.pathLine(170, "start");
+  sim.pathArc(44, dir * 180, "hairpin");
+  sim.pathLine(170, "short");
+  sim.pathArc(44, dir * 180, "hairpin");
+  sim.sealCustom();
+}
+
+function buildSweeperLoop(dir) {
+  sim.resetPathCursor();
+  sim.clearPit();
+  var turn = dir * 90;
+  sim.pathLine(90, "start");
+  sim.pathArc(132, turn, "sweeper");
+  sim.pathLine(90, "short");
+  sim.pathArc(132, turn, "sweeper");
+  sim.pathLine(90, "short");
+  sim.pathArc(132, turn, "sweeper");
+  sim.pathLine(90, "short");
+  sim.pathArc(132, turn, "sweeper");
+  sim.sealCustom();
+}
+
+function spawnRibbon() {
+  var s0 = 12;
+  var p = sim.centerlinePoint(s0);
+  return { x: p.x, z: p.z, h: p.h, s: s0 };
+}
+
+function runCustom(name, seconds) {
+  var spawn = spawnRibbon();
+  return sim.runBot(name, spawn.x, spawn.z, spawn.s, seconds || 280, spawn.h);
+}
+
+function assertScan(dir, r, label) {
+  var scan = sim.scanAhead(40, 260);
+  assert(scan.dBend > 80 && scan.dBend < 160, label + " dBend " + scan.dBend);
+  assert(Math.abs(scan.bendR - r) < 2.5, label + " bendR " + scan.bendR);
+  if (dir > 0) assert(scan.inside > 0, label + " left inside " + scan.inside);
+  else assert(scan.inside < 0, label + " right inside " + scan.inside);
+}
+
+function assertFight(r, label, hall) {
+  report(r);
+  assert(r.finished, label + " Bowie finishes 5 laps");
+  assert(r.grass < 10, label + " grass " + r.grass.toFixed(1));
+  assert(r.maxOff < 22, label + " stays on the ribbon, not wide (" + r.maxOff.toFixed(1) + ")");
+  assert(r.reverseT < 2, label + " reverse " + r.reverseT.toFixed(1));
+  assert(r.emptyT < 4, label + " fuel " + r.emptyT.toFixed(1));
+  assert(r.finishTime > 60 && r.finishTime < 240, label + " pace " + r.finishTime.toFixed(1));
+  if (hall) {
+    report(hall);
+    assert(hall.finished, label + " Hall finishes");
+    assert(r.finishTime < hall.finishTime, label + " Bowie beats Hall (" + r.finishTime.toFixed(1) + " vs " + hall.finishTime.toFixed(1) + ")");
+  }
+}
+
+buildRectLoop(1, 44, "the90");
+assert(sim.isDriveableLoop(), "custom left 90s is a closed loop");
+assertScan(1, 44, "custom-left-90");
+var left90 = runCustom("BowieKnife99");
+var leftHall = runCustom("Hall Monitor");
+assertFight(left90, "custom-left-90", leftHall);
+
+buildRectLoop(-1, 44, "the90");
+assertScan(-1, 44, "custom-right-90");
+var right90 = runCustom("BowieKnife99");
+var rightHall = runCustom("Hall Monitor");
+assertFight(right90, "custom-right-90", rightHall);
+
+buildRectLoop(1, 22, "the90");
+assertScan(1, 22, "code-left-90");
+var codeL = runCustom("BowieKnife99");
+assertFight(codeL, "code-left-90");
+
+buildRectLoop(-1, 22, "the90");
+assertScan(-1, 22, "code-right-90");
+var codeR = runCustom("BowieKnife99");
+assertFight(codeR, "code-right-90");
+
+buildHairpinLoop(1);
+var hairL = runCustom("BowieKnife99");
+assertFight(hairL, "custom-left-hairpin");
+
+buildHairpinLoop(-1);
+var hairR = runCustom("BowieKnife99");
+assertFight(hairR, "custom-right-hairpin");
+
+buildSweeperLoop(1);
+var sweepL = runCustom("BowieKnife99");
+assertFight(sweepL, "custom-left-sweeper");
+
+buildSweeperLoop(-1);
+var sweepR = runCustom("BowieKnife99");
+assertFight(sweepR, "custom-right-sweeper");
+
+sim.restoreCampus();
+assert(!sim.isDriveableLoop(), "Campus uses the locked S/F, not MAP_CLOSED");
+assert(Math.abs(sim.trackLen() - sim.TRACK_LEN) < 1, "Campus path restored");
+
+console.log("OK bot AI all tracks", {
+  campus: Math.round(bowie.finishTime),
+  campusGrass: +bowie.grass.toFixed(1),
+  left90: Math.round(left90.finishTime),
+  right90: Math.round(right90.finishTime),
+  hairL: Math.round(hairL.finishTime),
+  hairR: Math.round(hairR.finishTime),
+  sweepL: Math.round(sweepL.finishTime),
+  sweepR: Math.round(sweepR.finishTime),
+});
