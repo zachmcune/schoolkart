@@ -103,16 +103,19 @@
 
   // F1 bypass, LEFT of the south S/F straight (infield / +Z).
   // Long peel, parallel lane, merge back. Grab HALFWAY IN the side lane.
+  // Visible teal/grey lane sits LEFT of the ribbon — not a strip on it.
+  // Asphalt infield edge is SF_Z+ASPHALT (-71.4). Pit paint starts past that.
+  // mp79/mp80 renamed flags and still grabbed: the old z0 -74/-71.6 pave
+  // sat on the racing asphalt. Drive beat paper. Paint moved, not flags.
   var PIT_LANE = { x0: 8, x1: 118, z0: -67.4, z1: -56.6 };
   var PIT_GRAB = { x0: 58, x1: 90, z0: -67.4, z1: -56.6 };
   var PIT_PAVE = [
-    { x0: -90, x1: 36, z0: -74.0, z1: -58.0 },
-    { x0: -20, x1: 50, z0: -71.6, z1: -56.0 },
-    { x0: 8, x1: 118, z0: -71.6, z1: -56.0 },
+    { x0: -20, x1: 50, z0: -69.0, z1: -56.0 },
+    { x0: 8, x1: 118, z0: -69.0, z1: -56.0 },
     PIT_LANE,
     PIT_GRAB,
-    { x0: 96, x1: 160, z0: -71.6, z1: -56.0 },
-    { x0: 124, x1: 185, z0: -74.0, z1: -62.0 },
+    { x0: 96, x1: 160, z0: -69.0, z1: -56.0 },
+    { x0: 124, x1: 185, z0: -69.0, z1: -62.0 },
   ];
 
   var keys = Object.create(null);
@@ -557,13 +560,12 @@
     PIT_GRAB.z1 = -56.6;
     PIT_PAVE.length = 0;
     PIT_PAVE.push(
-      { x0: -90, x1: 36, z0: -74.0, z1: -58.0 },
-      { x0: -20, x1: 50, z0: -71.6, z1: -56.0 },
-      { x0: 8, x1: 118, z0: -71.6, z1: -56.0 },
+      { x0: -20, x1: 50, z0: -69.0, z1: -56.0 },
+      { x0: 8, x1: 118, z0: -69.0, z1: -56.0 },
       PIT_LANE,
       PIT_GRAB,
-      { x0: 96, x1: 160, z0: -71.6, z1: -56.0 },
-      { x0: 124, x1: 185, z0: -74.0, z1: -62.0 }
+      { x0: 96, x1: 160, z0: -69.0, z1: -56.0 },
+      { x0: 124, x1: 185, z0: -69.0, z1: -62.0 }
     );
     PIT_META.ax = PIT_LANE.x0;
     PIT_META.az = (PIT_LANE.z0 + PIT_LANE.z1) * 0.5;
