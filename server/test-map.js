@@ -56,6 +56,8 @@ var code = [
   "var THROTTLE_FUEL = 0.12;",
   "var GETAWAY_T = 1.5;",
   "var SF_Z = -80;",
+  "var GRID_OUT_A = -2.4;",
+  "var GRID_OUT_B = -5.2;",
   "var PIT_LANE = { x0: 8, x1: 118, z0: -67.4, z1: -56.6 };",
   "var PIT_GRAB = { x0: 58, x1: 90, z0: -67.4, z1: -56.6 };",
   "var PIT_PAVE = [];",
@@ -123,6 +125,8 @@ var code = [
   sliceFn("menuTrackName"),
   sliceFn("speedKph"),
   sliceFn("slotOnPath"),
+  sliceFn("gridSlot"),
+  sliceFn("slotHeading"),
   sliceFn("customGridPose"),
   sliceFn("pointOnSeg"),
   sliceFn("centerlinePoint"),
@@ -166,6 +170,9 @@ var code = [
   "  customGridPose: customGridPose,",
   "  centerlinePoint: centerlinePoint,",
   "  slotOnPath: slotOnPath,",
+  "  gridSlot: gridSlot,",
+  "  slotHeading: slotHeading,",
+  "  onPitPavement: onPitPavement,",
   "  placeWalls: placeWalls,",
   "  bashAllWalls: bashAllWalls,",
   "  bashWall: bashWall,",
@@ -800,10 +807,15 @@ assert(src.indexOf("if (impact < 1.1 && pace < 3)") === -1, "slow side-by-side d
 assert(/function pinGrid\([\s\S]{0,400}faceRaceAt/.test(src), "grid pin faces the ribbon, not leftover yaw");
 assert(src.indexOf("if (!isDriveableLoop()) return 0;") !== -1, "Campus grid is east, not a pit-peel left yaw");
 assert(src.indexOf("pinGrid(player, playerGridX, playerGridZ, gridHeading)") !== -1, "lights pin the stored race heading");
-assert(src.indexOf("if (rev > REV_SWEET_HI) return \"DUMP\"") !== -1, "DUMP is only past the mark");
+assert(src.indexOf("if (rev > REV_SWEET_HI) return \"DUMP\"") !== -1, "past the mark still grades DUMP");
+assert(src.indexOf("if (launchCall === \"DUMP\") launchCall = \"SLUGGISH\"") !== -1, "start DUMP is a SLUGGISH getaway on asphalt");
+assert(!/function applyLaunch\([\s\S]{0,500}dumpLaunch/.test(src), "lights-out does not spin onto grass");
+assert(!/function applyCpuLaunch\([\s\S]{0,900}dumpLaunch/.test(src), "room Bowie does not dump-spin at GO");
+assert(src.indexOf("function slotHeading") !== -1 && src.indexOf("gridHeading = slotHeading(g)") !== -1, "room grid keeps the slot heading");
 assert(src.indexOf("launchT = GETAWAY_T") !== -1 && src.indexOf("var GETAWAY_T = 1.5") !== -1, "SLUGGISH is a 1.5s getaway, not a grass limp");
 assert(src.indexOf("mpMode && playerGridX != null") !== -1, "room grid keeps the slot, not Campus P2");
-assert(src.indexOf("z: SF_Z + (i % 2 ? -2.7 : 2.7), h: 0") !== -1, "campus grid heading is east");
+assert(src.indexOf("z: SF_Z + (i % 2 ? GRID_OUT_B : GRID_OUT_A), h: 0") !== -1, "campus room grid is outside the pit peel");
+assert(src.indexOf("var GRID_OUT_A = -2.4") !== -1 && src.indexOf("var GRID_OUT_B = -5.2") !== -1, "campus slots sit on the outside ribbon");
 assert(src.indexOf("function steerWheelYaw") !== -1 && src.indexOf("return -steer * 0.42") !== -1, "A = POINT LEFT, D = POINT RIGHT");
 assert(src.indexOf("function attachNameTag") !== -1 && src.indexOf("function layoutNameTags") !== -1, "halo nametags exist");
 assert(!/function attachNameTag\([\s\S]{0,500}new THREE\.Sprite/.test(src), "nametags are mesh billboards");
@@ -1778,19 +1790,27 @@ function proveMeshOverlap() {
 
 function proveGridFacesRace() {
   sim.lockRacePath("");
-  var h = sim.faceRaceAt(-6, -77.3);
-  assert(Math.abs(angDiff(h, 0)) < 0.05, "campus grid faces race east, not left, h=" + h.toFixed(3));
-  assert(Math.abs(angDiff(sim.faceRaceAt(-14, -82.7), 0)) < 0.05, "right grid slot also faces east");
-  var r = blankCar(-6, -77.3, 1.2, 8);
+  var g0 = sim.gridSlot(0);
+  var g1 = sim.gridSlot(1);
+  assert(g0.z < -80, "host slot is outside the peel, not infield +Z, z=" + g0.z.toFixed(2));
+  assert(g1.z < g0.z, "second row is further outside, not on the peel");
+  var pr0 = sim.projectTrack(g0.x, g0.z);
+  assert(pr0.onAsphalt, "host room grid is on the asphalt ribbon");
+  assert(!sim.onPitPavement(g0.x, g0.z) && !sim.onPitPavement(g1.x, g1.z), "room grid is not on the pit peel");
+  assert(Math.abs(angDiff(sim.slotHeading(g0), 0)) < 0.05, "keep the slot heading east, h=" + sim.slotHeading(g0).toFixed(3));
+  assert(Math.abs(angDiff(sim.faceRaceAt(g0.x, g0.z), 0)) < 0.05, "campus faceRaceAt stays east");
+  assert(Math.abs(angDiff(sim.faceRaceAt(g1.x, g1.z), 0)) < 0.05, "outside slot also faces east");
+  var r = blankCar(g0.x, g0.z, 1.2, 8);
   r.slide = 2;
-  sim.pinGrid(r, -6, -77.3);
-  assert(Math.abs(angDiff(r.heading, 0)) < 0.05, "pinGrid faces the ribbon, leftover yaw=" + r.heading.toFixed(3));
+  sim.pinGrid(r, g0.x, g0.z, sim.slotHeading(g0));
+  assert(Math.abs(angDiff(r.heading, 0)) < 0.05, "pinGrid keeps the slot heading, leftover yaw=" + r.heading.toFixed(3));
   assert(r.speed === 0 && r.slide === 0, "grid pin is stopped, not pre-rolling");
 }
 
 function proveGetawayOnRibbon() {
   sim.lockRacePath("");
-  var car = blankCar(-6, -77.3, 0, 0);
+  var g = sim.gridSlot(0);
+  var car = blankCar(g.x, g.z, sim.slotHeading(g), 0);
   car.fuel = 100;
   car.tires = 100;
   var t;
@@ -1806,30 +1826,32 @@ function proveGetawayOnRibbon() {
   assert(!sim.projectTrack(car.x, car.z).grass, "after 2s the car is not limping on grass");
 }
 
-function proveDumpNearSkirt() {
+function proveStartDumpOnAsphalt() {
   sim.lockRacePath("");
-  function drive(h0, slide0) {
-    var car = blankCar(-6, -77.3, h0, 0);
-    car.fuel = 100;
-    car.tires = 100;
-    car.slide = slide0;
-    var t;
-    for (t = 0; t < 2; t += 1 / 60) {
-      sim.applyMotion(car, 0, true, false, false, 1 / 60, true);
-    }
-    return car;
+  var g = sim.gridSlot(0);
+  var car = blankCar(g.x, g.z, sim.slotHeading(g), 0);
+  car.fuel = 100;
+  car.tires = 100;
+  var t;
+  var on = 0;
+  var n = 0;
+  for (t = 0; t < 2; t += 1 / 60) {
+    sim.applyMotion(car, 0, true, false, false, 1 / 60, true);
+    n += 1;
+    if (sim.projectTrack(car.x, car.z).onAsphalt) on += 1;
   }
-  var leftDump = drive(0.62, 10.5);
-  var rightDump = drive(-0.62, -10.5);
-  var leftover = drive(1.35, 0);
-  var prL = sim.projectTrack(leftDump.x, leftDump.z);
-  var prR = sim.projectTrack(rightDump.x, rightDump.z);
-  var prBad = sim.projectTrack(leftover.x, leftover.z);
-  assert(Math.abs(angDiff(leftDump.heading, 0)) < 1.05, "DUMP left-spin still faces the ribbon, h=" + leftDump.heading.toFixed(3));
-  assert(Math.abs(angDiff(rightDump.heading, 0)) < 1.05, "DUMP right-spin still faces the ribbon, h=" + rightDump.heading.toFixed(3));
-  assert(Math.abs(leftDump.z + 80) < 28 && Math.abs(rightDump.z + 80) < 28, "DUMP stays on the visible skirt, z=" + leftDump.z.toFixed(1) + "/" + rightDump.z.toFixed(1));
-  assert(prL.dist < 32 && prR.dist < 32, "DUMP recover is next to the ribbon, dist=" + prL.dist.toFixed(1) + "/" + prR.dist.toFixed(1));
-  assert(prBad.dist > prL.dist + 3 || leftover.z > leftDump.z + 6, "pre-yawed left is the grass dump; east DUMP stays nearer");
+  assert(on / n > 0.92, "start DUMP/SLUGGISH from the host slot stays on asphalt, on=" + on + "/" + n);
+  assert(!sim.projectTrack(car.x, car.z).grass, "13 kph is grass-roll; a normal start is not on grass");
+  assert(Math.abs(angDiff(car.heading, sim.slotHeading(g))) < 0.2, "start dump does not spin off the slot heading");
+  var peel = blankCar(-6, -77.3, 1.35, 0);
+  peel.fuel = 100;
+  peel.tires = 100;
+  for (t = 0; t < 2; t += 1 / 60) {
+    sim.applyMotion(peel, 0, true, false, false, 1 / 60, true);
+  }
+  var prGood = sim.projectTrack(car.x, car.z);
+  var prPeel = sim.projectTrack(peel.x, peel.z);
+  assert(prPeel.dist > prGood.dist + 2 || peel.z > car.z + 4, "the old peel slot is the grass dump; ribbon grid stays nearer");
 }
 
 function proveCarHits() {
@@ -1938,7 +1960,7 @@ proveCarHits();
 proveMeshOverlap();
 proveGridFacesRace();
 proveGetawayOnRibbon();
-proveDumpNearSkirt();
+proveStartDumpOnAsphalt();
 proveTileIcons();
 provePitPctSticky();
 assert(src.indexOf("var amp = MAP_CELL * 0.1") !== -1, "chicane S stays in-cell");
@@ -2023,7 +2045,10 @@ sim.placeWalls();
 assert(!sim.customGridPose(), "Campus Loop does not use custom grid");
 var campusCar = blankCar(-14, -80 - 2.7, 0, 0);
 assert(sim.projectTrack(0, -80).onAsphalt, "Campus S/F asphalt stays clean");
-assert(wallClear(-14, -80 - 2.7) > 5, "Campus grid is not inside a wall");
+assert(wallClear(sim.gridSlot(0).x, sim.gridSlot(0).z) > 5, "Campus host grid is not inside a wall");
+assert(wallClear(sim.gridSlot(1).x, sim.gridSlot(1).z) > 5, "Campus P2 grid is not inside a wall");
+var srv = fs.readFileSync(path.join(__dirname, "index.js"), "utf8");
+assert(srv.indexOf("z: -80 + lat") !== -1 && srv.indexOf("slot % 2 ? -5.2 : -2.4") !== -1, "server room grid matches the outside ribbon");
 assert(Math.abs(sim.TRACK_LEN - 1978.98) < 2, "Campus Loop length unchanged after custom grid prove");
 
 assert(src.indexOf("lockRacePath") !== -1 && src.indexOf("isDriveableLoop") !== -1, "open/junk boards refuse and bounce to Loop");

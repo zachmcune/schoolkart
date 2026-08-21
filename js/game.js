@@ -9,7 +9,7 @@
    Start: PRE-START blue flash, five reds at 1s, hold 0.2–3s all ON,
    lights out = GO. Fuel starts then. Car is locked to the grid until GO.
    W is a timing game — climb through the green, lift to catch it.
-   Hold to max dumps a spin on lights-out.
+   Past the mark at lights-out is a SLUGGISH getaway on asphalt, not a spin.
    Course: asphalt → kerbs → painted runoff → concrete + two-rail.
    Barriers both sides except the LEFT pit peel. Grass is infield patches only.
    FX lock: two fat launch puffs, thin grey worn streaks, short white
@@ -64,8 +64,12 @@
   var FX_MAX = 18;
 
   var SF_Z = -80;
+  // Campus grid sits on the OUTSIDE of the south straight (driver's right / -Z).
+  // The infield row (+Z) is the OPEN PIT PEEL. Host is slot 0 — do not sit there.
+  var GRID_OUT_A = -2.4;
+  var GRID_OUT_B = -5.2;
   var GRID_P2_X = -14;
-  var GRID_P2_Z = SF_Z - 2.7;
+  var GRID_P2_Z = SF_Z + GRID_OUT_B;
   var SKINS = [
     { color: 0xf4f1ea, num: 7, name: "House 7" },
     { color: 0xd4a017, num: 12, name: "Hall Monitor" },
@@ -82,12 +86,16 @@
       var p = slotOnPath(Math.max(0, TRACK_LEN - 6 - i * 8), i % 2 ? 1 : -1);
       return { x: p.x, z: p.z, h: p.h };
     }
-    return { x: -6 - i * 8, z: SF_Z + (i % 2 ? -2.7 : 2.7), h: 0 };
+    return { x: -6 - i * 8, z: SF_Z + (i % 2 ? GRID_OUT_B : GRID_OUT_A), h: 0 };
+  }
+
+  function slotHeading(g) {
+    if (g && g.h != null && isFinite(g.h)) return g.h;
+    return 0;
   }
 
   function faceRaceAt(x, z) {
-    // Campus S/F is east (+X). projectTrack at the left grid slot can
-    // pick the pit peel and pre-yaw cars LEFT onto the infield.
+    // Campus S/F is east (+X). Do not re-project: the pit peel steals heading.
     if (!isDriveableLoop()) return 0;
     var pr = projectTrack(x, z);
     return pr && isFinite(pr.h) ? pr.h : 0;
@@ -1777,7 +1785,7 @@
 
     if (!customMap) {
       var gxs = [-6, -14, -22];
-      var gzs = [SF_Z + 2.7, SF_Z - 2.7, SF_Z + 2.7];
+      var gzs = [SF_Z + GRID_OUT_A, SF_Z + GRID_OUT_B, SF_Z + GRID_OUT_A];
       for (var gb = 0; gb < 3; gb++) {
         addBox(gxs[gb], 0.09, gzs[gb], 5.2, 0.03, 2.6, 0xffffff, trackRoot);
         addBox(gxs[gb], 0.1, gzs[gb], 4.6, 0.02, 0.12, 0x111111, trackRoot);
@@ -3490,8 +3498,8 @@
   }
 
   var cpuGrid = [
-    { x: -6, z: SF_Z + 2.7, h: 0 },
-    { x: -22, z: SF_Z + 2.7, h: 0 },
+    { x: -6, z: SF_Z + GRID_OUT_A, h: 0 },
+    { x: -22, z: SF_Z + GRID_OUT_A, h: 0 },
   ];
 
   function applyCustomGrid() {
@@ -3511,10 +3519,11 @@
   function resetGrid() {
     var pose = null;
     if (mpMode && playerGridX != null && isFinite(playerGridX) && playerGridZ != null && isFinite(playerGridZ)) {
-      gridHeading = isDriveableLoop() ? faceRaceAt(playerGridX, playerGridZ) : 0;
+      // Keep the slot heading. Re-projecting snaps the host onto the pit peel.
+      if (gridHeading == null || !isFinite(gridHeading)) gridHeading = 0;
     } else {
       pose = applyCustomGrid();
-      gridHeading = isDriveableLoop() ? faceRaceAt(playerGridX, playerGridZ) : 0;
+      if (!pose) gridHeading = 0;
     }
     resetRacer(player, playerGridX, playerGridZ, gridHeading, TRACK_LEN - 14);
     if (pose) {
@@ -3523,10 +3532,10 @@
       resetRacer(cpus[0], cpuGrid[0].x, cpuGrid[0].z, cpuGrid[0].h, TRACK_LEN - 6);
       resetRacer(cpus[1], cpuGrid[1].x, cpuGrid[1].z, cpuGrid[1].h, TRACK_LEN - 22);
     } else {
-      cpuGrid[0] = { x: -6, z: SF_Z + 2.7, h: 0 };
-      cpuGrid[1] = { x: -22, z: SF_Z + 2.7, h: 0 };
-      resetRacer(cpus[0], cpuGrid[0].x, cpuGrid[0].z, 0, TRACK_LEN - 6);
-      resetRacer(cpus[1], cpuGrid[1].x, cpuGrid[1].z, 0, TRACK_LEN - 22);
+      cpuGrid[0] = gridSlot(0);
+      cpuGrid[1] = gridSlot(2);
+      resetRacer(cpus[0], cpuGrid[0].x, cpuGrid[0].z, slotHeading(cpuGrid[0]), TRACK_LEN - 6);
+      resetRacer(cpus[1], cpuGrid[1].x, cpuGrid[1].z, slotHeading(cpuGrid[1]), TRACK_LEN - 22);
     }
     function pinS(r) {
       r.s = projectTrack(r.x, r.z).s;
@@ -4611,32 +4620,18 @@
     return "SLUGGISH";
   }
 
-  function dumpLaunch(r) {
-    if (!r) return;
-    var dir = Math.random() < 0.5 ? -1 : 1;
-    r.slide += dir * 10.5;
-    r.heading += dir * 0.62;
-    r.speed = 0;
-    r.spinFx = true;
-    var back = -Math.cos(r.heading);
-    var side = -Math.sin(r.heading);
-    spawnFx("burst", r.x, 0.28, r.z, back * 0.8, 0.9, side * 0.8);
-  }
-
   function applyLaunch() {
     launchMul = 1;
     launchT = GETAWAY_T;
     launchCall = gradeLaunch(revs);
+    // Lights-out never uses the 180 dump-hole spin. Past the mark is
+    // a SLUGGISH getaway on asphalt (~1.5s), then full pace.
+    if (launchCall === "DUMP") launchCall = "SLUGGISH";
     if (launchCall === "GREAT") launchMul = 1.2;
     else if (launchCall === "GOOD") launchMul = 1.08;
-    else if (launchCall === "DUMP") {
-      launchMul = 0.5;
-      dumpLaunch(player);
-    } else {
-      launchMul = 0.55;
-    }
+    else launchMul = 0.55;
     launchCallT = 2;
-    if (launchCall !== "DUMP") launchPuffs(player);
+    launchPuffs(player);
   }
 
   function applyCpuLaunch(r, p) {
@@ -4660,14 +4655,10 @@
       else if (roll < 0.86) kind = "GOOD";
       else kind = "GREAT";
     }
+    if (kind === "DUMP") kind = "SLUGGISH";
     if (kind === "GREAT") r.launchMul = 1.2;
     else if (kind === "GOOD") r.launchMul = 1.08;
-    else if (kind === "DUMP") {
-      r.launchMul = 0.5;
-      dumpLaunch(r);
-    } else {
-      r.launchMul = 0.55;
-    }
+    else r.launchMul = 0.55;
   }
 
   function persistMe() {
@@ -5078,8 +5069,8 @@
     if (!mpMode) {
       var g0 = cpuGrid[0];
       var g1 = cpuGrid[1];
-      pinGrid(cpus[0], g0.x, g0.z, g0.h != null ? g0.h : faceRaceAt(g0.x, g0.z));
-      pinGrid(cpus[1], g1.x, g1.z, g1.h != null ? g1.h : faceRaceAt(g1.x, g1.z));
+      pinGrid(cpus[0], g0.x, g0.z, slotHeading(g0));
+      pinGrid(cpus[1], g1.x, g1.z, slotHeading(g1));
     }
     chaseCamera(dt);
   }
@@ -5118,7 +5109,7 @@
         var skin = SKINS[p.slot % SKINS.length];
         var g = gridSlot(p.slot);
         var r = createRacer("cpu", skin.color, p.name || skin.name, skin.num);
-        resetRacer(r, g.x, g.z, g.h != null ? g.h : faceRaceAt(g.x, g.z), TRACK_LEN - 6 - p.slot * 8);
+        resetRacer(r, g.x, g.z, slotHeading(g), TRACK_LEN - 6 - p.slot * 8);
         hostBots[p.id] = r;
       }
       if (p.name && hostBots[p.id].name !== p.name) {
@@ -5171,7 +5162,7 @@
           if (net.players[j].id === ids[i]) meta = net.players[j];
         }
         var g = gridSlot(meta ? meta.slot : 0);
-        pinGrid(hostBots[ids[i]], g.x, g.z, isDriveableLoop() && g.h != null && isFinite(g.h) ? g.h : faceRaceAt(g.x, g.z));
+        pinGrid(hostBots[ids[i]], g.x, g.z, slotHeading(g));
       }
     } else if (state === "racing") {
       for (i = 0; i < ids.length; i++) {
@@ -5378,7 +5369,7 @@
     var g = gridSlot(slot);
     playerGridX = g.x;
     playerGridZ = g.z;
-    gridHeading = isDriveableLoop() && g.h != null && isFinite(g.h) ? g.h : faceRaceAt(g.x, g.z);
+    gridHeading = slotHeading(g);
     resetGrid();
     adoptHostBots();
     touchCtl.gyroNeedCal = true;
@@ -5415,7 +5406,7 @@
     var g = gridSlot(slot);
     playerGridX = g.x;
     playerGridZ = g.z;
-    gridHeading = isDriveableLoop() && g.h != null && isFinite(g.h) ? g.h : faceRaceAt(g.x, g.z);
+    gridHeading = slotHeading(g);
     resetGrid();
     adoptHostBots();
     var restore = null;
@@ -5744,7 +5735,7 @@
       hud.tiltBtn.classList.toggle("hidden", !(phone && drive && needsTiltTap() && !blocked));
     }
     if (hud.revHint && phone) {
-      hud.revHint.textContent = "HOLD the right half to climb — lift to catch the green. Past the mark dumps.";
+      hud.revHint.textContent = "HOLD the right half to climb — lift to catch the green. Past the mark is sluggish.";
     }
     if (drive) lockLandscape();
     else unlockOrientation();

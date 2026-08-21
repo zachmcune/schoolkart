@@ -227,7 +227,10 @@ function makeRoom() {
 }
 
 function slotPose(slot) {
-  return { x: -6 - slot * 8, z: -80 + (slot % 2 ? -2.7 : 2.7) };
+  // Same campus grid as js/game.js gridSlot: outside the south straight.
+  // Even slots used to sit on the open pit peel (+Z). Host is slot 0.
+  var lat = slot % 2 ? -5.2 : -2.4;
+  return { x: -6 - slot * 8, z: -80 + lat, h: 0 };
 }
 
 function blankCar(id, name, slot, ws) {
@@ -365,7 +368,7 @@ function startLights(room) {
     var g = slotPose(p.slot);
     p.x = g.x;
     p.z = g.z;
-    p.h = 0;
+    p.h = g.h != null ? g.h : 0;
     p.spd = 0;
     p.slide = 0;
     p.lap = 1;

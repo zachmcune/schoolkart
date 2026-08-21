@@ -115,7 +115,7 @@ waitHealth()
         assert(html.indexOf('rel="manifest"') !== -1, "web app manifest link");
         assert(html.indexOf("apple-mobile-web-app-capable") !== -1, "iOS home screen capable");
         assert(html.indexOf('apple-mobile-web-app-title" content="SchoolKart"') !== -1, "iOS title");
-        assert(html.indexOf('SK_BUILD = "mp77"') !== -1, "cache bump mp77");
+        assert(html.indexOf('SK_BUILD = "mp78"') !== -1, "cache bump mp78");
         assert(html.indexOf('maxlength="240"') !== -1, "share-string fits a full board");
         assert(html.indexOf('id="title-track"') !== -1, "title label matches Solo load");
         assert(html.indexOf('aria-label="90"') !== -1 && html.indexOf('aria-label="sweeper"') !== -1, "palette has 90 and sweeper chips");
@@ -131,7 +131,7 @@ waitHealth()
         assert(html.indexOf("tile-board") !== -1, "drag tile board");
         assert(html.indexOf("tile-palette") !== -1, "tile palette");
         assert(html.indexOf("tile-trash") !== -1, "tile trash");
-        assert(html.indexOf("Past the mark dumps") !== -1, "rev hint is timing not park");
+        assert(html.indexOf("Past the mark is sluggish") !== -1, "rev hint is timing not park");
         return fetch("http://127.0.0.1:" + PORT + "/manifest.json")
           .then(function (mr) {
             return mr.json().then(function (man) {
@@ -149,7 +149,7 @@ waitHealth()
           .then(function (sr) {
             return sr.text().then(function (sw) {
               assert(sr.status === 200, "sw 200");
-              assert(sw.indexOf('BUILD = "mp77"') !== -1, "SW build matches cache");
+              assert(sw.indexOf('BUILD = "mp78"') !== -1, "SW build matches cache");
               assert(/cache:\s*"no-store"/.test(sw), "network-first no-store");
               assert(sw.indexOf("websocket") !== -1, "SW leaves websocket alone");
             });
@@ -182,6 +182,9 @@ waitHealth()
                   assert(js.indexOf("function hitCarFeel") !== -1, "car hits: tap / ram / shove");
                   assert(js.indexOf("tap = wiggle, ram = spin") !== -1, "rear-quarter tap wiggles; ram spins");
                   assert(js.indexOf("function faceRaceAt") !== -1, "grid faces race direction");
+                  assert(js.indexOf("function slotHeading") !== -1 && js.indexOf("gridHeading = slotHeading(g)") !== -1, "room grid keeps the slot heading");
+                  assert(js.indexOf("var GRID_OUT_A = -2.4") !== -1, "campus host sits outside the pit peel");
+                  assert(js.indexOf("if (launchCall === \"DUMP\") launchCall = \"SLUGGISH\"") !== -1, "start DUMP is sluggish on asphalt");
                   assert(js.indexOf("if (!isDriveableLoop()) return 0;") !== -1, "Campus room grid is east, not pre-yawed left");
                   assert(js.indexOf("pinGrid(player, playerGridX, playerGridZ, gridHeading)") !== -1, "lights pin the stored race heading");
                   assert(js.indexOf("function meshOverlap") !== -1 && js.indexOf("var MESH_HALF_W = 1.2") !== -1, "hit box is the visible mesh, not a sausage");

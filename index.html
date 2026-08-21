@@ -6,7 +6,7 @@
   <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <!-- sk-build mp77: room grid faces east; green getaway stays on asphalt -->
+  <!-- sk-build mp78: room grid on ribbon not pit peel; start dump is sluggish -->
   <meta name="theme-color" content="#1a120e" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -16,7 +16,7 @@
   <link rel="manifest" href="manifest.json" />
   <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png" />
   <link rel="apple-touch-icon" href="apple-touch-icon.png" />
-  <link rel="stylesheet" href="css/style.css?v=mp77" />
+  <link rel="stylesheet" href="css/style.css?v=mp78" />
 </head>
 <body>
   <div id="game">
@@ -70,7 +70,7 @@
         <b id="rev-fill"></b>
         <span id="rev-needle"></span>
       </div>
-      <div id="rev-hint">HOLD W to climb — lift to catch the green. Past the mark dumps.</div>
+      <div id="rev-hint">HOLD W to climb — lift to catch the green. Past the mark is sluggish.</div>
     </div>
 
     <div id="touch-layer" class="hidden" aria-hidden="true">
@@ -93,7 +93,7 @@
         <li><strong>W</strong> gas · <strong>Space</strong> brake · <strong>S</strong> reverse · A/D steer. Wind the straights. Late into the hairpin = dump. Lift in the chicane. Fresh tires to carry the sweeper.</li>
         <li><strong>Fuel is the clock.</strong> Ticks even if you coast. One box in 5 laps — skip it and limp home.</li>
         <li><strong>Peel LEFT</strong> off the straight into a side pit lane (bypass). Halfway <em>in that lane</em> the crew grabs you, services, then you drive out and merge back.</li>
-        <li><strong>Lights start:</strong> locked until GO. <strong>Hold W</strong> climbs the needle through the green — lift to catch it. At max / past the mark = DUMP (spin). Below = SLUGGISH getaway only. After GO: SLUGGISH / GOOD / GREAT / DUMP.</li>
+        <li><strong>Lights start:</strong> locked until GO. <strong>Hold W</strong> climbs the needle through the green — lift to catch it. Below or past the mark = SLUGGISH getaway on asphalt (~1.5s), not a spin onto grass. After GO: SLUGGISH / GOOD / GREAT.</li>
       </ul>
       <div class="lobby-row">
         <input id="display-name" class="lobby-input name-input" maxlength="14" placeholder="YOUR NAME" autocomplete="nickname" spellcheck="false" autocapitalize="words" />
@@ -221,7 +221,7 @@
   </div>
 
   <script>
-    window.SK_BUILD = "mp77";
+    window.SK_BUILD = "mp78";
     try {
       if (window.caches) {
         caches.keys().then(function (keys) {
@@ -232,7 +232,7 @@
       }
     } catch (e) {}
     if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.register("sw.js?v=mp77").catch(function () {});
+      navigator.serviceWorker.register("sw.js?v=mp78").catch(function () {});
     }
   </script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.160.1/build/three.min.js"></script>
@@ -241,8 +241,8 @@
       document.write('<script src="https://unpkg.com/three@0.160.1/build/three.min.js"><\/script>');
     }
   </script>
-  <script src="js/config.js?v=mp77"></script>
-  <script src="js/net.js?v=mp77"></script>
-  <script src="js/game.js?v=mp77"></script>
+  <script src="js/config.js?v=mp78"></script>
+  <script src="js/net.js?v=mp78"></script>
+  <script src="js/game.js?v=mp78"></script>
 </body>
 </html>
