@@ -890,8 +890,14 @@ html.race-portrait #tilt-btn {
 }
 
 .palette-tile.wide {
-  width: 112px;
-  flex: 0 0 112px;
+  width: 144px;
+  flex: 0 0 144px;
+}
+
+.palette-tile.block {
+  width: 144px;
+  height: 144px;
+  flex: 0 0 144px;
 }
 
 .palette-tile.picked,

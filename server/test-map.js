@@ -2303,6 +2303,16 @@ function proveCarHits() {
 function proveTileIcons() {
   var pair = new Function(sliceFn("tileIconPts") + ";" + sliceFn("tileIconSvg") + "; return { pts: tileIconPts, svg: tileIconSvg };")();
   var icon = pair.pts;
+  function near(a, b, tol) {
+    return Math.hypot(a.x - b.x, a.y - b.y) < (tol || 0.6);
+  }
+  function hasPort(pts, x, y) {
+    var i;
+    for (i = 0; i < pts.length; i++) {
+      if (near(pts[i], { x: x, y: y })) return true;
+    }
+    return false;
+  }
   function inside(type, rot, w, h, label) {
     var pts = icon(type, rot, w, h);
     assert(pts.length >= 8, label + " has a silhouette, n=" + pts.length);
@@ -2323,13 +2333,17 @@ function proveTileIcons() {
     var svg = pair.svg(type, rot, w, h);
     assert(svg.indexOf("<path") !== -1 && svg.indexOf("#3a3e46") !== -1, label + " SVG paints asphalt in the square");
     assert(svg.indexOf("M") !== -1, label + " SVG has a silhouette path");
+    assert(svg.indexOf('fill="#3a3e46"') !== -1, label + " road is a filled ribbon, not a stroked cartoon");
     return { minX: minX, maxX: maxX, minY: minY, maxY: maxY, pts: pts };
   }
   var r90 = inside("r", 0, 160, 160, "90");
   assert(r90.maxX - r90.minX > 50 && r90.maxY - r90.minY > 50, "90 is a quarter-circle, not a line");
-  inside("w", 0, 160, 160, "sweeper");
+  assert(hasPort(r90.pts, 160, 80) && hasPort(r90.pts, 80, 160), "90 rot 0 hits east and south mid-edges");
+  var sweep = inside("w", 0, 160, 160, "sweeper");
+  assert(hasPort(sweep.pts, 160, 40) && hasPort(sweep.pts, 40, 160), "sweeper is a wide 90, NE-east to SW-south");
   var hp = inside("H", 0, 320, 160, "hairpin");
   assert(hp.maxX - hp.minX > (hp.maxY - hp.minY) * 1.1, "hairpin is a U across the wide chip");
+  assert(hasPort(hp.pts, 80, 160) && hasPort(hp.pts, 240, 160), "hairpin U opens on the two south mid-edges");
   var chi = inside("C", 0, 160, 160, "chicane");
   var above = 0;
   var below = 0;
@@ -2339,6 +2353,11 @@ function proveTileIcons() {
     else below += 1;
   }
   assert(above > 3 && below > 3, "chicane S is not a flat line");
+  assert(hasPort(chi.pts, 0, 80) && hasPort(chi.pts, 160, 80), "chicane meets west and east mid-edges");
+  var str = icon("s", 0, 80, 80);
+  assert(near(str[0], { x: 0, y: 40 }) && near(str[1], { x: 80, y: 40 }), "short straight is edge-to-edge");
+  var boardSvg = pair.svg("s", 0, 80, 80, true);
+  assert(boardSvg.indexOf('fill="#6a655c"') === -1, "board pieces do not paint their own dirt square");
 }
 
 function provePitPctSticky() {
