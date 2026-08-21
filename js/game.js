@@ -86,6 +86,9 @@
   }
 
   function faceRaceAt(x, z) {
+    // Campus S/F is east (+X). projectTrack at the left grid slot can
+    // pick the pit peel and pre-yaw cars LEFT onto the infield.
+    if (!isDriveableLoop()) return 0;
     var pr = projectTrack(x, z);
     return pr && isFinite(pr.h) ? pr.h : 0;
   }
@@ -3508,10 +3511,10 @@
   function resetGrid() {
     var pose = null;
     if (mpMode && playerGridX != null && isFinite(playerGridX) && playerGridZ != null && isFinite(playerGridZ)) {
-      gridHeading = faceRaceAt(playerGridX, playerGridZ);
+      gridHeading = isDriveableLoop() ? faceRaceAt(playerGridX, playerGridZ) : 0;
     } else {
       pose = applyCustomGrid();
-      gridHeading = faceRaceAt(playerGridX, playerGridZ);
+      gridHeading = isDriveableLoop() ? faceRaceAt(playerGridX, playerGridZ) : 0;
     }
     resetRacer(player, playerGridX, playerGridZ, gridHeading, TRACK_LEN - 14);
     if (pose) {
@@ -5009,7 +5012,7 @@
     paintRevs();
 
     // Locked to the grid until lights-out. W only moves the rev needle.
-    pinGrid(player, playerGridX, playerGridZ);
+    pinGrid(player, playerGridX, playerGridZ, gridHeading);
     var wheels = player.mesh.userData.wheels;
     if (wheels) {
       var spin = revs * dt * 16;
@@ -5168,7 +5171,7 @@
           if (net.players[j].id === ids[i]) meta = net.players[j];
         }
         var g = gridSlot(meta ? meta.slot : 0);
-        pinGrid(hostBots[ids[i]], g.x, g.z, g.h != null ? g.h : faceRaceAt(g.x, g.z));
+        pinGrid(hostBots[ids[i]], g.x, g.z, isDriveableLoop() && g.h != null && isFinite(g.h) ? g.h : faceRaceAt(g.x, g.z));
       }
     } else if (state === "racing") {
       for (i = 0; i < ids.length; i++) {
@@ -5375,7 +5378,7 @@
     var g = gridSlot(slot);
     playerGridX = g.x;
     playerGridZ = g.z;
-    gridHeading = g.h != null ? g.h : faceRaceAt(g.x, g.z);
+    gridHeading = isDriveableLoop() && g.h != null && isFinite(g.h) ? g.h : faceRaceAt(g.x, g.z);
     resetGrid();
     adoptHostBots();
     touchCtl.gyroNeedCal = true;
@@ -5412,7 +5415,7 @@
     var g = gridSlot(slot);
     playerGridX = g.x;
     playerGridZ = g.z;
-    gridHeading = g.h != null ? g.h : faceRaceAt(g.x, g.z);
+    gridHeading = isDriveableLoop() && g.h != null && isFinite(g.h) ? g.h : faceRaceAt(g.x, g.z);
     resetGrid();
     adoptHostBots();
     var restore = null;

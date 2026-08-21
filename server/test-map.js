@@ -798,6 +798,10 @@ assert(src.indexOf("function meshOverlap") !== -1 && src.indexOf("var MESH_HALF_
 assert(src.indexOf("var impact = Math.max(rel, 0, pace * 0.34, 2.6)") !== -1, "overlap at a crawl still yaws");
 assert(src.indexOf("if (impact < 1.1 && pace < 3)") === -1, "slow side-by-side does not skip feel");
 assert(/function pinGrid\([\s\S]{0,400}faceRaceAt/.test(src), "grid pin faces the ribbon, not leftover yaw");
+assert(src.indexOf("if (!isDriveableLoop()) return 0;") !== -1, "Campus grid is east, not a pit-peel left yaw");
+assert(src.indexOf("pinGrid(player, playerGridX, playerGridZ, gridHeading)") !== -1, "lights pin the stored race heading");
+assert(src.indexOf("if (rev > REV_SWEET_HI) return \"DUMP\"") !== -1, "DUMP is only past the mark");
+assert(src.indexOf("launchT = GETAWAY_T") !== -1 && src.indexOf("var GETAWAY_T = 1.5") !== -1, "SLUGGISH is a 1.5s getaway, not a grass limp");
 assert(src.indexOf("mpMode && playerGridX != null") !== -1, "room grid keeps the slot, not Campus P2");
 assert(src.indexOf("z: SF_Z + (i % 2 ? -2.7 : 2.7), h: 0") !== -1, "campus grid heading is east");
 assert(src.indexOf("function steerWheelYaw") !== -1 && src.indexOf("return -steer * 0.42") !== -1, "A = POINT LEFT, D = POINT RIGHT");
@@ -1775,12 +1779,51 @@ function proveMeshOverlap() {
 function proveGridFacesRace() {
   sim.lockRacePath("");
   var h = sim.faceRaceAt(-6, -77.3);
-  assert(Math.abs(angDiff(h, 0)) < 0.2, "campus grid faces race east, not left, h=" + h.toFixed(3));
+  assert(Math.abs(angDiff(h, 0)) < 0.05, "campus grid faces race east, not left, h=" + h.toFixed(3));
+  assert(Math.abs(angDiff(sim.faceRaceAt(-14, -82.7), 0)) < 0.05, "right grid slot also faces east");
   var r = blankCar(-6, -77.3, 1.2, 8);
   r.slide = 2;
   sim.pinGrid(r, -6, -77.3);
-  assert(Math.abs(angDiff(r.heading, 0)) < 0.2, "pinGrid faces the ribbon, leftover yaw=" + r.heading.toFixed(3));
+  assert(Math.abs(angDiff(r.heading, 0)) < 0.05, "pinGrid faces the ribbon, leftover yaw=" + r.heading.toFixed(3));
   assert(r.speed === 0 && r.slide === 0, "grid pin is stopped, not pre-rolling");
+}
+
+function proveGetawayOnRibbon() {
+  sim.lockRacePath("");
+  var car = blankCar(-6, -77.3, 0, 0);
+  car.fuel = 100;
+  car.tires = 100;
+  var t;
+  var on = 0;
+  var n = 0;
+  for (t = 0; t < 2; t += 1 / 60) {
+    sim.applyMotion(car, 0, true, false, false, 1 / 60, true);
+    n += 1;
+    if (sim.projectTrack(car.x, car.z).onAsphalt) on += 1;
+  }
+  assert(on / n > 0.92, "catch-green getaway from the room grid stays on asphalt, on=" + on + "/" + n);
+  assert(Math.abs(angDiff(car.heading, 0)) < 0.2, "getaway does not yaw left onto grass, h=" + car.heading.toFixed(3));
+  assert(!sim.projectTrack(car.x, car.z).grass, "after 2s the car is not limping on grass");
+}
+
+function proveDumpNearSkirt() {
+  sim.lockRacePath("");
+  function run(dir) {
+    var car = blankCar(-6, -77.3, dir * 0.62, 0);
+    car.fuel = 100;
+    car.tires = 100;
+    car.slide = dir * 10.5;
+    var t;
+    for (t = 0; t < 2; t += 1 / 60) {
+      sim.applyMotion(car, 0, true, false, false, 1 / 60, true);
+    }
+    var pr = sim.projectTrack(car.x, car.z);
+    assert(pr.dist < 8.6 + 3.8 + 10, "DUMP from the room grid stays on the visible skirt, dist=" + pr.dist.toFixed(2));
+    assert(Math.abs(angDiff(car.heading, 0)) < 1.05, "DUMP does not face the infield, h=" + car.heading.toFixed(3));
+    assert(Math.abs(car.z + 80) < 22, "DUMP does not drop into a far void, z=" + car.z.toFixed(1));
+  }
+  run(1);
+  run(-1);
 }
 
 function proveCarHits() {
@@ -1888,6 +1931,8 @@ proveLoopRibbonNotPit();
 proveCarHits();
 proveMeshOverlap();
 proveGridFacesRace();
+proveGetawayOnRibbon();
+proveDumpNearSkirt();
 proveTileIcons();
 provePitPctSticky();
 assert(src.indexOf("var amp = MAP_CELL * 0.1") !== -1, "chicane S stays in-cell");
