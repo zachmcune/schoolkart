@@ -41,13 +41,13 @@ function sliceAssign(name) {
 var code = [
   "var LAPS = 5;",
   "var MAX_SPEED = 48;",
-  "var ACCEL = 16;",
-  "var BRAKE_DECEL = 20;",
-  "var COAST = 5;",
-  "var REVERSE_ACCEL = 18;",
+  "var ACCEL = 5;",
+  "var BRAKE_DECEL = 6;",
+  "var COAST = 2;",
+  "var REVERSE_ACCEL = 7;",
   "var REVERSE_MAX = 12;",
   "var LIMP_SPEED = 13;",
-  "var LIMP_ACCEL = 6;",
+  "var LIMP_ACCEL = 2;",
   "var STEER_RATE = 2.35;",
   "var MAX_LAT = 28;",
   "var IDLE_FUEL = 0.46;",
@@ -62,7 +62,6 @@ var code = [
   "var RUNOFF = 3.8;",
   "var KERB_NAMES = ['the90', 'hairpin', 'chicane', 'sweeper', 'kink'];",
   "var KERB_RAISE = 0.055;",
-  "var KERB_SURFACE_Y = 0.06;",
   "var GRASS_MAX = 8.5;",
   "var GRASS_ROLL = 4;",
   "var GRASS_DUMP = 40;",
@@ -144,11 +143,13 @@ var code = [
   sliceAssign("AI_LAB"),
   sliceAssign("AI_WILD"),
   sliceAssign("AI_WIDE"),
-  "var _scan = { dHair: 999, dChi: 999, dSweep: 999, d90: 999, dKink: 999, dTight: 999, tightR: 99, hairLeft: 0, chiLeft: 0, sweepLeft: 0, d90Left: 0, dBend: 999, bendR: 99, bendLeft: 0, bendSign: 0 };",
+  "var _scan = { dHair: 999, dChi: 999, dSweep: 999, d90: 999, dKink: 999, dTight: 999, tightR: 99, hairLeft: 0, chiLeft: 0, sweepLeft: 0, d90Left: 0, dBend: 999, bendR: 99, inside: 1 };",
   sliceFn("aiOf"),
   sliceFn("scanAhead"),
   sliceFn("approachWant"),
   sliceFn("unwindWant"),
+  sliceFn("brakeWindow"),
+  sliceFn("apexFromRadius"),
   sliceFn("eachRival"),
   sliceFn("avoidRams"),
   "var _prey = { r: null, d: 999, fwd: 0, lat: 0 };",
@@ -163,7 +164,17 @@ var code = [
   "function dumpLaunch() {}",
   "function applyCpuLaunch(r) { r.launchArmed = true; r.launchMul = 1; r.launchT = 0; }",
   sliceFn("updateCpu"),
+  sliceFn("isDriveableLoop"),
   "function poseCar(r) { if (r.mesh) { r.mesh.position.x = r.x; r.mesh.position.z = r.z; } }",
+  "function trackLen() { return TRACK_LEN; }",
+  "function sealCustom() { MAP_CLOSED = true; MAP_SURF = PATH.slice(); }",
+  "function restoreCampus() {",
+  "  MAP_CLOSED = false;",
+  "  MAP_SURF = [];",
+  "  resetPathCursor();",
+  "  setDefaultPit();",
+  "  buildCampusPath();",
+  "}",
   "setDefaultPit();",
   "buildCampusPath();",
   "return {",
@@ -175,14 +186,23 @@ var code = [
   "  runBlock: runBlock,",
   "  runPass: runPass,",
   "  buildWideLoop: buildWideLoop,",
-  "  restoreCampus: restoreCampus,",
-  "  trackLen: function () { return TRACK_LEN; },",
+  "  resetPathCursor: resetPathCursor,",
+  "  pathLine: pathLine,",
+  "  pathArc: pathArc,",
+  "  clearPit: clearPit,",
+  "  setDefaultPit: setDefaultPit,",
+  "  buildCampusPath: buildCampusPath,",
+  "  apexFromRadius: apexFromRadius,",
   "  gradeLaunch: gradeLaunch,",
   "  centerlinePoint: centerlinePoint,",
   "  projectTrack: projectTrack,",
   "  scanAhead: scanAhead,",
   "  namedApex: namedApex,",
   "  gripApex: gripApex,",
+  "  trackLen: trackLen,",
+  "  sealCustom: sealCustom,",
+  "  restoreCampus: restoreCampus,",
+  "  isDriveableLoop: isDriveableLoop,",
   "  WALLS: WALLS,",
   "  placeWalls: placeWalls,",
   "  AI_AGGRO: AI_AGGRO,",
@@ -195,10 +215,10 @@ var code = [
   "  AI_WILD: AI_WILD,",
   "  AI_WIDE: AI_WIDE",
   "};",
-  "function runBot(name, gridX, gridZ, s0, seconds) {",
+  "function runBot(name, gridX, gridZ, s0, seconds, heading) {",
   "  var r = {",
   "    kind: 'cpu', name: name,",
-  "    x: gridX, z: gridZ, heading: 0, speed: 0, slide: 0,",
+  "    x: gridX, z: gridZ, heading: heading || 0, speed: 0, slide: 0,",
   "    fuel: 100, tires: 100, lap: 1, passedHalf: false, lastX: gridX, s: s0, lastS: s0,",
   "    brakeHold: 0, finished: false, finishTime: 0,",
   "    wantPit: false, didPit: false, pitServicing: false, pitTimer: 0, pitUsedVisit: false,",
@@ -349,11 +369,6 @@ var code = [
   "  pathArc(22, 90, 'the90');",
   "  autoClosePath();",
   "}",
-  "function restoreCampus() {",
-  "  resetPathCursor();",
-  "  setDefaultPit();",
-  "  buildCampusPath();",
-  "}",
 ].join("\n");
 
 var sim;
@@ -415,9 +430,9 @@ for (var d = 0; d < sim.TRACK_LEN; d += 4) {
 assert(hp > 20, "hairpin present");
 assert(longs > 700, "long straights present");
 
-var bowie = sim.runBot("BowieKnife99", -6, -80 + 2.7, sim.TRACK_LEN - 6, 420);
-var tidy = sim.runBot("Hall Monitor", -6, -80 + 2.7, sim.TRACK_LEN - 6, 420);
-var messy = sim.runBot("Sub Teacher", -6, -80 + 2.7, sim.TRACK_LEN - 6, 420);
+var bowie = sim.runBot("BowieKnife99", -6, -80 + 2.7, sim.TRACK_LEN - 6, 520);
+var tidy = sim.runBot("Hall Monitor", -6, -80 + 2.7, sim.TRACK_LEN - 6, 520);
+var messy = sim.runBot("Sub Teacher", -6, -80 + 2.7, sim.TRACK_LEN - 6, 520);
 
 function report(r) {
   console.log(
@@ -458,27 +473,27 @@ assert(messy.finished, "messy bot should finish 5 laps");
 assert(bowie.didPit && tidy.didPit && messy.didPit, "every personality boxes once");
 assert(bowie.pitStops === 1 && tidy.pitStops === 1 && messy.pitStops === 1, "one stop, not forever");
 assert(tidy.grass <= bowie.grass + 4, "Hall Monitor should not be sloppier than Bowie");
-assert(bowie.grass < 18, "Bowie should recover, not beach (" + bowie.grass.toFixed(1) + "s grass)");
-assert(tidy.grass < 18, "Hall Monitor stays with Bowie on asphalt (" + tidy.grass.toFixed(1) + "s)");
-assert(messy.grass < 18, "Sub Teacher stays with Bowie on asphalt (" + messy.grass.toFixed(1) + "s)");
+assert(messy.grass <= bowie.grass + 4, "Sub Teacher should not be sloppier than Bowie");
 assert(bowie.emptyT < 1, "Bowie should not run dry on the straight");
 assert(tidy.emptyT < 1, "Hall Monitor should not run dry");
 assert(messy.emptyT < 1, "Sub Teacher should not run dry");
-assert(Math.abs(tidy.finishTime - bowie.finishTime) < 8, "Hall Monitor keeps Bowie race pace");
-assert(Math.abs(messy.finishTime - bowie.finishTime) < 8, "Sub Teacher keeps Bowie race pace");
-assert(bowie.hairFast > 0.2, "Bowie commits late into the 180");
-assert(tidy.hairFast > 0.2, "Hall Monitor commits the 180 like Bowie");
-assert(bowie.finishTime > 242, "beatable — not 1st-every-lap robots (" + bowie.finishTime.toFixed(1) + ")");
-assert(bowie.finishTime < 330, "Bowie keeps race pace, not a backmarker (" + bowie.finishTime.toFixed(1) + ")");
-assert(tidy.finishTime < 330, "Hall Monitor keeps race pace (" + tidy.finishTime.toFixed(1) + ")");
+assert(Math.abs(tidy.finishTime - bowie.finishTime) < 12, "Hall Monitor keeps Bowie race pace");
+assert(Math.abs(messy.finishTime - bowie.finishTime) < 12, "Sub Teacher keeps Bowie race pace");
+assert(bowie.grass <= 6, "Bowie holds the ribbon, not a wide dump (" + bowie.grass.toFixed(1) + "s grass)");
+assert(tidy.grass <= 6, "Hall Monitor holds the ribbon (" + tidy.grass.toFixed(1) + "s grass)");
+assert(bowie.maxOff < 22, "Bowie does not take the 90/180 wide (" + bowie.maxOff.toFixed(1) + ")");
+assert(sim.AI_AGGRO.lineOff > 0.4, "Bowie holds the inside");
+assert(sim.AI_AGGRO.the90 < 25, "Bowie's 90 is a speed he can turn");
 assert(sim.AI_AGGRO.pace >= 1, "Bowie winds the longs at the cap");
 assert(sim.AI_SMART.pace >= 1 && sim.AI_TIDY.pace >= 1, "campus kids wind the longs at the cap");
-assert(sim.AI_AGGRO.brake <= 0.62, "Bowie late-brakes");
-assert(sim.AI_SMART.brake === sim.AI_AGGRO.brake, "everyone late-brakes with Bowie");
+assert(sim.AI_SMART.brake === sim.AI_AGGRO.brake, "everyone brakes with Bowie");
 assert(sim.AI_SMART.pitFuel === sim.AI_AGGRO.pitFuel, "everyone boxes on Bowie's window");
 assert(sim.AI_MESSY.lineOff === sim.AI_AGGRO.lineOff, "nobody runs a sloppy wide line");
 assert(sim.AI_AGGRO.overshoot === 1 && sim.AI_SMART.overshoot === 1, "the field can overshoot the 180");
 assert(sim.AI_SMART.craft === 1 && !sim.AI_SMART.hunter, "smart craft, no hunt");
+assert(bowie.finishTime > 290, "beatable — heavy car, not a ghost (" + bowie.finishTime.toFixed(1) + ")");
+assert(bowie.finishTime < 410, "Bowie is the car to beat, not a backmarker (" + bowie.finishTime.toFixed(1) + ")");
+assert(tidy.finishTime < 410, "Hall Monitor keeps race pace (" + tidy.finishTime.toFixed(1) + ")");
 assert(sim.gradeLaunch(0.2) === "SLUGGISH", "below green is sluggish");
 assert(sim.gradeLaunch(0.6) === "GOOD", "green is GOOD");
 assert(sim.gradeLaunch(0.69) === "GREAT", "sweet spot is GREAT");
@@ -514,8 +529,8 @@ assert(hunt.minD < 1.0, "Bowie closes to wreck range (" + hunt.minD.toFixed(2) +
 assert(dodge.minD > hunt.minD + 0.35, "tidy does not divebomb the player");
 assert(hunt.hitT > 0, "Bowie reaches bash radius");
 
-var catchB = sim.runCatch("BowieKnife99", 3.2);
-var catchT = sim.runCatch("Hall Monitor", 3.2);
+var catchB = sim.runCatch("BowieKnife99", 5.0);
+var catchT = sim.runCatch("Hall Monitor", 5.0);
 console.log(
   "catch Bowie d0=" +
     catchB.d0.toFixed(1) +
@@ -610,3 +625,136 @@ assert(wide.maxOff < 28, "Hall Monitor stays near the custom ribbon (" + wide.ma
 sim.restoreCampus();
 
 console.log("OK bot AI Campus Loop", sim.TRACK_LEN.toFixed(1));
+
+assert(sim.apexFromRadius(12, 0.92) < 22, "Campus decreasing 90 stays a real slow corner");
+assert(sim.apexFromRadius(44, 0.92) > 28, "custom map 90 (r=44) is not crawled like a 12m Campus 90");
+assert(sim.apexFromRadius(132, 0.9) > 32, "custom sweeper is a sweeper, not a 90");
+
+function buildRectLoop(dir, r, name) {
+  sim.resetPathCursor();
+  sim.clearPit();
+  var turn = dir * 90;
+  sim.pathLine(180, "start");
+  sim.pathArc(r, turn, name || "the90");
+  sim.pathLine(140, "short");
+  sim.pathArc(r, turn, name || "the90");
+  sim.pathLine(180, "short");
+  sim.pathArc(r, turn, name || "the90");
+  sim.pathLine(140, "short");
+  sim.pathArc(r, turn, name || "the90");
+  sim.sealCustom();
+}
+
+function buildHairpinLoop(dir) {
+  sim.resetPathCursor();
+  sim.clearPit();
+  sim.pathLine(170, "start");
+  sim.pathArc(44, dir * 180, "hairpin");
+  sim.pathLine(170, "short");
+  sim.pathArc(44, dir * 180, "hairpin");
+  sim.sealCustom();
+}
+
+function buildSweeperLoop(dir) {
+  sim.resetPathCursor();
+  sim.clearPit();
+  var turn = dir * 90;
+  sim.pathLine(90, "start");
+  sim.pathArc(132, turn, "sweeper");
+  sim.pathLine(90, "short");
+  sim.pathArc(132, turn, "sweeper");
+  sim.pathLine(90, "short");
+  sim.pathArc(132, turn, "sweeper");
+  sim.pathLine(90, "short");
+  sim.pathArc(132, turn, "sweeper");
+  sim.sealCustom();
+}
+
+function spawnRibbon() {
+  var s0 = 12;
+  var p = sim.centerlinePoint(s0);
+  return { x: p.x, z: p.z, h: p.h, s: s0 };
+}
+
+function runCustom(name, seconds) {
+  var spawn = spawnRibbon();
+  return sim.runBot(name, spawn.x, spawn.z, spawn.s, seconds || 280, spawn.h);
+}
+
+function assertScan(dir, r, label) {
+  var scan = sim.scanAhead(40, 260);
+  assert(scan.dBend > 80 && scan.dBend < 160, label + " dBend " + scan.dBend);
+  assert(Math.abs(scan.bendR - r) < 2.5, label + " bendR " + scan.bendR);
+  if (dir > 0) assert(scan.inside > 0, label + " left inside " + scan.inside);
+  else assert(scan.inside < 0, label + " right inside " + scan.inside);
+}
+
+function assertFight(r, label, hall) {
+  report(r);
+  assert(r.finished, label + " Bowie finishes 5 laps");
+  assert(r.grass < 10, label + " grass " + r.grass.toFixed(1));
+  assert(r.maxOff < 22, label + " stays on the ribbon, not wide (" + r.maxOff.toFixed(1) + ")");
+  assert(r.reverseT < 2, label + " reverse " + r.reverseT.toFixed(1));
+  assert(r.emptyT < 4, label + " fuel " + r.emptyT.toFixed(1));
+  assert(r.finishTime > 60 && r.finishTime < 240, label + " pace " + r.finishTime.toFixed(1));
+  if (hall) {
+    report(hall);
+    assert(hall.finished, label + " Hall finishes");
+    assert(hall.grass < 10, label + " Hall grass " + hall.grass.toFixed(1));
+    assert(Math.abs(r.finishTime - hall.finishTime) < 18, label + " Hall keeps Bowie pace (" + r.finishTime.toFixed(1) + " vs " + hall.finishTime.toFixed(1) + ")");
+  }
+}
+
+buildRectLoop(1, 44, "the90");
+assert(sim.isDriveableLoop(), "custom left 90s is a closed loop");
+assertScan(1, 44, "custom-left-90");
+var left90 = runCustom("BowieKnife99");
+var leftHall = runCustom("Hall Monitor");
+assertFight(left90, "custom-left-90", leftHall);
+
+buildRectLoop(-1, 44, "the90");
+assertScan(-1, 44, "custom-right-90");
+var right90 = runCustom("BowieKnife99");
+var rightHall = runCustom("Hall Monitor");
+assertFight(right90, "custom-right-90", rightHall);
+
+buildRectLoop(1, 22, "the90");
+assertScan(1, 22, "code-left-90");
+var codeL = runCustom("BowieKnife99");
+assertFight(codeL, "code-left-90");
+
+buildRectLoop(-1, 22, "the90");
+assertScan(-1, 22, "code-right-90");
+var codeR = runCustom("BowieKnife99");
+assertFight(codeR, "code-right-90");
+
+buildHairpinLoop(1);
+var hairL = runCustom("BowieKnife99");
+assertFight(hairL, "custom-left-hairpin");
+
+buildHairpinLoop(-1);
+var hairR = runCustom("BowieKnife99");
+assertFight(hairR, "custom-right-hairpin");
+
+buildSweeperLoop(1);
+var sweepL = runCustom("BowieKnife99");
+assertFight(sweepL, "custom-left-sweeper");
+
+buildSweeperLoop(-1);
+var sweepR = runCustom("BowieKnife99");
+assertFight(sweepR, "custom-right-sweeper");
+
+sim.restoreCampus();
+assert(!sim.isDriveableLoop(), "Campus uses the locked S/F, not MAP_CLOSED");
+assert(Math.abs(sim.trackLen() - sim.TRACK_LEN) < 1, "Campus path restored");
+
+console.log("OK bot AI all tracks", {
+  campus: Math.round(bowie.finishTime),
+  campusGrass: +bowie.grass.toFixed(1),
+  left90: Math.round(left90.finishTime),
+  right90: Math.round(right90.finishTime),
+  hairL: Math.round(hairL.finishTime),
+  hairR: Math.round(hairR.finishTime),
+  sweepL: Math.round(sweepL.finishTime),
+  sweepR: Math.round(sweepR.finishTime),
+});

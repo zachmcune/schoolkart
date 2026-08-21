@@ -42,7 +42,7 @@ Local: `npm start`, then open `http://localhost:8787` (or whatever `PORT` is). S
 
 **Nametags:** tiny halo billboards on **other** cars (humans + bots). Own tag can stay off. Other humans use their lobby name. One bot is exactly **BowieKnife99**; others are Hall Monitor / Sub Teacher / campus kids. Tags shrink with distance and fade down the racing line — no flicker, no HUD plaques.
 
-**Bots:** same physics as you — no extra grip. Cheap look-ahead on **every** map: they wind the longs, lift for the actual radius ahead (Campus 180s and fat tile 90s both), unwind out, and peel LEFT for one box on lap 3–4. The whole field runs **Bowie's racecraft** — cap pace, late-brakes, smart passing (off-line, not through you), and **pass blocking** (cover the lane, keep racing, never a U-turn ram). **BowieKnife99** is still the hunter — if you pull a gap he stays on the ribbon and reels you in (no teleport, no extra grip). Close up he divebombs, shoves, and sideswipes (you first). Everyone else skips the ram. Locked to the grid until GO; getaways can still fluff. A clean player can win.
+**Bots:** same physics as you — no extra grip. Cheap look-ahead on **every** map: they read **ribbon radius and which way it turns** (Campus names or a custom 4-piece), brake on the real heavy-car marks, hold the **inside**, and peel LEFT for one box on lap 3–4. The whole field runs **Bowie's racecraft** — cap pace, smart passing (off-line, not through you), and **pass blocking** (cover the lane, keep racing, never a U-turn ram). **BowieKnife99** is still the hunter — if you pull a gap he reels you in on the ribbon (no teleport, no extra grip). Close up he divebombs (still makes the corner). Everyone else skips the ram. Locked to the grid until GO. A clean player can win; it should not be easy.
 
 **FX (designer lock, few, short, readable at 30fps):** two fat tire puffs at lights-out · thin grey streaks from the rears when tires are bad · short white slip off the outside wheels on a hard turn · one dust burst on a spin-out · one sharp spark at a hit (not a cloud). Launch puffs and hit sparks do not look the same.
 
@@ -83,11 +83,15 @@ Protocol smoke test (includes `GET /` returning SchoolKart HTML):
 npm test
 ```
 
+## Deploy
+
+Ship from **`main` only**. Railway and GitHub Pages should both track `main`. Do not merge playable work onto a long-lived side branch — that is how zachf1 froze on old tiles.
+
 ## GitHub Pages (fallback)
 
-Repo is also a static site (HTML + CSS + JS + Three.js from CDN). Public Pages currently deploys from this branch (`cursor/campus-loop-playable-f645`). Use Railway as the school link.
+Repo is also a static site (HTML + CSS + JS + Three.js from CDN). Pages deploys from `main`. Use Railway as the school link.
 
-`index.html` is marked `no-store`. JS/CSS are versioned (`?v=mp89`) so a **normal reload** picks up the lobby.
+`index.html` is marked `no-store`. JS/CSS are versioned (`?v=mp90`) so a **normal reload** picks up the lobby.
 
 **Install (PWA):** on phone Safari / Chrome, Add to Home Screen. Standalone landscape chrome, dark splash (`#1a120e`). Original teal/cream mark (192 + 512 + apple-touch-icon). The service worker is network-first and does **not** cache the race or the websocket — a new Railway deploy is not a trapped old build. Offline play is not required.
 
