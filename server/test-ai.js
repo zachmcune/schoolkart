@@ -66,16 +66,12 @@ var code = [
   "var GRASS_DUMP = 40;",
   "var TIRE_FLOOR = 22;",
   "var SF_Z = -80;",
-  "var PIT_LANE = { x0: 8, x1: 118, z0: -67.4, z1: -56.6 };",
-  "var PIT_GRAB = { x0: 58, x1: 90, z0: -67.4, z1: -56.6 };",
-  "var PIT_PAVE = [",
-  "  { x0: -20, x1: 50, z0: -69.0, z1: -56.0 },",
-  "  { x0: 8, x1: 118, z0: -69.0, z1: -56.0 },",
-  "  PIT_LANE, PIT_GRAB,",
-  "  { x0: 96, x1: 160, z0: -69.0, z1: -56.0 },",
-  "  { x0: 124, x1: 185, z0: -69.0, z1: -62.0 }",
-  "];",
-  "var PIT_META = { ax: 8, az: -62, bx: 118, bz: -62, on: true };",
+  "var PIT_ENTRY = { x0: 8, x1: 28, z0: -70.0, z1: -61.0 };",
+  "var PIT_EXIT = { x0: 128, x1: 160, z0: -68.0, z1: -58.0 };",
+  "var PIT_LANE = { x0: 28, x1: 136, z0: -61.5, z1: -52.5 };",
+  "var PIT_GRAB = { x0: 64, x1: 98, z0: -61.0, z1: -53.2 };",
+  "var PIT_PAVE = [PIT_ENTRY, PIT_LANE, PIT_GRAB, PIT_EXIT];",
+  "var PIT_META = { ax: 28, az: -57, bx: 136, bz: -57, on: true };",
   "var PATH = [];",
   "var MAP_SURF = [];",
   "var MAP_CLOSED = false;",
@@ -106,6 +102,7 @@ var code = [
   sliceFn("pathArc"),
   sliceFn("pathSnap"),
   sliceFn("resetPathCursor"),
+  sliceFn("parkPitMouths"),
   sliceFn("setDefaultPit"),
   sliceFn("buildCampusPath"),
   sliceFn("pointOnSeg"),
@@ -276,7 +273,7 @@ for (wi = 0; wi < sim.WALLS.length; wi++) {
   var ww = sim.WALLS[wi];
   var mx = (ww.ax + ww.bx) * 0.5;
   var mz = (ww.az + ww.bz) * 0.5;
-  if (mx > 8 && mx < 118 && mz > -68 && mz < -56) pitHit += 1;
+  if (mx > 64 && mx < 98 && mz > -61.5 && mz < -52.5) pitHit += 1;
   if (mx > -20 && mx < 40 && mz < -88) rightSF += 1;
   if (ww.kind === "tall") tallN += 1;
 }

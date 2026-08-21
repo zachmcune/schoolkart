@@ -4,7 +4,7 @@
 
    Controls: W gas, Space brake, S reverse, A/D steer.
    Phones (landscape): right half = gas, left half = brake, tilt = steer.
-   Pit: peel LEFT onto a split lane. Halfway in, the car is grabbed
+   Pit: FORK LEFT onto a second asphalt road. Halfway in, the car is grabbed
    and serviced ~2.5s, then released to drive out. One service per visit.
    Start: PRE-START blue flash, five reds at 1s, hold 0.2–3s all ON,
    lights out = GO. Fuel starts then. Car is locked to the grid until GO.
@@ -101,22 +101,15 @@
     return pr && isFinite(pr.h) ? pr.h : 0;
   }
 
-  // F1 bypass, LEFT of the south S/F straight (infield / +Z).
-  // Long peel, parallel lane, merge back. Grab HALFWAY IN the side lane.
-  // Visible teal/grey lane sits LEFT of the ribbon — not a strip on it.
-  // Asphalt infield edge is SF_Z+ASPHALT (-71.4). Pit paint starts past that.
-  // mp79/mp80 renamed flags and still grabbed: the old z0 -74/-71.6 pave
-  // sat on the racing asphalt. Drive beat paper. Paint moved, not flags.
-  var PIT_LANE = { x0: 8, x1: 118, z0: -67.4, z1: -56.6 };
-  var PIT_GRAB = { x0: 58, x1: 90, z0: -67.4, z1: -56.6 };
-  var PIT_PAVE = [
-    { x0: -20, x1: 50, z0: -69.0, z1: -56.0 },
-    { x0: 8, x1: 118, z0: -69.0, z1: -56.0 },
-    PIT_LANE,
-    PIT_GRAB,
-    { x0: 96, x1: 160, z0: -69.0, z1: -56.0 },
-    { x0: 124, x1: 185, z0: -69.0, z1: -62.0 },
-  ];
+  // FORK, not a slide. Two asphalt roads: racing ribbon + a second lane LEFT.
+  // Stay on the ribbon = miss. Peel LEFT onto the second road = grab halfway.
+  // Asphalt infield edge is SF_Z+ASPHALT (-71.4). Grass median, then the road.
+  // mp79/80/82: flags and strips. Drive still grabbed; the road slid right.
+  var PIT_ENTRY = { x0: 8, x1: 28, z0: -70.0, z1: -61.0 };
+  var PIT_EXIT = { x0: 128, x1: 160, z0: -68.0, z1: -58.0 };
+  var PIT_LANE = { x0: 28, x1: 136, z0: -61.5, z1: -52.5 };
+  var PIT_GRAB = { x0: 64, x1: 98, z0: -61.0, z1: -53.2 };
+  var PIT_PAVE = [PIT_ENTRY, PIT_LANE, PIT_GRAB, PIT_EXIT];
 
   var keys = Object.create(null);
   var drive = { up: false, down: false, left: false, right: false, space: false };
@@ -538,7 +531,7 @@
     if (Math.abs(d) >= 0.4) pathArc(r, d, name);
   }
 
-  var PIT_META = { ax: 8, az: -62, bx: 118, bz: -62, on: true };
+  var PIT_META = { ax: 28, az: -57, bx: 136, bz: -57, on: true };
 
   function resetPathCursor() {
     PATH = [];
@@ -550,23 +543,24 @@
   }
 
   function setDefaultPit() {
-    PIT_LANE.x0 = 8;
-    PIT_LANE.x1 = 118;
-    PIT_LANE.z0 = -67.4;
-    PIT_LANE.z1 = -56.6;
-    PIT_GRAB.x0 = 58;
-    PIT_GRAB.x1 = 90;
-    PIT_GRAB.z0 = -67.4;
-    PIT_GRAB.z1 = -56.6;
+    PIT_ENTRY.x0 = 8;
+    PIT_ENTRY.x1 = 28;
+    PIT_ENTRY.z0 = -70.0;
+    PIT_ENTRY.z1 = -61.0;
+    PIT_EXIT.x0 = 128;
+    PIT_EXIT.x1 = 160;
+    PIT_EXIT.z0 = -68.0;
+    PIT_EXIT.z1 = -58.0;
+    PIT_LANE.x0 = 28;
+    PIT_LANE.x1 = 136;
+    PIT_LANE.z0 = -61.5;
+    PIT_LANE.z1 = -52.5;
+    PIT_GRAB.x0 = 64;
+    PIT_GRAB.x1 = 98;
+    PIT_GRAB.z0 = -61.0;
+    PIT_GRAB.z1 = -53.2;
     PIT_PAVE.length = 0;
-    PIT_PAVE.push(
-      { x0: -20, x1: 50, z0: -69.0, z1: -56.0 },
-      { x0: 8, x1: 118, z0: -69.0, z1: -56.0 },
-      PIT_LANE,
-      PIT_GRAB,
-      { x0: 96, x1: 160, z0: -69.0, z1: -56.0 },
-      { x0: 124, x1: 185, z0: -69.0, z1: -62.0 }
-    );
+    PIT_PAVE.push(PIT_ENTRY, PIT_LANE, PIT_GRAB, PIT_EXIT);
     PIT_META.ax = PIT_LANE.x0;
     PIT_META.az = (PIT_LANE.z0 + PIT_LANE.z1) * 0.5;
     PIT_META.bx = PIT_LANE.x1;
@@ -574,7 +568,19 @@
     PIT_META.on = true;
   }
 
+  function parkPitMouths() {
+    PIT_ENTRY.x0 = 9999;
+    PIT_ENTRY.x1 = 10000;
+    PIT_ENTRY.z0 = 9999;
+    PIT_ENTRY.z1 = 10000;
+    PIT_EXIT.x0 = 9999;
+    PIT_EXIT.x1 = 10000;
+    PIT_EXIT.z0 = 9999;
+    PIT_EXIT.z1 = 10000;
+  }
+
   function clearPit() {
+    parkPitMouths();
     PIT_LANE.x0 = 9999;
     PIT_LANE.x1 = 10000;
     PIT_LANE.z0 = 9999;
@@ -634,6 +640,7 @@
     PIT_GRAB.x1 = Math.max.apply(null, gx);
     PIT_GRAB.z0 = Math.min.apply(null, gz);
     PIT_GRAB.z1 = Math.max.apply(null, gz);
+    parkPitMouths();
     PIT_PAVE.length = 0;
     PIT_PAVE.push(PIT_LANE, PIT_GRAB);
   }
@@ -1212,6 +1219,7 @@
     PIT_GRAB.x1 = Math.max.apply(null, gx);
     PIT_GRAB.z0 = Math.min.apply(null, gz);
     PIT_GRAB.z1 = Math.max.apply(null, gz);
+    parkPitMouths();
     PIT_PAVE.length = 0;
     PIT_PAVE.push(PIT_LANE, PIT_GRAB);
   }
@@ -1671,6 +1679,40 @@
     return mesh;
   }
 
+  function paintCampusPitLane() {
+    // FORK. TWO ROADS. Grass median between the racing ribbon and a
+    // second asphalt lane to the LEFT. If this reads as one road
+    // sliding right, it is a nack.
+    var laneX = (PIT_LANE.x0 + PIT_LANE.x1) * 0.5;
+    var laneW = PIT_LANE.x1 - PIT_LANE.x0;
+    var laneZ = (PIT_LANE.z0 + PIT_LANE.z1) * 0.5;
+    addBox(80, 0.04, -66.45, 90, 0.05, 9.2, 0x4f8a38, trackRoot);
+    addBox(laneX, 0.08, laneZ, laneW, 0.08, PIT_LANE.z1 - PIT_LANE.z0, 0x3a3e46, trackRoot);
+    addBox(laneX, 0.11, laneZ, laneW, 0.03, 0.42, 0xd8d2c6, trackRoot);
+    addBox(laneX, 0.12, PIT_LANE.z0, laneW, 0.05, 0.42, 0xf4efe6, trackRoot);
+    addBox(laneX, 0.12, PIT_LANE.z1, laneW, 0.05, 0.42, 0xf4efe6, trackRoot);
+    var fork = addBox(18, 0.07, -65.6, 26, 0.08, 8.2, 0x3a3e46, trackRoot);
+    fork.rotation.y = -0.42;
+    addBox(62, 0.82, -51.4, 70, 1.55, 0.62, 0x2a2018, trackRoot);
+    addBox(62, 1.62, -51.4, 70, 0.12, 0.7, TEAL, trackRoot);
+    var pitDecal = labelPlane("PIT", 7.2, 2.8, "#0a2a28", "#2ec8c3");
+    pitDecal.rotation.x = -Math.PI * 0.5;
+    pitDecal.position.set(81, 0.18, -57.1);
+    trackRoot.add(pitDecal);
+    var inDecal = labelPlane("IN", 5.4, 2.2, "#102018", "#ffe566");
+    inDecal.rotation.x = -Math.PI * 0.5;
+    inDecal.position.set(16, 0.18, -65.0);
+    trackRoot.add(inDecal);
+    var outDecal = labelPlane("OUT", 5.8, 2.2, "#102018", "#7cffd4");
+    outDecal.rotation.x = -Math.PI * 0.5;
+    outDecal.position.set(146, 0.18, -62.0);
+    trackRoot.add(outDecal);
+    var hsh;
+    for (hsh = 0; hsh < 5; hsh++) {
+      addBox(70 + hsh * 3.6, 0.16, -57.1, 1.15, 0.02, 7.4, 0xffffff, trackRoot);
+    }
+  }
+
   function paveRect(b, y, color) {
     var mesh = new THREE.Mesh(
       new THREE.BoxGeometry(b.x1 - b.x0, 0.1, b.z1 - b.z0),
@@ -1740,34 +1782,19 @@
     }
 
     var p;
+    var pitCol = isDriveableLoop() ? 0x3d4a5c : 0x3a3e46;
     for (p = 0; p < PIT_PAVE.length; p++) {
-      var pv = paveRect(PIT_PAVE[p], 0.08, 0x3d4a5c);
+      var pv = paveRect(PIT_PAVE[p], 0.09, pitCol);
       trackRoot.add(pv);
     }
     if (PIT_META.on) {
-      var grab = paveRect(PIT_GRAB, 0.12, TEAL);
+      var grab = paveRect(PIT_GRAB, 0.13, TEAL);
       trackRoot.add(grab);
-      addBox((PIT_LANE.x0 + PIT_LANE.x1) * 0.5, 0.115, PIT_LANE.z0, PIT_LANE.x1 - PIT_LANE.x0, 0.03, 0.34, 0xffe566, trackRoot);
-      addBox((PIT_LANE.x0 + PIT_LANE.x1) * 0.5, 0.115, PIT_LANE.z1, PIT_LANE.x1 - PIT_LANE.x0, 0.03, 0.34, 0x7cffd4, trackRoot);
+      addBox((PIT_LANE.x0 + PIT_LANE.x1) * 0.5, 0.125, PIT_LANE.z0, PIT_LANE.x1 - PIT_LANE.x0, 0.04, 0.38, 0xffe566, trackRoot);
+      addBox((PIT_LANE.x0 + PIT_LANE.x1) * 0.5, 0.125, PIT_LANE.z1, PIT_LANE.x1 - PIT_LANE.x0, 0.04, 0.38, 0x7cffd4, trackRoot);
     }
     if (!isDriveableLoop()) {
-      addBox(62, 0.82, -54.2, 70, 1.55, 0.62, 0x2a2018, trackRoot);
-      addBox(62, 1.62, -54.2, 70, 0.12, 0.7, TEAL, trackRoot);
-      var pitDecal = labelPlane("PIT", 7.2, 2.8, "#0a2a28", "#2ec8c3");
-      pitDecal.rotation.x = -Math.PI * 0.5;
-      pitDecal.position.set(72, 0.16, -62.0);
-      trackRoot.add(pitDecal);
-      var inDecal = labelPlane("IN", 5.4, 2.2, "#102018", "#ffe566");
-      inDecal.rotation.x = -Math.PI * 0.5;
-      inDecal.position.set(-20, 0.16, -66);
-      trackRoot.add(inDecal);
-      var outDecal = labelPlane("OUT", 5.8, 2.2, "#102018", "#7cffd4");
-      outDecal.rotation.x = -Math.PI * 0.5;
-      outDecal.position.set(148, 0.16, -66);
-      trackRoot.add(outDecal);
-      for (var hsh = 0; hsh < 5; hsh++) {
-        addBox(62 + hsh * 3.6, 0.14, -62.0, 1.15, 0.02, 9.2, 0xffffff, trackRoot);
-      }
+      paintCampusPitLane();
     } else if (PIT_META.on) {
       var pitDecal2 = labelPlane("PIT", 7.2, 2.8, "#0a2a28", "#2ec8c3");
       pitDecal2.rotation.x = -Math.PI * 0.5;
@@ -1889,6 +1916,11 @@
     var nz = Math.cos(p.h);
     var wx = p.x + nx * (ASPHALT + RUNOFF + 0.4);
     var wz = p.z + nz * (ASPHALT + RUNOFF + 0.4);
+    // Campus: only the IN / OUT mouths. Opening the whole south
+    // straight made the road slide right — that was not a left lane.
+    if (!isDriveableLoop()) {
+      return inRect(wx, wz, PIT_ENTRY) || inRect(wx, wz, PIT_EXIT);
+    }
     if (onPitPavement(wx, wz) || inRect(wx, wz, PIT_LANE) || inRect(wx, wz, PIT_GRAB)) return true;
     var ix = p.x + nx * (ASPHALT + 1.6);
     var iz = p.z + nz * (ASPHALT + 1.6);
@@ -3587,7 +3619,12 @@
     if (onRaceRibbon(r.x, r.z)) return false;
     if (!isDriveableLoop() && r.z <= SF_Z + ASPHALT) return false;
     if (isDriveableLoop()) return PIT_META.on && (inRect(r.x, r.z, PIT_LANE) || onPitPavement(r.x, r.z));
-    return inRect(r.x, r.z, PIT_LANE) || inRect(r.x, r.z, PIT_GRAB);
+    return (
+      inRect(r.x, r.z, PIT_LANE) ||
+      inRect(r.x, r.z, PIT_GRAB) ||
+      inRect(r.x, r.z, PIT_ENTRY) ||
+      inRect(r.x, r.z, PIT_EXIT)
+    );
   }
 
   function inPitGrab(r) {
@@ -3601,8 +3638,9 @@
       var t = ((r.x - PIT_META.ax) * dx + (r.z - PIT_META.az) * dz) / len2;
       return t >= 0.5 && t <= 1.15;
     }
-    // Campus: LEFT of the asphalt and inside the halfway box only.
-    if (r.z <= SF_Z + ASPHALT) return false;
+    // Campus: halfway into the VISIBLE left lane, past the grass median.
+    // The ribbon and the 8m gap beside it never grab.
+    if (r.z <= SF_Z + ASPHALT + 8) return false;
     return inRect(r.x, r.z, PIT_GRAB);
   }
 
@@ -4863,7 +4901,7 @@
     else if (launchCallT > 0) warn = launchCall;
     else if (state === "racing" && player.fuel <= 0) warn = "EMPTY — LIMP HOME";
     else if (state === "racing" && player.tires < 40) warn = "TIRES LOOSE — don't carry the sweeper";
-    else if (state === "racing" && player.fuel < 38) warn = "PIT WINDOW — peel LEFT into the teal lane";
+    else if (state === "racing" && player.fuel < 38) warn = "PIT WINDOW — peel LEFT onto the second road";
     if (hud.warn) {
       hud.warn.textContent = warn;
       hud.warn.classList.toggle("hidden", !warn);
