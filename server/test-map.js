@@ -1456,6 +1456,24 @@ assert(Math.hypot(loopDump.x - wideX, loopDump.z - wideZ) > 2, "crawl-back left 
 assert(firstNamedS("hairpin") > 0, "the 180 still exists after the dump");
 assert(sim.centerlinePoint(firstNamedS("hairpin") + 6).name === "hairpin", "hairpin arc is still the 180");
 
+function pace90(car, line) {
+  var d;
+  var upcoming = line.name === "the90" || line.name === "hairpin";
+  for (d = 8; d <= 80 && !upcoming; d += 8) {
+    var n = sim.centerlinePoint(line.s + d).name;
+    if (n === "the90" || n === "hairpin") upcoming = true;
+  }
+  var gas = line.dist < 6.2;
+  var brake = false;
+  if (upcoming && car.speed > 24) {
+    gas = false;
+    brake = true;
+  } else if ((line.name === "the90" || line.name === "hairpin") && car.speed > 20) {
+    gas = false;
+  }
+  return { gas: gas, brake: brake };
+}
+
 function proveGoHoldW(code, label) {
   assert(sim.lockRacePath(code), label + " must Solo as a closed custom");
   assert(sim.isDriveableLoop(), label + " stays a driveable custom");
@@ -1479,10 +1497,32 @@ function proveGoHoldW(code, label) {
   }
   assert(car.speed > 12, label + " after GO hold W must move, speed=" + car.speed.toFixed(1));
   assert(Math.hypot(car.x - pose.x, car.z - pose.z) > 10, label + " left the locked grid");
-  var goRun = driveHoldW(car, Math.max(24, sim.TRACK_LEN / 14));
+  var travelled = 0;
+  var lastS = sim.projectTrack(car.x, car.z).s;
+  var seconds = Math.max(24, sim.TRACK_LEN / 14);
+  for (t = 0; t < seconds; t += 1 / 60) {
+    var raceLine = sim.projectTrack(car.x, car.z);
+    var raceLook = sim.centerlinePoint(raceLine.s + 14);
+    var raceErr = angDiff(raceLook.h, car.heading);
+    if (raceLine.dist > 2) {
+      var home = Math.atan2(raceLine.z - car.z, raceLine.x - car.x);
+      raceErr = angDiff(home, car.heading);
+    }
+    var raceSteer = raceErr * 1.65;
+    if (raceSteer > 1) raceSteer = 1;
+    if (raceSteer < -1) raceSteer = -1;
+    var pace = pace90(car, raceLine);
+    sim.applyMotion(car, raceSteer, pace.gas, pace.brake, false, 1 / 60, true);
+    sim.bashAllWalls(car);
+    var nowS = sim.projectTrack(car.x, car.z).s;
+    var ds = nowS - lastS;
+    if (ds < -sim.TRACK_LEN * 0.5) ds += sim.TRACK_LEN;
+    if (ds > 0 && ds < 22) travelled += ds;
+    lastS = nowS;
+  }
   assert(
-    goRun.travelled > sim.TRACK_LEN * 0.85,
-    label + " hold W can lap, went=" + goRun.travelled.toFixed(0) + "/" + sim.TRACK_LEN.toFixed(0)
+    travelled > sim.TRACK_LEN * 0.85,
+    label + " Space into 90s can lap, went=" + travelled.toFixed(0) + "/" + sim.TRACK_LEN.toFixed(0)
   );
   assert(sim.projectTrack(car.x, car.z).onAsphalt || car.speed > 16, label + " is still a race, not a freeze");
 }
@@ -1551,7 +1591,8 @@ function proveFour90sSteer(code) {
       if (Math.abs(angDiff(probeD.heading, hD)) > 0.008) liveD += 1;
     }
     var h0 = car.heading;
-    sim.applyMotion(car, steer, true, false, false, 1 / 60, true);
+    var pace = pace90(car, line);
+    sim.applyMotion(car, steer, pace.gas, pace.brake, false, 1 / 60, true);
     sim.bashAllWalls(car);
     if (Math.abs(angDiff(car.heading, h0)) > 0.22) spin += 1;
     if (car.speed > 12) hadPace = true;
@@ -1562,7 +1603,7 @@ function proveFour90sSteer(code) {
     if (ds > 0 && ds < 18) travelled += ds;
     lastS = nowS;
   }
-  assert(travelled > sim.TRACK_LEN * 0.85, "hold W covers the four 90s, went=" + travelled.toFixed(0));
+  assert(travelled > sim.TRACK_LEN * 0.85, "Space into 90s covers the four 90s, went=" + travelled.toFixed(0));
   assert(Object.keys(corners).length >= 4, "all four 90s were taken, corners=" + Object.keys(corners).join(","));
   assert(liveA >= 4 && liveD >= 4, "A/D stay live through the 90s, A=" + liveA + " D=" + liveD);
   assert(spin < 5, "no half-spin / yaw freeze at the 90s, spin=" + spin);
@@ -1577,6 +1618,8 @@ assert(src.indexOf('pathLine(150, "chicane")') === -1, "Loop approach slab is no
 assert(src.indexOf('pathLine(150, "short")') !== -1, "Loop approach slab steers like a straight");
 assert(src.indexOf("function inChicaneS") !== -1 && src.indexOf("seg.len > 40") !== -1, "S identity does not cover a long approach slab");
 assert(src.indexOf("yawFromSpeed") !== -1, "A/D yaw comes from speed, not a tank spin");
+assert(src.indexOf("var wash = 1 - 0.7 * speed01") !== -1, "max W washes yaw out so 90s need Space");
+assert(src.indexOf("clamp(roll / 14, 0.42, 1)") === -1, "yaw no longer saturates at crawl pace");
 assert(src.indexOf("function hitCarFeel") !== -1, "car-car: tap wiggles, ram spins, front shoves");
 
 assert(src.indexOf("inChicaneS(info) && r.speed") === -1, "S never speed-dumps or steer-locks");
@@ -1793,7 +1836,7 @@ function proveSpaceThroughS() {
   sim.placeWalls();
   var cs = firstTightChicane();
   assert(cs > 80, "S is after the approach");
-  var p = sim.centerlinePoint(cs - 8);
+  var p = sim.centerlinePoint(cs - 40);
   var car = blankCar(p.x, p.z, p.h, 32);
   car.fuel = 100;
   car.tires = 100;
@@ -1803,15 +1846,17 @@ function proveSpaceThroughS() {
   var n = 0;
   var sawS = 0;
   var dumpOnS = 0;
-  for (t = 0; t < 2.4; t += 1 / 60) {
+  for (t = 0; t < 3.2; t += 1 / 60) {
     var line = sim.projectTrack(car.x, car.z);
-    var look = sim.centerlinePoint(line.s + 8);
+    var look = sim.centerlinePoint(line.s + 12);
+    var lookFar = sim.centerlinePoint(line.s + 36);
     var err = angDiff(look.h, car.heading);
     var steer = err * 1.7;
     if (steer > 1) steer = 1;
     if (steer < -1) steer = -1;
     var inS = line.name === "chicane";
-    var brake = inS;
+    var upcoming = inS || look.name === "chicane" || lookFar.name === "chicane";
+    var brake = upcoming && car.speed > 16;
     sim.applyMotion(car, steer, !brake, brake, false, 1 / 60, true);
     sim.bashAllWalls(car);
     n += 1;
@@ -1846,16 +1891,32 @@ function proveSpeedSteer() {
   var h0 = parked.heading;
   sim.applyMotion(parked, 1, false, false, false, 1 / 60, true);
   assert(Math.abs(angDiff(parked.heading, h0)) < 0.001, "A/D does nothing at 0 kph");
-  var slow = blankCar(start.x, start.z, start.h, 8);
-  slow.fuel = 100;
-  slow.tires = 100;
-  var fast = blankCar(start.x, start.z, start.h, 28);
-  fast.fuel = 100;
-  fast.tires = 100;
-  var dSlow = yawProbe(slow, 1);
-  var dFast = yawProbe(fast, 1);
-  assert(dSlow > 0.006, "rolling yaw, dH=" + dSlow.toFixed(4));
-  assert(dFast > dSlow * 1.15, "more speed = more yaw, slow=" + dSlow.toFixed(4) + " fast=" + dFast.toFixed(4));
+  var crawl = blankCar(start.x, start.z, start.h, 5);
+  crawl.fuel = 100;
+  crawl.tires = 100;
+  var mid = blankCar(start.x, start.z, start.h, 16);
+  mid.fuel = 100;
+  mid.tires = 100;
+  var top = blankCar(start.x, start.z, start.h, 48);
+  top.fuel = 100;
+  top.tires = 100;
+  var dCrawl = yawProbe(crawl, 1);
+  var dMid = yawProbe(mid, 1);
+  var dTop = yawProbe(top, 1);
+  assert(dCrawl > 0.006, "rolling yaw, dH=" + dCrawl.toFixed(4));
+  assert(dMid > dCrawl * 1.12, "bite as you roll, crawl=" + dCrawl.toFixed(4) + " mid=" + dMid.toFixed(4));
+  assert(dTop < dMid * 0.62, "max W yaws less than mid, mid=" + dMid.toFixed(4) + " top=" + dTop.toFixed(4));
+  var hold = blankCar(start.x, start.z, start.h, 48);
+  hold.fuel = 100;
+  hold.tires = 100;
+  var hHold = hold.heading;
+  var tHold;
+  for (tHold = 0; tHold < 0.8; tHold += 1 / 60) {
+    hold.speed = 48;
+    sim.applyMotion(hold, 1, true, false, false, 1 / 60, true);
+  }
+  var dHold = Math.abs(angDiff(hold.heading, hHold));
+  assert(dHold < 0.72, "0.8s of full A at max W is not a snap 90, dH=" + dHold.toFixed(3));
   var parkRev = blankCar(start.x, start.z, start.h, 0);
   parkRev.fuel = 100;
   parkRev.tires = 100;

@@ -42,7 +42,7 @@ Local: `npm start`, then open `http://localhost:8787` (or whatever `PORT` is). S
 
 **Nametags:** tiny halo billboards on **other** cars (humans + bots). Own tag can stay off. Other humans use their lobby name. One bot is exactly **BowieKnife99**; others are Hall Monitor / Sub Teacher / campus kids. Tags shrink with distance and fade down the racing line — no flicker, no HUD plaques.
 
-**Bots:** same physics as you — no rubber-band, no extra grip. Cheap look-ahead: they wind the longs, lift for tight radii (180 / chicane / sweeper), and peel LEFT for one box on lap 3–4. **BowieKnife99** is the hunter — divebombs, shoves, and sideswipes the nearest rival (you first if close). Same bash physics, no teleport ram. **Hall Monitor** is tidy and boxes on time. The rest are a bit messy. Only Bowie hunts. Locked to the grid until GO; getaways can be sloppy. A clean player can win.
+**Bots:** same physics as you — no extra grip. Cheap look-ahead: they wind the longs, lift for tight radii (180 / chicane / sweeper), and peel LEFT for one box on lap 3–4. **BowieKnife99** is the hunter — he winds at the cap, late-brakes, and if you pull a gap he stays on the ribbon and reels you in (no teleport, no extra grip). Close up he divebombs, shoves, and sideswipes (you first). Same bash physics. **Hall Monitor** is tidy and boxes on time. The rest are a bit messy. Only Bowie hunts. Locked to the grid until GO; getaways can still fluff. A clean player can win.
 
 **FX (designer lock, few, short, readable at 30fps):** two fat tire puffs at lights-out · thin grey streaks from the rears when tires are bad · short white slip off the outside wheels on a hard turn · one dust burst on a spin-out · one sharp spark at a hit (not a cloud). Launch puffs and hit sparks do not look the same.
 
@@ -87,7 +87,7 @@ npm test
 
 Repo is also a static site (HTML + CSS + JS + Three.js from CDN). Public Pages currently deploys from this branch (`cursor/campus-loop-playable-f645`). Use Railway as the school link.
 
-`index.html` is marked `no-store`. JS/CSS are versioned (`?v=mp87`) so a **normal reload** picks up the lobby.
+`index.html` is marked `no-store`. JS/CSS are versioned (`?v=mp88`) so a **normal reload** picks up the lobby.
 
 **Install (PWA):** on phone Safari / Chrome, Add to Home Screen. Standalone landscape chrome, dark splash (`#1a120e`). Original teal/cream mark (192 + 512 + apple-touch-icon). The service worker is network-first and does **not** cache the race or the websocket — a new Railway deploy is not a trapped old build. Offline play is not required.
 
