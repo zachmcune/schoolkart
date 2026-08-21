@@ -255,13 +255,13 @@
   }
 
   var scene = new THREE.Scene();
-  scene.fog = new THREE.Fog(0xf08a48, 420, 1800);
+  scene.fog = new THREE.Fog(0xf08a48, 520, 2800);
 
   var camera = new THREE.PerspectiveCamera(
     62,
     viewBox().w / viewBox().h,
     0.3,
-    2000
+    3600
   );
   fitView();
 
@@ -496,7 +496,7 @@
   var TRACK_LEN = 0;
   var RIBBON_SEGS = 360;
 
-  var TRACK_CODE_MAX = 240;
+  var TRACK_CODE_MAX = 800;
 
   // Share tokens must survive Chromebook autocapitalize. Unique letters:
   // A straight, L long, R 90, W sweeper, H hairpin, C chicane, F start, P pit, T tree.
@@ -944,8 +944,8 @@
 
   var MAP_SURF = [];
   var MAP_CLOSED = false;
-  var MAP_W = 8;
-  var MAP_H = 6;
+  var MAP_W = 16;
+  var MAP_H = 12;
   var MAP_CELL = 88;
   var MAP_OX = -200;
   var MAP_OZ = SF_Z;
@@ -1057,14 +1057,32 @@
     return [];
   }
 
+  // Cells 0-9 stay digits so old 8x6 share-strings still paste.
+  // 10+ is a-z (Chromebook uppercase still decodes).
+  function encCell(n) {
+    n = n | 0;
+    if (n < 0) n = 0;
+    if (n > 35) n = 35;
+    return n < 10 ? String(n) : String.fromCharCode(87 + n);
+  }
+
+  function decCell(ch) {
+    if (!ch) return NaN;
+    var c = ch.charCodeAt(0);
+    if (c >= 48 && c <= 57) return c - 48;
+    if (c >= 97 && c <= 122) return c - 87;
+    if (c >= 65 && c <= 90) return c - 55;
+    return NaN;
+  }
+
   function parseMap(code) {
     var pieces = [];
     if (!code || code.charAt(0) !== "M") return pieces;
     var i;
     for (i = 1; i + 3 < code.length; i += 4) {
       var t = canonType(code.charAt(i));
-      var x = +code.charAt(i + 1);
-      var y = +code.charAt(i + 2);
+      var x = decCell(code.charAt(i + 1));
+      var y = decCell(code.charAt(i + 2));
       var r = +code.charAt(i + 3);
       if (!t || !MAP_TYPES[t]) continue;
       if (isNaN(x) || isNaN(y) || isNaN(r) || r < 0 || r > 3) continue;
@@ -1081,7 +1099,7 @@
     var i;
     for (i = 0; i < pieces.length && s.length + 4 <= TRACK_CODE_MAX; i++) {
       var t = TYPE_ENC[pieces[i].t] || pieces[i].t;
-      s += t + pieces[i].x + pieces[i].y + (pieces[i].r & 3);
+      s += t + encCell(pieces[i].x) + encCell(pieces[i].y) + (pieces[i].r & 3);
     }
     return s;
   }
@@ -1571,7 +1589,7 @@
       buildCampusPath();
     }
     if (!code) RIBBON_SEGS = Math.max(360, Math.round(TRACK_LEN / 2.4));
-    else RIBBON_SEGS = Math.max(180, Math.min(420, Math.round(Math.max(TRACK_LEN, 80) / 2.4)));
+    else RIBBON_SEGS = Math.max(180, Math.min(720, Math.round(Math.max(TRACK_LEN, 80) / 2.4)));
   }
 
   function isDriveableLoop() {
@@ -2443,21 +2461,27 @@
     shade.position.set(-55, 16, 48);
     scene.add(shade);
 
+    var mapSpanX = MAP_W * MAP_CELL;
+    var mapSpanZ = MAP_H * MAP_CELL;
+    var dirtW = Math.max(1800, mapSpanX + 1000);
+    var dirtD = Math.max(1400, mapSpanZ + 1000);
+    var dirtX = MAP_OX + mapSpanX * 0.5;
+    var dirtZ = MAP_OZ + mapSpanZ * 0.5;
     var skirt = new THREE.Mesh(
-      new THREE.PlaneGeometry(4200, 3600),
+      new THREE.PlaneGeometry(Math.max(4200, dirtW + 1800), Math.max(3600, dirtD + 1600)),
       new THREE.MeshBasicMaterial({ color: 0x3f5c32, side: THREE.DoubleSide })
     );
     skirt.name = "groundSkirt";
     skirt.rotation.x = -Math.PI * 0.5;
-    skirt.position.set(-40, -0.12, 80);
+    skirt.position.set(dirtX, -0.12, dirtZ);
     scene.add(skirt);
 
     var dirt = new THREE.Mesh(
-      new THREE.PlaneGeometry(1800, 1400),
+      new THREE.PlaneGeometry(dirtW, dirtD),
       new THREE.MeshLambertMaterial({ color: 0x6a655c, side: THREE.DoubleSide })
     );
     dirt.rotation.x = -Math.PI * 0.5;
-    dirt.position.set(-40, -0.06, 80);
+    dirt.position.set(dirtX, -0.06, dirtZ);
     scene.add(dirt);
 
     campusRoot = new THREE.Group();

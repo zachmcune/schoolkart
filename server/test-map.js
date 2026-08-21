@@ -82,7 +82,7 @@ var code = [
   "var launchCall = '';",
   "var launchCallT = 0;",
   "var LAPS = 5;",
-  "var TRACK_CODE_MAX = 240;",
+  "var TRACK_CODE_MAX = 800;",
   "var MESH_NOSE = 3.55;",
   "var MESH_TAIL = 2.1;",
   "var MESH_HALF_W = 1.2;",
@@ -613,13 +613,19 @@ assert(earlyIn >= 2 && earlyOut >= 2, "P piece has a track curving in and out");
 var trees = [];
 var tx;
 var ty;
-for (ty = 0; ty < 6; ty++) {
-  for (tx = 0; tx < 8; tx++) trees.push({ t: "t", x: tx, y: ty, r: 0 });
+for (ty = 0; ty < 12; ty++) {
+  for (tx = 0; tx < 16; tx++) trees.push({ t: "t", x: tx, y: ty, r: 0 });
 }
 var packed = sim.encodeMap(trees);
-assert(packed.length > 120 && packed.length <= 240, "full board share-string fits 240, got " + packed.length);
+assert(packed.length > 120 && packed.length <= 800, "full 16x12 board share-string fits 800, got " + packed.length);
 assert(sim.cleanTrack(packed) === packed, "cleanTrack keeps a full-board code");
-assert(sim.parseMap(packed).length === 48, "reload/parse keeps every tree");
+assert(sim.parseMap(packed).length === 192, "reload/parse keeps every tree");
+var farCode = sim.encodeMap([{ t: "F", x: 14, y: 10, r: 1 }]);
+var farBack = sim.parseMap(farCode);
+assert(farBack.length === 1 && farBack[0].x === 14 && farBack[0].y === 10 && farBack[0].r === 1, "far 16x12 cell survives share-string");
+assert(/[a-z]/i.test(farCode.slice(2, 4)), "cells past 9 encode as letters");
+var oldEight = sim.parseMap("MF210");
+assert(oldEight.length === 1 && oldEight[0].t === "F" && oldEight[0].x === 2 && oldEight[0].y === 1, "old 8x6 digit share-string still parses");
 var undone = sim.parseMap(sim.encodeMap(rectPieces()));
 assert(undone.length === 10 && undone[1].t === "F", "encode/decode persist type+cell+rot");
 

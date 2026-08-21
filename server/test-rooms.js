@@ -115,9 +115,9 @@ waitHealth()
         assert(html.indexOf('rel="manifest"') !== -1, "web app manifest link");
         assert(html.indexOf("apple-mobile-web-app-capable") !== -1, "iOS home screen capable");
         assert(html.indexOf('apple-mobile-web-app-title" content="SchoolKart"') !== -1, "iOS title");
-        assert(html.indexOf('SK_BUILD = "mp95"') !== -1, "cache bump mp95");
+        assert(html.indexOf('SK_BUILD = "mp96"') !== -1, "cache bump mp96");
         assert(html.indexOf("viewport-fit=cover") !== -1, "phone paints under the notch");
-        assert(html.indexOf('maxlength="240"') !== -1, "share-string fits a full board");
+        assert(html.indexOf('maxlength="800"') !== -1, "share-string fits a full 16x12 board");
         assert(html.indexOf('id="title-track"') !== -1, "title label matches Solo load");
         assert(html.indexOf('aria-label="90"') !== -1 && html.indexOf('aria-label="sweeper"') !== -1, "palette has 90 and sweeper chips");
         assert(html.indexOf('aria-label="hairpin"') !== -1 && html.indexOf('aria-label="chicane"') !== -1, "palette has hairpin and chicane chips");
@@ -150,7 +150,7 @@ waitHealth()
           .then(function (sr) {
             return sr.text().then(function (sw) {
               assert(sr.status === 200, "sw 200");
-              assert(sw.indexOf('BUILD = "mp95"') !== -1, "SW build matches cache");
+              assert(sw.indexOf('BUILD = "mp96"') !== -1, "SW build matches cache");
               assert(/cache:\s*"no-store"/.test(sw), "network-first no-store");
               assert(sw.indexOf("websocket") !== -1, "SW leaves websocket alone");
             });
@@ -164,6 +164,8 @@ waitHealth()
                   assert(js.indexOf("MAP_SURF") !== -1 && js.indexOf("pieceSegs") !== -1, "driveable surface from pieces");
                   assert(js.indexOf("MAP_CLOSED") !== -1, "closed-loop lap flag");
                   assert(js.indexOf("TRACK_CODE_MAX") !== -1, "full-board share-string");
+                  assert(js.indexOf("var MAP_W = 16") !== -1 && js.indexOf("var MAP_H = 12") !== -1, "custom editor is 16x12");
+                  assert(js.indexOf("function encCell") !== -1 && js.indexOf("function decCell") !== -1, "share-string cells past 9 use letters");
                   assert(js.indexOf("TYPE_ENC") !== -1 && js.indexOf("_rotLock") !== -1, "share W/T + 90 rotate locks");
                   assert(js.indexOf("lockRacePath") !== -1, "open boards bounce to Campus Loop");
                   assert(js.indexOf("if (code && !MAP_CLOSED) rebuildPath(\"\")") !== -1, "closed custom races; only open/junk bounce");
@@ -263,6 +265,7 @@ waitHealth()
                   assert(css.indexOf("100svh") !== -1, "phone height uses the small viewport");
                   assert(css.indexOf("env(safe-area-inset-top") !== -1, "HUD clears the notch");
                   assert(css.indexOf("#game") !== -1 && css.indexOf("position: fixed") !== -1, "game shell is fixed to the screen");
+                  assert(css.indexOf("repeat(16, 1fr)") !== -1 && css.indexOf("repeat(12, 1fr)") !== -1, "editor grid is 16x12");
                   assert(/\.tile-cell\s*\{[^}]*overflow:\s*hidden/.test(css), "editor cells clip art so pieces cannot paint onto neighbors");
                   assert(/\.palette-tile[\s\S]{0,400}overflow:\s*hidden/.test(css), "palette chips clip to the square");
                   assert(css.indexOf(".palette-tile svg") !== -1, "palette SVG fills the square");
