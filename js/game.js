@@ -4352,128 +4352,153 @@
     launch: 0.88,
     wobble: 0,
     overshoot: 1,
+    craft: 1,
     hunter: 1,
   };
-  var AI_TIDY = {
-    pace: 0.91,
-    look: 1.02,
-    brake: 1.08,
-    hairpin: 15.4,
-    chicane: 19,
-    the90: 24,
-    sweeper: 35,
-    tight: 0.82,
-    lineOff: 0.1,
-    pitLap: 3,
-    pitFuel: 22,
-    pitTires: 38,
-    launch: 1.02,
-    wobble: 0,
-    overshoot: 0,
-  };
-  var AI_MESSY = {
-    pace: 0.89,
-    look: 0.96,
-    brake: 0.9,
-    hairpin: 16.5,
-    chicane: 24,
-    the90: 27,
+  // Everyone else: Bowie's racecraft, no divebomb / ram.
+  var AI_SMART = {
+    pace: 1,
+    look: 1.08,
+    brake: 0.94,
+    hairpin: 16.3,
+    chicane: 21,
+    the90: 23,
     sweeper: 37,
-    tight: 0.88,
-    lineOff: 0.85,
-    pitLap: 4,
-    pitFuel: 16,
-    pitTires: 30,
-    launch: 0.56,
-    wobble: 0.18,
-    overshoot: 0,
-    wideEntry: 1,
-  };
-  var AI_SHY = {
-    pace: 0.84,
-    look: 1.1,
-    brake: 1.18,
-    hairpin: 14.8,
-    chicane: 18,
-    the90: 22,
-    sweeper: 32,
-    tight: 0.78,
-    lineOff: 0.05,
-    pitLap: 3,
-    pitFuel: 24,
-    pitTires: 40,
-    launch: 1.05,
-    wobble: 0,
-    overshoot: 0,
-  };
-  var AI_BEAT = {
-    pace: 0.92,
-    look: 0.94,
-    brake: 0.92,
-    hairpin: 16.2,
-    chicane: 22,
-    the90: 26,
-    sweeper: 36,
-    tight: 0.88,
-    lineOff: 0.35,
-    pitLap: 3,
-    pitFuel: 20,
-    pitTires: 32,
-    launch: 0.72,
-    wobble: 0.1,
-    overshoot: 0,
-  };
-  var AI_LAB = {
-    pace: 0.9,
-    look: 1.04,
-    brake: 1.12,
-    hairpin: 15.2,
-    chicane: 20,
-    the90: 24,
-    sweeper: 34,
-    tight: 0.84,
-    lineOff: 0.04,
+    tight: 0.92,
+    lineOff: 0.58,
     pitLap: 3,
     pitFuel: 21,
-    pitTires: 36,
-    launch: 0.98,
-    wobble: 0.02,
-    overshoot: 0,
+    pitTires: 26,
+    launch: 0.88,
+    wobble: 0,
+    overshoot: 1,
+    craft: 1,
+  };
+  var AI_TIDY = {
+    pace: 1,
+    look: 1.08,
+    brake: 0.94,
+    hairpin: 16.3,
+    chicane: 21,
+    the90: 23,
+    sweeper: 37,
+    tight: 0.92,
+    lineOff: 0.58,
+    pitLap: 3,
+    pitFuel: 21,
+    pitTires: 26,
+    launch: 0.88,
+    wobble: 0,
+    overshoot: 1,
+    craft: 1,
+  };
+  var AI_MESSY = {
+    pace: 1,
+    look: 1.08,
+    brake: 0.94,
+    hairpin: 16.3,
+    chicane: 21,
+    the90: 23,
+    sweeper: 37,
+    tight: 0.92,
+    lineOff: 0.58,
+    pitLap: 3,
+    pitFuel: 21,
+    pitTires: 26,
+    launch: 0.88,
+    wobble: 0,
+    overshoot: 1,
+    craft: 1,
+  };
+  var AI_SHY = {
+    pace: 1,
+    look: 1.08,
+    brake: 0.94,
+    hairpin: 16.3,
+    chicane: 21,
+    the90: 23,
+    sweeper: 37,
+    tight: 0.92,
+    lineOff: 0.58,
+    pitLap: 3,
+    pitFuel: 21,
+    pitTires: 26,
+    launch: 0.88,
+    wobble: 0,
+    overshoot: 1,
+    craft: 1,
+  };
+  var AI_BEAT = {
+    pace: 1,
+    look: 1.08,
+    brake: 0.94,
+    hairpin: 16.3,
+    chicane: 21,
+    the90: 23,
+    sweeper: 37,
+    tight: 0.92,
+    lineOff: 0.58,
+    pitLap: 3,
+    pitFuel: 21,
+    pitTires: 26,
+    launch: 0.88,
+    wobble: 0,
+    overshoot: 1,
+    craft: 1,
+  };
+  var AI_LAB = {
+    pace: 1,
+    look: 1.08,
+    brake: 0.94,
+    hairpin: 16.3,
+    chicane: 21,
+    the90: 23,
+    sweeper: 37,
+    tight: 0.92,
+    lineOff: 0.58,
+    pitLap: 3,
+    pitFuel: 21,
+    pitTires: 26,
+    launch: 0.88,
+    wobble: 0,
+    overshoot: 1,
+    craft: 1,
   };
   var AI_WILD = {
-    pace: 0.95,
-    look: 0.84,
-    brake: 0.8,
-    hairpin: 16.6,
-    chicane: 23,
-    the90: 27,
-    sweeper: 39,
-    tight: 0.9,
-    lineOff: 0.45,
+    pace: 1,
+    look: 1.08,
+    brake: 0.94,
+    hairpin: 16.3,
+    chicane: 21,
+    the90: 23,
+    sweeper: 37,
+    tight: 0.92,
+    lineOff: 0.58,
     pitLap: 3,
-    pitFuel: 17,
-    pitTires: 28,
-    launch: 0.7,
-    wobble: 0.14,
+    pitFuel: 21,
+    pitTires: 26,
+    launch: 0.88,
+    wobble: 0,
     overshoot: 1,
+    craft: 1,
   };
   var AI_WIDE = {
-    pace: 0.87,
-    look: 0.98,
+    pace: 1,
+    look: 1.08,
     brake: 0.94,
-    hairpin: 16,
-    chicane: 23,
-    the90: 26,
-    sweeper: 36,
-    tight: 0.86,
-    lineOff: 1.05,
-    pitLap: 4,
-    pitFuel: 16,
-    pitTires: 30,
-    launch: 0.6,
-    wobble: 0.12,
-    overshoot: 0,
-    wideEntry: 1,
+    hairpin: 16.3,
+    chicane: 21,
+    the90: 23,
+    sweeper: 37,
+    tight: 0.92,
+    lineOff: 0.58,
+    pitLap: 3,
+    pitFuel: 21,
+    pitTires: 26,
+    launch: 0.88,
+    wobble: 0,
+    overshoot: 1,
+    craft: 1,
   };
   var _scan = {
     dHair: 999,
@@ -4494,13 +4519,7 @@
 
   function aiOf(r) {
     if (r && r.name === "BowieKnife99") return AI_AGGRO;
-    if (r && r.name === "Hall Monitor") return AI_TIDY;
-    if (r && r.name === "Library Kid") return AI_SHY;
-    if (r && r.name === "Band Kid") return AI_BEAT;
-    if (r && r.name === "Lab Partner") return AI_LAB;
-    if (r && r.name === "Detention") return AI_WILD;
-    if (r && r.name === "Yearbook") return AI_WIDE;
-    return AI_MESSY;
+    return AI_SMART;
   }
 
   function scanAhead(s, meters) {
@@ -4626,9 +4645,36 @@
   }
 
   var _prey = { r: null, d: 999, fwd: 0, lat: 0 };
-  var _hunt = { on: false, tx: 0, tz: 0, want: 0, noLift: false, dive: false, catchUp: false, block: false, cover: 0 };
+  var _hunt = {
+    on: false,
+    tx: 0,
+    tz: 0,
+    want: 0,
+    noLift: false,
+    dive: false,
+    catchUp: false,
+    block: false,
+    pass: false,
+    cover: 0,
+  };
 
-  function pickPrey(hunter) {
+  function gripApex(radius, tight) {
+    var cap = Math.sqrt(MAX_LAT * Math.max(radius, 8)) * (tight || 1);
+    if (cap < 12) cap = 12;
+    if (cap > MAX_SPEED) cap = MAX_SPEED;
+    return cap;
+  }
+
+  function namedApex(dist, namedCap, radius, tight) {
+    if (dist >= 900) return namedCap;
+    var grip = gripApex(radius, tight);
+    // Campus names are tuned for tight radii. Custom tiles reuse
+    // those names on ~44m arcs — don't crawl a fat 90 like a campus 180.
+    if (radius >= 42) return Math.max(namedCap, grip);
+    return namedCap;
+  }
+
+  function pickPrey(hunter, huntBias) {
     _prey.r = null;
     _prey.d = 999;
     _prey.fwd = 0;
@@ -4646,9 +4692,10 @@
       var lat = -rx * fz + rz * fx;
       var score = d;
       if (fwd < -8) score += 24;
-      if (o.kind === "player" && fwd > -12) score -= 22;
+      if (fwd < 2.2 && fwd > -20 && d < 24) score -= 15;
+      if (huntBias && o.kind === "player" && fwd > -12) score -= 22;
       // Lead on the player: defend the pass before hunting someone else.
-      if (o.kind === "player" && fwd < 2.2 && fwd > -22 && d < 26) score -= 40;
+      if (huntBias && o.kind === "player" && fwd < 2.2 && fwd > -22 && d < 26) score -= 40;
       if (score < best) {
         best = score;
         _prey.r = o;
@@ -4660,16 +4707,26 @@
     return _prey;
   }
 
+  function passSide(r, prey) {
+    var inside = _scan.inside || 0;
+    if (_scan.dTight < 58 && inside) {
+      if (prey.lat * inside <= 0.7) return inside;
+      return -inside;
+    }
+    if (Math.abs(prey.lat) > 0.35) return prey.lat >= 0 ? -1 : 1;
+    return inside || -1;
+  }
+
   function planHunt(r, p, want) {
     _hunt.on = false;
     _hunt.noLift = false;
     _hunt.dive = false;
     _hunt.catchUp = false;
     _hunt.block = false;
+    _hunt.pass = false;
     _hunt.cover = 0;
     _hunt.want = want;
-    if (!p.hunter) return _hunt;
-    var prey = pickPrey(r);
+    var prey = pickPrey(r, p.hunter);
     if (!prey.r) return _hunt;
     if (prey.fwd < 2.2) {
       // Ahead of them / door-to-door. Cover the lane. Aiming at their
@@ -4681,27 +4738,34 @@
       _hunt.want = Math.min(MAX_SPEED, Math.max(want, (prey.r.speed || 0) + 2));
       return _hunt;
     }
+    if (p.hunter && prey.d <= 16) {
+      var lead = prey.d * 0.14;
+      if (lead > 3.2) lead = 3.2;
+      if (lead < 0.45) lead = 0.45;
+      _hunt.tx = prey.r.x + Math.cos(prey.r.heading) * lead;
+      _hunt.tz = prey.r.z + Math.sin(prey.r.heading) * lead;
+      var close = Math.min(MAX_SPEED, (prey.r.speed || 0) + 10);
+      if (close < want) close = want;
+      _hunt.want = close;
+      _hunt.on = true;
+      if (prey.fwd > 2.2 && prey.fwd < 18 && Math.abs(prey.lat) < 4.6) {
+        _hunt.tx = prey.r.x;
+        _hunt.tz = prey.r.z;
+        _hunt.noLift = true;
+        _hunt.want = MAX_SPEED;
+      }
+      return _hunt;
+    }
     if (prey.d > 16) {
       // Far lead: stay on the ribbon and wind. Cutting across dumps.
       _hunt.catchUp = true;
       _hunt.want = Math.min(MAX_SPEED, Math.max(want, (prey.r.speed || 0) + 10));
       return _hunt;
     }
-    var lead = prey.d * 0.14;
-    if (lead > 3.2) lead = 3.2;
-    if (lead < 0.45) lead = 0.45;
-    _hunt.tx = prey.r.x + Math.cos(prey.r.heading) * lead;
-    _hunt.tz = prey.r.z + Math.sin(prey.r.heading) * lead;
-    var close = Math.min(MAX_SPEED, (prey.r.speed || 0) + 10);
-    if (close < want) close = want;
-    _hunt.want = close;
-    _hunt.on = true;
-    if (prey.fwd > 2.2 && prey.fwd < 18 && Math.abs(prey.lat) < 4.6) {
-      _hunt.tx = prey.r.x;
-      _hunt.tz = prey.r.z;
-      _hunt.noLift = true;
-      _hunt.want = MAX_SPEED;
-    }
+    if (_scan.dTight < 20 && _scan.tightR < 18) return _hunt;
+    _hunt.pass = true;
+    _hunt.cover = passSide(r, prey) * 2.45;
+    _hunt.want = Math.min(MAX_SPEED, Math.max(want, (prey.r.speed || 0) + 6));
     return _hunt;
   }
 
@@ -4751,24 +4815,25 @@
       if (r.lap >= p.pitLap || r.fuel < p.pitFuel || r.tires < p.pitTires) r.wantPit = true;
     }
 
-    var pow = p.hunter ? 1.7 : 2;
-    var bMul = p.hunter ? 0.7 : p.brake;
-    var scanMeters = p.hunter ? Math.max(260, brakeWindow(MAX_SPEED, 15, 1.15) + 40) : 190 * p.brake;
+    var skilled = p.hunter || p.craft;
+    var pow = skilled ? 1.7 : 2;
+    var bMul = skilled ? 0.7 : p.brake;
+    var scanMeters = skilled ? Math.max(260, brakeWindow(MAX_SPEED, 15, 1.15) + 40) : 190 * p.brake;
     var scan = scanAhead(r.s, scanMeters);
     var look = (12 + r.speed * 0.3) * p.look;
-    if (p.hunter) {
+    if (skilled) {
       look = (18 + r.speed * 0.48) * p.look;
       if (scan.dBend < 88 && scan.dBend > 16) look = Math.min(look, 11 + scan.dBend * 0.32);
     }
     if (scan.dTight < 64) look = Math.min(look, 8 + scan.dTight * 0.22);
     if (scan.dChi < 36) look = Math.min(look, 13);
     var want = MAX_SPEED * p.pace;
-    if (p.hunter) want = MAX_SPEED;
+    if (skilled) want = MAX_SPEED;
     var hpApex = p.hairpin;
     // Empty-track 180: make it. Hot overshoot dumps wide and hands the pass.
-    var hotHair = p.overshoot && !p.hunter && (r.lap % 2) === 0;
+    var hotHair = p.overshoot && !skilled && (r.lap % 2) === 0;
     if (hotHair) hpApex = 18.8;
-    if (p.hunter) {
+    if (skilled) {
       var bendV = p.the90;
       var bendMul = p.tight;
       if (scan.dHair <= scan.dBend + 10 && scan.dHair < 900) bendMul *= 0.86;
@@ -4831,7 +4896,7 @@
     if (hunt.catchUp && scan.dHair > 90 && scan.dTight > 60 && scan.d90 > 80 && scan.dChi > 50 && scan.dBend > 70) {
       want = Math.max(want, hunt.want);
     }
-    if (hunt.block && scan.dHair > 50 && scan.dTight > 36 && scan.d90 > 50) {
+    if ((hunt.block || hunt.pass) && scan.dHair > 50 && scan.dTight > 36 && scan.d90 > 50) {
       want = Math.max(want, hunt.want);
     }
 
@@ -4839,11 +4904,12 @@
     var nx = -Math.sin(target.h);
     var nz = Math.cos(target.h);
     var inside = scan.inside || 1;
-    var off = Math.abs(p.lineOff) * (p.hunter ? inside : 1);
-    if (!p.hunter) off = p.lineOff;
-    if (p.hunter && scan.dBend < 86) off += 0.5 * inside;
+    var off = Math.abs(p.lineOff) * (skilled ? inside : 1);
+    if (!skilled) off = p.lineOff;
+    if (skilled && scan.dBend < 86) off += 0.5 * inside;
     if (p.wideEntry && scan.dTight > 14 && scan.dTight < 52) off -= 1.45;
-    if (hunt.block) {
+    if (hunt.pass) off = hunt.cover;
+    else if (hunt.block) {
       off = Math.abs(p.lineOff) * inside;
       if (Math.abs(hunt.cover) > 0.45) off = clamp(off + hunt.cover * 0.62, -2.35, 2.1);
     }
@@ -4918,7 +4984,7 @@
 
     var desiredH = Math.atan2(tz - r.z, tx - r.x);
     var err = Math.atan2(Math.sin(desiredH - r.heading), Math.cos(desiredH - r.heading));
-    var steer = clamp(err * (hunt.on ? 2.05 : hunt.block ? 2.0 : p.hunter ? 2.18 : 1.5), -1, 1);
+    var steer = clamp(err * (hunt.on ? 2.05 : hunt.block || hunt.pass ? 2.0 : skilled ? 2.18 : 1.5), -1, 1);
     var recover = proj.grass || proj.dist > 4.6;
     var keepHit = p.hunter && hunt.on && hunt.noLift && !proj.grass;
     if (recover && !peeling && !keepHit) {
@@ -4932,15 +4998,15 @@
     if (p.wobble && (r.aiT % 3.6) < 0.28) {
       steer = clamp(steer + Math.sin(r.aiT * 9 + (r.s || 0)) * p.wobble, -1, 1);
     }
-    if (!p.hunter) steer = avoidRams(r, steer);
+    if (!p.hunter && !hunt.block && !hunt.pass) steer = avoidRams(r, steer);
 
     var reverse = false;
     if (recover && proj.grass && r.speed < 5 && proj.dist > 7 && !keepHit) {
       var out = Math.cos(r.heading) * (proj.x - r.x) + Math.sin(r.heading) * (proj.z - r.z);
       if (out < -0.15) reverse = true;
     }
-    var slack = p.hunter ? (want > MAX_SPEED * 0.88 ? 2.4 : 1.05) : 2.2;
-    var throttle = !reverse && r.speed < want - (p.hunter ? 0.05 : 0.4);
+    var slack = skilled ? (want > MAX_SPEED * 0.88 ? 2.4 : 1.05) : 2.2;
+    var throttle = !reverse && r.speed < want - (skilled ? 0.05 : 0.4);
     var brake = !reverse && r.speed > want + slack;
     if (hunt.on && hunt.noLift) {
       throttle = !reverse;
@@ -5512,7 +5578,7 @@
     r.launchT = GETAWAY_T;
     var roll = Math.random();
     var kind;
-    if (p && p.hunter) {
+    if (p && (p.hunter || p.craft)) {
       if (roll < 0.05) kind = "DUMP";
       else if (roll < 0.1) kind = "SLUGGISH";
       else if (roll < 0.45) kind = "GOOD";
