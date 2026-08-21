@@ -2428,15 +2428,12 @@
   var _tileArt = {};
 
   function tileIconPts(type, rot, w, h) {
-    // Cheap in-square silhouettes. World ribbon + ctx.arc drew the
-    // long way around and clipped 90/sweeper/hairpin to a blank grey square.
-    var m = Math.min(w, h);
-    var pad = m * 0.2;
-    var x0 = pad;
-    var y0 = pad;
-    var x1 = w - pad;
-    var y1 = h - pad;
+    // Tile-local centerlines that hit the same mid-edge ports the 3D
+    // pieces use. Inset cartoons left a dirt gap at every join.
+    // Keep this in chip space — world pieceSegs + ctx.arc drew the
+    // long way around and clipped 90/sweeper/hairpin to a blank square.
     var r0 = (rot || 0) & 3;
+    var cell = Math.min(w, h);
     var pts = [];
     function add(x, y) {
       pts.push({ x: x, y: y });
@@ -2447,16 +2444,6 @@
       for (i = 0; i <= steps; i++) {
         var a = a0 + (a1 - a0) * (i / steps);
         add(cx + Math.cos(a) * r, cy + Math.sin(a) * r);
-      }
-    }
-    function bez(ax, ay, c1x, c1y, c2x, c2y, bx, by) {
-      var t;
-      for (t = 0; t <= 1.001; t += 0.08) {
-        var u = 1 - t;
-        add(
-          u * u * u * ax + 3 * u * u * t * c1x + 3 * u * t * t * c2x + t * t * t * bx,
-          u * u * u * ay + 3 * u * u * t * c1y + 3 * u * t * t * c2y + t * t * t * by
-        );
       }
     }
     function spin() {
@@ -2476,52 +2463,66 @@
       return out;
     }
     if (type === "r") {
-      arcPoly(x1, y1, m - pad * 2, Math.PI, Math.PI * 1.5);
+      // East mid → south mid, radius half-cell. Square chip, so spin.
+      arcPoly(w, h, cell * 0.5, -Math.PI * 0.5, -Math.PI);
       return spin();
     }
     if (type === "w") {
-      var t;
-      var ax = x0;
-      var ay = y1 - (y1 - y0) * 0.18;
-      var cx = x0 + m * 0.1;
-      var cy = y0 + m * 0.1;
-      var bx = x1 - (x1 - x0) * 0.18;
-      var by = y0;
-      for (t = 0; t <= 1.001; t += 1 / 18) {
-        var u = 1 - t;
-        add(u * u * ax + 2 * u * t * cx + t * t * bx, u * u * ay + 2 * u * t * cy + t * t * by);
-      }
+      // Wide 90 on the 2×2: east mid of the NE cell → south mid of the SW cell.
+      arcPoly(w, h, cell * 0.75, -Math.PI * 0.5, -Math.PI);
       return spin();
     }
     if (type === "H") {
-      var uR = Math.min(Math.max(w, h) * 0.48 - pad * 0.15, m * 0.58);
-      if (uR < m * 0.3) uR = m * 0.3;
-      if (r0 === 0) arcPoly(w * 0.5, y1, uR, Math.PI, Math.PI * 2);
-      else if (r0 === 1) arcPoly(x0, h * 0.5, uR, -Math.PI * 0.5, Math.PI * 0.5);
-      else if (r0 === 2) arcPoly(w * 0.5, y0, uR, Math.PI, 0);
-      else arcPoly(x1, h * 0.5, uR, Math.PI * 0.5, Math.PI * 1.5);
+      // 180 U whose two ports sit on the open side, one per cell.
+      if (r0 === 0) arcPoly(w * 0.5, h, w * 0.25, Math.PI, Math.PI * 2);
+      else if (r0 === 1) arcPoly(0, h * 0.5, h * 0.25, -Math.PI * 0.5, Math.PI * 0.5);
+      else if (r0 === 2) arcPoly(w * 0.5, 0, w * 0.25, Math.PI, 0);
+      else arcPoly(w, h * 0.5, h * 0.25, Math.PI * 0.5, Math.PI * 1.5);
       return pts;
     }
     if (type === "C") {
-      bez(x0, h * 0.5, x0, y0, w * 0.62, y0, w * 0.5, h * 0.5);
-      bez(w * 0.5, h * 0.5, w * 0.38, y1, x1, y1, x1, h * 0.5);
+      var amp = cell * 0.16;
+      var n = 32;
+      var i;
+      for (i = 0; i <= n; i++) {
+        var t = i / n;
+        var env = Math.sin(t * Math.PI);
+        env *= env;
+        add(w * t, h * 0.5 - Math.sin(t * Math.PI * 2) * env * amp);
+      }
       return spin();
     }
-    if (w >= h) {
-      add(x0, h * 0.5);
-      add(x1, h * 0.5);
-    } else {
-      add(w * 0.5, y0);
-      add(w * 0.5, y1);
+    if (type === "S") {
+      // Long piece is 2×1 — do not spin a vertical canvas or it goes sideways.
+      if (r0 & 1) {
+        add(w * 0.5, 0);
+        add(w * 0.5, h);
+      } else {
+        add(0, h * 0.5);
+        add(w, h * 0.5);
+      }
+      return pts;
     }
+    add(0, h * 0.5);
+    add(w, h * 0.5);
     return spin();
   }
 
   function tileIconSvg(type, rot, w, h) {
     // Inline SVG in the tile. Canvas data-URLs stayed blank grey on
     // live Chromebooks (only the yellow arrow showed).
-    var m = Math.min(w, h);
-    var ribbon = type === "C" ? m * 0.22 : m * 0.2;
+    var r0 = (rot || 0) & 3;
+    var cols = 1;
+    var rows = 1;
+    if (type === "w") {
+      cols = 2;
+      rows = 2;
+    } else if (type === "S" || type === "H") {
+      if (r0 & 1) rows = 2;
+      else cols = 2;
+    }
+    var cell = Math.min(w / cols, h / rows);
+    var ribbon = cell * 0.28;
     var svg =
       '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' +
       w +
@@ -2536,7 +2537,7 @@
         '" cy="' +
         h * 0.72 +
         '" r="' +
-        m * 0.16 +
+        cell * 0.16 +
         '" fill="#5a4030"/>';
       svg +=
         '<rect x="' +
@@ -2544,9 +2545,9 @@
         '" y="' +
         h * 0.5 +
         '" width="' +
-        m * 0.1 +
+        cell * 0.1 +
         '" height="' +
-        m * 0.24 +
+        cell * 0.24 +
         '" fill="#6a4020"/>';
       svg +=
         '<circle cx="' +
@@ -2554,7 +2555,7 @@
         '" cy="' +
         h * 0.4 +
         '" r="' +
-        m * 0.2 +
+        cell * 0.2 +
         '" fill="#3f8a32"/>';
       svg +=
         '<circle cx="' +
@@ -2562,7 +2563,7 @@
         '" cy="' +
         h * 0.36 +
         '" r="' +
-        m * 0.14 +
+        cell * 0.14 +
         '" fill="#4ea03c"/>';
       svg +=
         '<circle cx="' +
@@ -2570,17 +2571,53 @@
         '" cy="' +
         h * 0.34 +
         '" r="' +
-        m * 0.13 +
+        cell * 0.13 +
         '" fill="#4ea03c"/>';
       svg += "</svg>";
       return svg;
     }
     var pts = tileIconPts(type, rot, w, h);
+    var draw = pts.slice();
+    if (draw.length > 1) {
+      var pad = 2;
+      var ax = draw[0].x - draw[1].x;
+      var ay = draw[0].y - draw[1].y;
+      var al = Math.hypot(ax, ay) || 1;
+      draw[0] = { x: draw[0].x + (ax / al) * pad, y: draw[0].y + (ay / al) * pad };
+      var n1 = draw.length - 1;
+      var bx = draw[n1].x - draw[n1 - 1].x;
+      var by = draw[n1].y - draw[n1 - 1].y;
+      var bl = Math.hypot(bx, by) || 1;
+      draw[n1] = { x: draw[n1].x + (bx / bl) * pad, y: draw[n1].y + (by / bl) * pad };
+    }
     var d = "";
     var i;
-    if (pts.length) {
-      d = "M" + pts[0].x.toFixed(2) + "," + pts[0].y.toFixed(2);
-      for (i = 1; i < pts.length; i++) d += "L" + pts[i].x.toFixed(2) + "," + pts[i].y.toFixed(2);
+    if (draw.length) {
+      d = "M" + draw[0].x.toFixed(2) + "," + draw[0].y.toFixed(2);
+      for (i = 1; i < draw.length; i++) d += "L" + draw[i].x.toFixed(2) + "," + draw[i].y.toFixed(2);
+    }
+    function along(t) {
+      if (pts.length < 2) return { x: pts[0] ? pts[0].x : 0, y: pts[0] ? pts[0].y : 0, ang: 0 };
+      var total = 0;
+      var k;
+      for (k = 1; k < pts.length; k++) {
+        total += Math.hypot(pts[k].x - pts[k - 1].x, pts[k].y - pts[k - 1].y);
+      }
+      var want = total * (t < 0 ? 0 : t > 1 ? 1 : t);
+      var acc = 0;
+      for (k = 1; k < pts.length; k++) {
+        var dx = pts[k].x - pts[k - 1].x;
+        var dy = pts[k].y - pts[k - 1].y;
+        var seg = Math.hypot(dx, dy);
+        if (acc + seg >= want || k === pts.length - 1) {
+          var u = seg ? (want - acc) / seg : 0;
+          if (u < 0) u = 0;
+          if (u > 1) u = 1;
+          return { x: pts[k - 1].x + dx * u, y: pts[k - 1].y + dy * u, ang: Math.atan2(dy, dx) };
+        }
+        acc += seg;
+      }
+      return { x: pts[pts.length - 1].x, y: pts[pts.length - 1].y, ang: 0 };
     }
     function path(color, width, dash) {
       return (
@@ -2590,74 +2627,100 @@
         color +
         '" stroke-width="' +
         width +
-        '" stroke-linecap="round" stroke-linejoin="round"' +
+        '" stroke-linecap="butt" stroke-linejoin="round"' +
         (dash ? ' stroke-dasharray="' + dash + '"' : "") +
         "/>"
       );
     }
-    svg += path("#8d97a6", ribbon * 1.55);
-    svg += path("#ff2038", ribbon * 1.2);
-    svg += path("#fff6ee", ribbon * 1.2, m * 0.07 + " " + m * 0.07);
+    svg += path("#8d97a6", ribbon * 1.5);
+    svg += path("#ff2038", ribbon * 1.18);
     svg += path("#3a3e46", ribbon);
+    svg += path("#d7dbe2", ribbon * 0.08);
     if (pts.length > 1) {
-      var a = pts[pts.length - 2];
-      var b = pts[pts.length - 1];
-      var ang = Math.atan2(b.y - a.y, b.x - a.x);
-      var aw = m * 0.05;
-      var x1 = b.x + Math.cos(ang) * m * 0.02;
-      var y1 = b.y + Math.sin(ang) * m * 0.02;
-      var lx = Math.cos(ang + 2.4) * aw;
-      var ly = Math.sin(ang + 2.4) * aw;
-      var rx = Math.cos(ang - 2.4) * aw;
-      var ry = Math.sin(ang - 2.4) * aw;
+      var mark = along(0.62);
+      var aw = cell * 0.07;
+      var tip = cell * 0.1;
+      var x1 = mark.x + Math.cos(mark.ang) * tip;
+      var y1 = mark.y + Math.sin(mark.ang) * tip;
+      var lx = Math.cos(mark.ang + 2.45) * aw;
+      var ly = Math.sin(mark.ang + 2.45) * aw;
+      var rx = Math.cos(mark.ang - 2.45) * aw;
+      var ry = Math.sin(mark.ang - 2.45) * aw;
       svg +=
         '<polygon points="' +
         x1.toFixed(1) +
         "," +
         y1.toFixed(1) +
         " " +
-        (b.x + lx).toFixed(1) +
+        (mark.x + lx).toFixed(1) +
         "," +
-        (b.y + ly).toFixed(1) +
+        (mark.y + ly).toFixed(1) +
         " " +
-        (b.x + rx).toFixed(1) +
+        (mark.x + rx).toFixed(1) +
         "," +
-        (b.y + ry).toFixed(1) +
+        (mark.y + ry).toFixed(1) +
         '" fill="#ffe566"/>';
     }
-    if (type === "P") {
+    if (type === "P" && pts.length > 1) {
+      var pit = along(0.5);
+      var px = Math.cos(pit.ang);
+      var py = Math.sin(pit.ang);
+      var nx = -py;
+      var ny = px;
+      var pw = cell * 0.42;
+      var ph = cell * 0.2;
+      var cx = pit.x + nx * (ribbon * 0.85 + ph * 0.55);
+      var cy = pit.y + ny * (ribbon * 0.85 + ph * 0.55);
+      var hx = px * pw * 0.5;
+      var hy = py * pw * 0.5;
+      var vx = nx * ph * 0.5;
+      var vy = ny * ph * 0.5;
       svg +=
-        '<rect x="' +
-        w * 0.22 +
-        '" y="' +
-        h * 0.08 +
-        '" width="' +
-        w * 0.56 +
-        '" height="' +
-        h * 0.16 +
+        '<polygon points="' +
+        (cx - hx - vx).toFixed(1) +
+        "," +
+        (cy - hy - vy).toFixed(1) +
+        " " +
+        (cx + hx - vx).toFixed(1) +
+        "," +
+        (cy + hy - vy).toFixed(1) +
+        " " +
+        (cx + hx + vx).toFixed(1) +
+        "," +
+        (cy + hy + vy).toFixed(1) +
+        " " +
+        (cx - hx + vx).toFixed(1) +
+        "," +
+        (cy - hy + vy).toFixed(1) +
         '" fill="#2ec8c3"/>';
     }
-    if (type === "F") {
-      svg +=
-        '<rect x="' +
-        w * 0.42 +
-        '" y="' +
-        h * 0.22 +
-        '" width="' +
-        w * 0.05 +
-        '" height="' +
-        h * 0.56 +
-        '" fill="#fff6ee"/>';
-      svg +=
-        '<rect x="' +
-        w * 0.54 +
-        '" y="' +
-        h * 0.22 +
-        '" width="' +
-        w * 0.05 +
-        '" height="' +
-        h * 0.56 +
-        '" fill="#fff6ee"/>';
+    if (type === "F" && pts.length > 1) {
+      var fin = along(0.5);
+      var fx = Math.cos(fin.ang);
+      var fy = Math.sin(fin.ang);
+      var gx = -fy;
+      var gy = fx;
+      var half = ribbon * 0.46;
+      var gap = cell * 0.045;
+      function stripe(off) {
+        var sx = fin.x + fx * off;
+        var sy = fin.y + fy * off;
+        return (
+          '<line x1="' +
+          (sx - gx * half).toFixed(1) +
+          '" y1="' +
+          (sy - gy * half).toFixed(1) +
+          '" x2="' +
+          (sx + gx * half).toFixed(1) +
+          '" y2="' +
+          (sy + gy * half).toFixed(1) +
+          '" stroke="#fff6ee" stroke-width="' +
+          (cell * 0.055).toFixed(1) +
+          '" stroke-linecap="butt"/>'
+        );
+      }
+      svg += stripe(-gap);
+      svg += stripe(gap);
     }
     svg += "</svg>";
     return svg;
@@ -2697,7 +2760,12 @@
         var pt = pal[pi].getAttribute("data-tile");
         pal[pi].classList.toggle("picked", pt === tilePick);
         pal[pi].style.backgroundImage = "";
-        pal[pi].innerHTML = tileIconSvg(pt, 0, pt === "H" || pt === "S" ? 112 : 72, 72);
+        pal[pi].innerHTML = tileIconSvg(
+          pt,
+          0,
+          pt === "H" || pt === "S" || pt === "w" ? 144 : 72,
+          pt === "w" ? 144 : 72
+        );
         pal[pi].setAttribute("aria-label", TILE_LABEL[pt] || pt);
       }
     }
