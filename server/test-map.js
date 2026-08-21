@@ -76,9 +76,9 @@ var code = [
   "var launchCallT = 0;",
   "var LAPS = 5;",
   "var TRACK_CODE_MAX = 240;",
-  "var MESH_NOSE = 3.5;",
-  "var MESH_TAIL = 2.05;",
-  "var MESH_HALF_W = 1.02;",
+  "var MESH_NOSE = 3.55;",
+  "var MESH_TAIL = 2.1;",
+  "var MESH_HALF_W = 1.2;",
   "var WALLS = [];",
   "var TYPE_ENC = { s: 'A', S: 'L', r: 'R', w: 'W', H: 'H', C: 'C', F: 'F', P: 'P', t: 'T' };",
   "var TYPE_DEC = { A:'s', a:'s', s:'s', L:'S', S:'S', R:'r', r:'r', W:'w', w:'w', H:'H', h:'H', C:'C', c:'C', F:'F', f:'F', P:'P', p:'P', T:'t', t:'t' };",
@@ -87,8 +87,9 @@ var code = [
   sliceFn("inRect"),
   sliceFn("onPitPavement"),
   sliceFn("closestOnSeg"),
-  sliceFn("closestSegSeg"),
-  sliceFn("meshSeg"),
+  sliceFn("carCorners"),
+  sliceFn("projectCorners"),
+  sliceFn("meshOverlap"),
   sliceFn("closestOnArc"),
   sliceFn("addLine"),
   sliceFn("addArc"),
@@ -793,9 +794,9 @@ assert(src.indexOf("ASPHALT + 3.0") !== -1, "inside rails that clip the chassis 
 assert(!/function bashWall\([\s\S]{0,700}heading = Math.atan2/.test(src), "bashWall does not snap heading to velocity");
 assert(!/function bashCars\([\s\S]{0,900}heading = Math.atan2/.test(src), "bashCars does not snap heading to velocity");
 assert(src.indexOf("function bashOtherCars") !== -1, "room Bowie is bashed from the race tick");
-assert(src.indexOf("function meshSeg") !== -1 && src.indexOf("var MESH_NOSE = 3.5") !== -1, "hit box is the mesh, not a cockpit circle");
-assert(src.indexOf("if (pace >= 3) impact = Math.max(impact, pace * 0.34)") !== -1, "first mesh overlap at pace yaws");
-assert(!/function bashCars\([\s\S]{0,1800}if \(rel < 0\) \{\s*poseCar/.test(src), "mesh overlap at pace does not skip feel");
+assert(src.indexOf("function meshOverlap") !== -1 && src.indexOf("var MESH_HALF_W = 1.2") !== -1, "hit box is the visible mesh box, not a sausage");
+assert(src.indexOf("var impact = Math.max(rel, 0, pace * 0.34, 2.6)") !== -1, "overlap at a crawl still yaws");
+assert(src.indexOf("if (impact < 1.1 && pace < 3)") === -1, "slow side-by-side does not skip feel");
 assert(/function pinGrid\([\s\S]{0,400}faceRaceAt/.test(src), "grid pin faces the ribbon, not leftover yaw");
 assert(src.indexOf("mpMode && playerGridX != null") !== -1, "room grid keeps the slot, not Campus P2");
 assert(src.indexOf("z: SF_Z + (i % 2 ? -2.7 : 2.7), h: 0") !== -1, "campus grid heading is east");
@@ -1750,6 +1751,25 @@ function proveMeshOverlap() {
   sim.bashCars(me, bowie);
   var yaw2 = Math.max(Math.abs(angDiff(bowie.heading, h0)), Math.abs(angDiff(me.heading, h1)));
   assert(yaw2 > 0.005, "broadside mesh overlap at 60 yaws, dH=" + yaw2.toFixed(4));
+  var slowA = blankCar(p.x, p.z, p.h, 2.86);
+  var slowB = blankCar(p.x + sx * 1.2, p.z + sz * 1.2, p.h, 2.86);
+  slowA.fuel = slowB.fuel = 100;
+  slowA.tires = slowB.tires = 100;
+  var hsA = slowA.heading;
+  var hsB = slowB.heading;
+  sim.bashCars(slowA, slowB);
+  var yawS = Math.max(Math.abs(angDiff(slowA.heading, hsA)), Math.abs(angDiff(slowB.heading, hsB)));
+  assert(yawS > 0.005, "slow 9 kph side-by-side mesh overlap yaws, dH=" + yawS.toFixed(4));
+  assert(Math.hypot(slowA.x - slowB.x, slowA.z - slowB.z) > 1.2, "slow overlap separates, d=" + Math.hypot(slowA.x - slowB.x, slowA.z - slowB.z).toFixed(2));
+  var parkA = blankCar(p.x, p.z, p.h, 0);
+  var parkB = blankCar(p.x + sx * 1.0, p.z + sz * 1.0, p.h, 0);
+  parkA.fuel = parkB.fuel = 100;
+  parkA.tires = parkB.tires = 100;
+  var hpA = parkA.heading;
+  var hpB = parkB.heading;
+  sim.bashCars(parkA, parkB);
+  var yawP = Math.max(Math.abs(angDiff(parkA.heading, hpA)), Math.abs(angDiff(parkB.heading, hpB)));
+  assert(yawP > 0.005, "park alongside first visible overlap yaws, dH=" + yawP.toFixed(4));
 }
 
 function proveGridFacesRace() {

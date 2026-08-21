@@ -57,9 +57,9 @@
   var TIRE_FLOOR = 22;
   var TEAL = 0x2ec8c3;
   var TEAL_DEEP = 0x148f8c;
-  var MESH_NOSE = 3.5;
-  var MESH_TAIL = 2.05;
-  var MESH_HALF_W = 1.02;
+  var MESH_NOSE = 3.55;
+  var MESH_TAIL = 2.1;
+  var MESH_HALF_W = 1.2;
   var WALLS = [];
   var FX_MAX = 18;
 
@@ -334,80 +334,68 @@
     return { x: qx, z: qz, d2: ex * ex + ez * ez, t: t, h: Math.atan2(dz, dx) };
   }
 
-  function closestSegSeg(a0x, a0z, a1x, a1z, b0x, b0z, b1x, b1z) {
-    var ux = a1x - a0x;
-    var uz = a1z - a0z;
-    var vx = b1x - b0x;
-    var vz = b1z - b0z;
-    var wx = a0x - b0x;
-    var wz = a0z - b0z;
-    var uu = ux * ux + uz * uz;
-    var vv = vx * vx + vz * vz;
-    var uv = ux * vx + uz * vz;
-    var uw = ux * wx + uz * wz;
-    var vw = vx * wx + vz * wz;
-    var den = uu * vv - uv * uv;
-    var sN;
-    var sD = den;
-    var tN;
-    var tD = den;
-    if (den < 1e-8) {
-      sN = 0;
-      sD = 1;
-      tN = vw;
-      tD = vv;
-    } else {
-      sN = uv * vw - vv * uw;
-      tN = uu * vw - uv * uw;
-      if (sN < 0) {
-        sN = 0;
-        tN = vw;
-        tD = vv;
-      } else if (sN > sD) {
-        sN = sD;
-        tN = vw + uv;
-        tD = vv;
-      }
-    }
-    if (tN < 0) {
-      tN = 0;
-      if (-uw < 0) sN = 0;
-      else if (-uw > uu) {
-        sN = uu;
-        sD = uu;
-      } else {
-        sN = -uw;
-        sD = uu;
-      }
-    } else if (tN > tD) {
-      tN = tD;
-      if (-uw + uv < 0) sN = 0;
-      else if (-uw + uv > uu) {
-        sN = uu;
-        sD = uu;
-      } else {
-        sN = -uw + uv;
-        sD = uu;
-      }
-    }
-    var s = Math.abs(sD) < 1e-8 ? 0 : sN / sD;
-    var t = Math.abs(tD) < 1e-8 ? 0 : tN / tD;
-    var px = a0x + s * ux;
-    var pz = a0z + s * uz;
-    var qx = b0x + t * vx;
-    var qz = b0z + t * vz;
-    return { px: px, pz: pz, qx: qx, qz: qz, d: Math.hypot(px - qx, pz - qz) };
-  }
-
-  function meshSeg(r) {
+  function carCorners(r) {
     var c = Math.cos(r.heading);
     var s = Math.sin(r.heading);
-    return {
-      ax: r.x - c * MESH_TAIL,
-      az: r.z - s * MESH_TAIL,
-      bx: r.x + c * MESH_NOSE,
-      bz: r.z + s * MESH_NOSE,
-    };
+    var x0 = -MESH_TAIL;
+    var x1 = MESH_NOSE;
+    var z0 = -MESH_HALF_W;
+    var z1 = MESH_HALF_W;
+    return [
+      { x: r.x + c * x0 - s * z0, z: r.z + s * x0 + c * z0 },
+      { x: r.x + c * x1 - s * z0, z: r.z + s * x1 + c * z0 },
+      { x: r.x + c * x1 - s * z1, z: r.z + s * x1 + c * z1 },
+      { x: r.x + c * x0 - s * z1, z: r.z + s * x0 + c * z1 },
+    ];
+  }
+
+  function projectCorners(corners, ax, az) {
+    var min = 1e9;
+    var max = -1e9;
+    var i;
+    for (i = 0; i < 4; i++) {
+      var p = corners[i].x * ax + corners[i].z * az;
+      if (p < min) min = p;
+      if (p > max) max = p;
+    }
+    return { min: min, max: max };
+  }
+
+  function meshOverlap(a, b) {
+    var ca = carCorners(a);
+    var cb = carCorners(b);
+    var axes = [
+      { x: Math.cos(a.heading), z: Math.sin(a.heading) },
+      { x: -Math.sin(a.heading), z: Math.cos(a.heading) },
+      { x: Math.cos(b.heading), z: Math.sin(b.heading) },
+      { x: -Math.sin(b.heading), z: Math.cos(b.heading) },
+    ];
+    var best = 1e9;
+    var nx = 1;
+    var nz = 0;
+    var i;
+    for (i = 0; i < 4; i++) {
+      var len = Math.hypot(axes[i].x, axes[i].z) || 1;
+      var ax = axes[i].x / len;
+      var az = axes[i].z / len;
+      var pa = projectCorners(ca, ax, az);
+      var pb = projectCorners(cb, ax, az);
+      var over = Math.min(pa.max, pb.max) - Math.max(pa.min, pb.min);
+      if (over <= 0) return null;
+      if (over < best) {
+        best = over;
+        var midA = (pa.min + pa.max) * 0.5;
+        var midB = (pb.min + pb.max) * 0.5;
+        if (midA < midB) {
+          nx = ax;
+          nz = az;
+        } else {
+          nx = -ax;
+          nz = -az;
+        }
+      }
+    }
+    return { nx: nx, nz: nz, depth: best };
   }
 
   function closestOnArc(px, pz, cx, cz, r, a0, a1) {
@@ -4235,29 +4223,12 @@
 
   function bashCars(a, b) {
     if (!a || !b) return;
-    var sa = meshSeg(a);
-    var sb = meshSeg(b);
-    var hit = closestSegSeg(sa.ax, sa.az, sa.bx, sa.bz, sb.ax, sb.az, sb.bx, sb.bz);
-    var skin = MESH_HALF_W * 2;
-    if (hit.d >= skin) return;
-    var nx;
-    var nz;
-    if (hit.d > 0.02) {
-      nx = (hit.qx - hit.px) / hit.d;
-      nz = (hit.qz - hit.pz) / hit.d;
-    } else {
-      nx = b.x - a.x;
-      nz = b.z - a.z;
-      var nlen = Math.hypot(nx, nz);
-      if (nlen < 0.0001) {
-        nx = 1;
-        nz = 0;
-        nlen = 1;
-      }
-      nx /= nlen;
-      nz /= nlen;
-    }
-    var push = (skin - hit.d) * 0.5;
+    var hit = meshOverlap(a, b);
+    if (!hit) return;
+    var nx = hit.nx;
+    var nz = hit.nz;
+    var push = hit.depth * 0.5;
+    if (push < 0.12) push = 0.12;
     a.x -= nx * push;
     a.z -= nz * push;
     b.x += nx * push;
@@ -4276,13 +4247,7 @@
       bvz += jimp * nz;
     }
     var pace = Math.max(Math.abs(a.speed), Math.abs(b.speed), Math.hypot(avx, avz), Math.hypot(bvx, bvz));
-    var impact = Math.max(rel, 0);
-    if (pace >= 3) impact = Math.max(impact, pace * 0.34);
-    if (impact < 1.1 && pace < 3) {
-      poseCar(a);
-      poseCar(b);
-      return;
-    }
+    var impact = Math.max(rel, 0, pace * 0.34, 2.6);
     hitCarFeel(a, avx, avz, -nx, -nz, impact);
     hitCarFeel(b, bvx, bvz, nx, nz, impact);
     poseCar(a);
