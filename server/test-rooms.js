@@ -233,8 +233,8 @@ waitHealth()
                   assert(js.indexOf("var nearI = -1") !== -1 && js.indexOf("function mergeColinearWalls") !== -1, "one collider per edge; joins do not stack");
                   assert(/else if \(!\(r\.hitYawT > 0\)\) \{\s*r\.speed \*= 0\.82/.test(js), "pinned graze does not restack speed dumps");
                   assert(js.indexOf("ribbonFitsFootprint") !== -1 && js.indexOf("ribbonsStack") !== -1, "modules fit; chicane S does not stack");
-                  assert(js.indexOf("var ACCEL = 16") !== -1 && js.indexOf("var COAST = 5") !== -1, "slow wind-up; coast bleeds");
-                  assert(js.indexOf("var BRAKE_DECEL = 20") !== -1, "Space is a planned squeeze for the 180");
+                  assert(js.indexOf("var ACCEL = 5") !== -1 && js.indexOf("var COAST = 2") !== -1, "slow wind-up; coast bleeds");
+                  assert(js.indexOf("var BRAKE_DECEL = 6") !== -1, "Space is a planned squeeze for the 180");
                   assert(js.indexOf("function inChicaneS") !== -1, "chicane S is the S, not the approach");
                   assert(js.indexOf("inChicaneS(info) && r.speed") === -1, "S never speed-dumps or steer-locks");
                   assert(js.indexOf('info.name === "hairpin" || info.name === "chicane"') === -1, "name alone does not lock A/D before the S");
@@ -246,7 +246,7 @@ waitHealth()
                   assert(js.indexOf("function attachNameTag") !== -1 && js.indexOf("function layoutNameTags") !== -1, "halo nametags");
                   assert(!/function attachNameTag\([\s\S]{0,500}new THREE\.Sprite/.test(js), "nametags are mesh billboards, not X-flip-killed sprites");
                   assert(js.indexOf('r.kind !== "player"') !== -1, "own nametag can stay off; others still show");
-                  assert(js.indexOf("rideHeight() + 1.46") !== -1, "tags sit tiny over the halo, not at chase-cam height");
+                  assert(js.indexOf("rideHeight(r.x, r.z) + 1.46") !== -1, "tags sit tiny over the halo, not at chase-cam height");
                   assert(/function playerInput\(\)[\s\S]{0,180}portraitRaceBlock/.test(js), "portrait zeros input before keyboard path");
                   assert(js.indexOf("#ff2038") !== -1 && js.indexOf("#3a3e46") !== -1, "asphalt + kerb piece art");
                 });

@@ -46,7 +46,19 @@ Local: `npm start`, then open `http://localhost:8787` (or whatever `PORT` is). S
 
 **FX (designer lock, few, short, readable at 30fps):** two fat tire puffs at lights-out · thin grey streaks from the rears when tires are bad · short white slip off the outside wheels on a hard turn · one dust burst on a spin-out · one sharp spark at a hit (not a cloud). Launch puffs and hit sparks do not look the same.
 
-Car **#7** is white/teal by default. Title-screen garage picks body + wing colors (saved on the device). Friends see your paint in the room. Campus is golden-hour brick with **one** clock tower. Original IP only.
+Car **#7** is white/teal by default. Title-screen garage picks body + wing colors (saved on the device). Friends see your paint in the room. Campus is golden-hour brick with **one** clock tower, a stuffed quad, bleachers, and tree belts. Original IP only.
+
+**Built-in circuits** (title chips + Track screen). Arcade box-kit reads of real places — no licensed names on signs:
+
+| Circuit | Real read | Place |
+| --- | --- | --- |
+| **Campus Loop** | school original | clock tower, halls, bleachers, lot |
+| **Harbor Street** | Monaco | port + yachts, casino hill, hotel hairpin, rock tunnel, pool |
+| **Royal Park** | Monza | tree cathedral, SF stand + tower, old banking, villa, Parabolica stand |
+| **Desert Dusk** | Sakhir | control tower, floodlight grid, main stand, palace dome, berms |
+| **Forest Climb** | Spa | valley SF, La Source, Eau Rouge / Raidillon *climb*, forest, crest hotel, village |
+
+Fuel still wants **~2 km / 5 laps / one box**. Only Forest Climb uses elevation (height along the racing line). Custom editor tracks stay flat and scenery-bare except placed trees.
 
 **Track editor:** title **Track** button. Regular tile grid. Kit: straight, long straight, 90, wide sweeper, hairpin, chicane, start/finish, pit, tree. Pieces snap to cell centers and meet flush. Driveable asphalt and the race line are rebuilt from the placed pieces — a closed loop laps; open layouts stay driveable. Bots follow the custom ribbon. Share-string (up to 240) encodes type + cell + rotation. **Default · Campus Loop** restores the real ~2km loop and clears the save / room code.
 

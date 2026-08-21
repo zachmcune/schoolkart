@@ -16,7 +16,7 @@
   <link rel="manifest" href="manifest.json" />
   <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png" />
   <link rel="apple-touch-icon" href="apple-touch-icon.png" />
-  <link rel="stylesheet" href="css/style.css?v=mp95" />
+  <link rel="stylesheet" href="css/style.css?v=mp97" />
 </head>
 <body>
   <div id="game">
@@ -109,6 +109,13 @@
         <button type="button" class="lobby-btn" id="btn-create">Create room</button>
         <button type="button" class="lobby-btn" id="btn-track">Track</button>
       </div>
+      <div class="circuit-row" id="circuit-picks" aria-label="Built-in circuits">
+        <button type="button" class="lobby-btn circuit" data-circuit="">Campus</button>
+        <button type="button" class="lobby-btn circuit" data-circuit="HARBOR">Harbor</button>
+        <button type="button" class="lobby-btn circuit" data-circuit="PARK">Park</button>
+        <button type="button" class="lobby-btn circuit" data-circuit="DESERT">Desert</button>
+        <button type="button" class="lobby-btn circuit" data-circuit="FOREST">Forest</button>
+      </div>
       <div class="lobby-row">
         <input id="join-code" class="lobby-input" maxlength="6" placeholder="CODE" autocomplete="off" spellcheck="false" autocapitalize="characters" autocorrect="off" inputmode="text" />
         <button type="button" class="lobby-btn" id="btn-join">Join</button>
@@ -157,7 +164,14 @@
       <p class="eyebrow">Slot-car pieces</p>
       <h1>TRACK</h1>
       <p class="sub" id="track-code-view">Campus Loop</p>
-      <p class="editor-help">Drag a module onto the map. Drag to move. Tap a placed piece or hit Rotate to turn 90°. Trash or drag off deletes. Solo only races a closed loop — open or junk boards bounce back to Campus Loop.</p>
+      <div class="circuit-row" id="circuit-picks-editor" aria-label="Built-in circuits">
+        <button type="button" class="lobby-btn circuit" data-circuit="">Campus</button>
+        <button type="button" class="lobby-btn circuit" data-circuit="HARBOR">Harbor</button>
+        <button type="button" class="lobby-btn circuit" data-circuit="PARK">Park</button>
+        <button type="button" class="lobby-btn circuit" data-circuit="DESERT">Desert</button>
+        <button type="button" class="lobby-btn circuit" data-circuit="FOREST">Forest</button>
+      </div>
+      <p class="editor-help">Pick a built-in, or drag a module onto the map. Solo only races a closed loop — open or junk boards bounce back to Campus Loop.</p>
       <div id="tile-palette" class="tile-palette" aria-label="Track pieces">
         <div class="palette-slot" data-tile="s">
           <div class="palette-tile" data-tile="s" role="button" tabindex="0" aria-label="straight"></div>
@@ -232,7 +246,7 @@
       }
     } catch (e) {}
     if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.register("sw.js?v=mp95").catch(function () {});
+      navigator.serviceWorker.register("sw.js?v=mp97").catch(function () {});
     }
   </script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.160.1/build/three.min.js"></script>
@@ -241,8 +255,8 @@
       document.write('<script src="https://unpkg.com/three@0.160.1/build/three.min.js"><\/script>');
     }
   </script>
-  <script src="js/config.js?v=mp95"></script>
-  <script src="js/net.js?v=mp95"></script>
-  <script src="js/game.js?v=mp95"></script>
+  <script src="js/config.js?v=mp97"></script>
+  <script src="js/net.js?v=mp97"></script>
+  <script src="js/game.js?v=mp97"></script>
 </body>
 </html>
