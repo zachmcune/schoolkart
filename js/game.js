@@ -103,8 +103,8 @@
 
   // FORK, not a slide. Two asphalt roads: racing ribbon + a second lane LEFT.
   // Stay on the ribbon = miss. Peel LEFT onto the second road = grab halfway.
-  // Asphalt infield edge is SF_Z+ASPHALT (-71.4). Grass median, then the road.
-  // mp79/80/82: flags and strips. Drive still grabbed; the road slid right.
+  // Do not cut a hole in the racing line to fake the second road.
+  // mp79/80/82/83: flags, strips, then a 90-void. Drive beat paper.
   var PIT_ENTRY = { x0: 8, x1: 28, z0: -70.0, z1: -61.0 };
   var PIT_EXIT = { x0: 128, x1: 160, z0: -68.0, z1: -58.0 };
   var PIT_LANE = { x0: 28, x1: 136, z0: -61.5, z1: -52.5 };
@@ -657,10 +657,13 @@
   }
 
   function buildCampusPath() {
-    pathLine(430, "start");
+    // Start straight must stay asphalt for a W-only stay-right past 10s.
+    // 430 dumped them into the first 90 / void at ~7s once the pit
+    // stopped grabbing on the ribbon (mp83).
+    pathLine(680, "start");
     pathArc(40, 48, "the90");
     pathArc(13, 42, "the90");
-    pathLine(320, "short");
+    pathLine(70, "short");
     pathArc(12, 88, "chicane");
     pathLine(150, "short");
     pathArc(9, -100, "chicane");
@@ -1680,36 +1683,38 @@
   }
 
   function paintCampusPitLane() {
-    // FORK. TWO ROADS. Grass median between the racing ribbon and a
-    // second asphalt lane to the LEFT. If this reads as one road
-    // sliding right, it is a nack.
+    // FORK. TWO ROADS. The racing ribbon stays whole. Grass median,
+    // then a second raised asphalt road to the LEFT. A hole in the
+    // ribbon is a nack. A slide / one-road pit is a nack.
     var laneX = (PIT_LANE.x0 + PIT_LANE.x1) * 0.5;
     var laneW = PIT_LANE.x1 - PIT_LANE.x0;
     var laneZ = (PIT_LANE.z0 + PIT_LANE.z1) * 0.5;
-    addBox(80, 0.04, -66.45, 90, 0.05, 9.2, 0x4f8a38, trackRoot);
-    addBox(laneX, 0.08, laneZ, laneW, 0.08, PIT_LANE.z1 - PIT_LANE.z0, 0x3a3e46, trackRoot);
-    addBox(laneX, 0.11, laneZ, laneW, 0.03, 0.42, 0xd8d2c6, trackRoot);
-    addBox(laneX, 0.12, PIT_LANE.z0, laneW, 0.05, 0.42, 0xf4efe6, trackRoot);
-    addBox(laneX, 0.12, PIT_LANE.z1, laneW, 0.05, 0.42, 0xf4efe6, trackRoot);
-    var fork = addBox(18, 0.07, -65.6, 26, 0.08, 8.2, 0x3a3e46, trackRoot);
+    addBox(80, 0.07, -66.45, 92, 0.1, 9.4, 0x5db844, trackRoot);
+    addBox(laneX, 0.14, laneZ, laneW, 0.16, PIT_LANE.z1 - PIT_LANE.z0, 0x3a3e46, trackRoot);
+    addBox(laneX, 0.23, laneZ, laneW, 0.03, 0.46, 0xd8d2c6, trackRoot);
+    addBox(laneX, 0.24, PIT_LANE.z0, laneW, 0.06, 0.5, 0xf4efe6, trackRoot);
+    addBox(laneX, 0.24, PIT_LANE.z1, laneW, 0.06, 0.5, 0xf4efe6, trackRoot);
+    var fork = addBox(18, 0.13, -65.6, 24, 0.14, 8.4, 0x3a3e46, trackRoot);
     fork.rotation.y = -0.42;
-    addBox(62, 0.82, -51.4, 70, 1.55, 0.62, 0x2a2018, trackRoot);
-    addBox(62, 1.62, -51.4, 70, 0.12, 0.7, TEAL, trackRoot);
-    var pitDecal = labelPlane("PIT", 7.2, 2.8, "#0a2a28", "#2ec8c3");
+    addBox(12, 1.15, -67.4, 0.45, 2.3, 0.45, 0x2a2018, trackRoot);
+    addBox(26, 1.15, -67.4, 0.45, 2.3, 0.45, 0x2a2018, trackRoot);
+    addBox(62, 0.92, -51.2, 70, 1.7, 0.7, 0x2a2018, trackRoot);
+    addBox(62, 1.82, -51.2, 70, 0.14, 0.78, TEAL, trackRoot);
+    var pitDecal = labelPlane("PIT", 7.6, 3.0, "#0a2a28", "#2ec8c3");
     pitDecal.rotation.x = -Math.PI * 0.5;
-    pitDecal.position.set(81, 0.18, -57.1);
+    pitDecal.position.set(81, 0.28, -57.1);
     trackRoot.add(pitDecal);
-    var inDecal = labelPlane("IN", 5.4, 2.2, "#102018", "#ffe566");
+    var inDecal = labelPlane("IN", 5.8, 2.4, "#102018", "#ffe566");
     inDecal.rotation.x = -Math.PI * 0.5;
-    inDecal.position.set(16, 0.18, -65.0);
+    inDecal.position.set(16, 0.26, -65.0);
     trackRoot.add(inDecal);
-    var outDecal = labelPlane("OUT", 5.8, 2.2, "#102018", "#7cffd4");
+    var outDecal = labelPlane("OUT", 6.0, 2.4, "#102018", "#7cffd4");
     outDecal.rotation.x = -Math.PI * 0.5;
-    outDecal.position.set(146, 0.18, -62.0);
+    outDecal.position.set(146, 0.26, -62.0);
     trackRoot.add(outDecal);
     var hsh;
     for (hsh = 0; hsh < 5; hsh++) {
-      addBox(70 + hsh * 3.6, 0.16, -57.1, 1.15, 0.02, 7.4, 0xffffff, trackRoot);
+      addBox(70 + hsh * 3.6, 0.26, -57.1, 1.15, 0.03, 7.4, 0xffffff, trackRoot);
     }
   }
 
@@ -2141,7 +2146,7 @@
     scene.add(skirt);
 
     var dirt = new THREE.Mesh(
-      new THREE.PlaneGeometry(1400, 1200),
+      new THREE.PlaneGeometry(1800, 1400),
       new THREE.MeshLambertMaterial({ color: 0x6a655c, side: THREE.DoubleSide })
     );
     dirt.rotation.x = -Math.PI * 0.5;

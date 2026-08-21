@@ -552,7 +552,7 @@ sim.rebuildPath(sim.encodeMap(open));
 assert(!sim.MAP_CLOSED, "open layout is not a closed loop");
 assert(!sim.lockRacePath(sim.encodeMap(open)), "open layout is refused for race");
 assert(!sim.isDriveableLoop(), "open board is not a race loop");
-assert(Math.abs(sim.TRACK_LEN - 1978.98) < 2, "open/junk bounces the 3D world to Campus Loop");
+assert(Math.abs(sim.TRACK_LEN - 1997.74) < 2, "open/junk bounces the 3D world to Campus Loop");
 assert(sim.projectTrack(0, -80).onAsphalt && !sim.projectTrack(0, -80).grass, "bounced world is Campus S/F, not frozen junk");
 assert(sim.RIBBON_SEGS >= 360, "bounced Loop keeps the Campus ribbon");
 sim.lockRacePath(sim.encodeMap(rectPieces()));
@@ -626,7 +626,7 @@ function driveWorld(pieces, seconds, label, closed) {
   var raced = sim.lockRacePath(code);
   if (!closed) {
     assert(!raced && !sim.isDriveableLoop(), label + " must be refused");
-    assert(Math.abs(sim.TRACK_LEN - 1978.98) < 2, label + " bounces to Campus Loop, len=" + sim.TRACK_LEN);
+    assert(Math.abs(sim.TRACK_LEN - 1997.74) < 2, label + " bounces to Campus Loop, len=" + sim.TRACK_LEN);
     sim.placeWalls();
     var loopPose = { x: 0, z: -80, h: 0 };
     var racerOpen = blankCar(loopPose.x, loopPose.z, loopPose.h, 12);
@@ -739,7 +739,7 @@ assert(sim.parseMap(yell).length === 4, "yell board is 4 pieces");
 assert(sim.lockRacePath(yell), "closed 4-piece rectangle MR220R321R332R233 must race");
 assert(sim.isDriveableLoop(), "yell 4-piece is a driveable custom, not junk");
 assert(sim.menuTrackName() === "CUSTOM CIRCUIT", "Solo label is CUSTOM for the yell 4-piece");
-assert(Math.abs(sim.TRACK_LEN - 1978.98) > 40, "yell 4-piece is not Campus Loop, len=" + sim.TRACK_LEN);
+assert(Math.abs(sim.TRACK_LEN - 1997.74) > 40, "yell 4-piece is not Campus Loop, len=" + sim.TRACK_LEN);
 assert(!sim.projectTrack(0, -80).onAsphalt, "Campus S/F is not asphalt on the yell 4-piece");
 assert(sim.customGridPose(), "yell 4-piece has a custom grid");
 var yellPose = sim.customGridPose();
@@ -831,9 +831,11 @@ assert(src.indexOf("z0: -71.6") === -1, "campus pit pave does not clip the aspha
 assert(src.indexOf("z0: -69.0") === -1, "campus pit is not a same-color strip beside the ribbon");
 assert(src.indexOf("function paintCampusPitLane") !== -1, "campus paints a visible left pit lane");
 assert(src.indexOf("FORK. TWO ROADS.") !== -1, "pit is a fork of two roads, not a slide");
-assert(src.indexOf("0x4f8a38") !== -1, "grass median sits between ribbon and pit lane");
+assert(src.indexOf("0x5db844") !== -1, "grass median sits between ribbon and pit lane");
+assert(src.indexOf('pathLine(680, "start")') !== -1, "start road is long enough for W-only stay-right past 10s");
+assert(src.indexOf("The racing ribbon stays whole") !== -1, "second road is added beside the ribbon, not a hole");
 assert(src.indexOf("z0: -61.5") !== -1, "second asphalt road starts past the grass median");
-assert(src.indexOf("addBox(laneX, 0.08, laneZ, laneW, 0.08, PIT_LANE.z1 - PIT_LANE.z0, 0x3a3e46") !== -1, "second road is asphalt, not a grey strip");
+assert(src.indexOf("addBox(laneX, 0.14, laneZ, laneW, 0.16, PIT_LANE.z1 - PIT_LANE.z0, 0x3a3e46") !== -1, "second road is raised asphalt, not a grey strip");
 assert(src.indexOf("r.z <= SF_Z + ASPHALT + 8") !== -1, "grab requires the visible left lane, not the median");
 assert(src.indexOf("inRect(wx, wz, PIT_ENTRY) || inRect(wx, wz, PIT_EXIT)") !== -1, "left wall opens only at IN/OUT mouths");
 assert(src.indexOf("player.heading = slotHeading({ h: gridHeading })") !== -1, "campus GO snaps heading east");
@@ -1417,7 +1419,7 @@ var wideX = loopDump.x;
 var wideZ = loopDump.z;
 var crawlT;
 var crawlStep = 0;
-for (crawlT = 0; crawlT < 14; crawlT += 1 / 60) {
+for (crawlT = 0; crawlT < 22; crawlT += 1 / 60) {
   var line = sim.projectTrack(loopDump.x, loopDump.z);
   var home = Math.atan2(line.z - loopDump.z, line.x - loopDump.x);
   var err = angDiff(home, loopDump.heading);
@@ -1855,6 +1857,10 @@ function proveStayRightNoGrab() {
   assert(grabbed === 0, "10s hold W, no A, center/right never PIT LANE / grab, hits=" + grabbed);
   assert(straightN > 60 && onStraight / straightN > 0.92, "south straight stay-right stays on asphalt, on=" + onStraight + "/" + straightN);
   assert(zRight === straightN, "no-A on the south straight stays center/right of the peel");
+  var end10 = sim.projectTrack(car.x, car.z);
+  assert(end10.onAsphalt && !end10.grass, "at 10s W-only is still on asphalt, not a void/grass dump, dist=" + end10.dist.toFixed(2) + " name=" + end10.name);
+  assert(!sim.inPitGrab(car) && !sim.inPitLane(car), "at 10s W-only is not serviced");
+  assert(end10.name === "start", "at 10s W-only is still on the start road, not the 90");
 
   car = blankCar(g.x, g.z, sim.slotHeading(g), 0);
   car.fuel = 100;
@@ -2208,7 +2214,7 @@ assert(wallClear(sim.gridSlot(0).x, sim.gridSlot(0).z) > 5, "Campus host grid is
 assert(wallClear(sim.gridSlot(1).x, sim.gridSlot(1).z) > 5, "Campus P2 grid is not inside a wall");
 var srv = fs.readFileSync(path.join(__dirname, "index.js"), "utf8");
 assert(srv.indexOf("z: -80 + lat") !== -1 && srv.indexOf("slot % 2 ? -5.2 : -2.4") !== -1, "server room grid matches the outside ribbon");
-assert(Math.abs(sim.TRACK_LEN - 1978.98) < 2, "Campus Loop length unchanged after custom grid prove");
+assert(Math.abs(sim.TRACK_LEN - 1997.74) < 2, "Campus Loop length unchanged after custom grid prove");
 
 assert(src.indexOf("lockRacePath") !== -1 && src.indexOf("isDriveableLoop") !== -1, "open/junk boards refuse and bounce to Loop");
 assert(src.indexOf("if (code && !MAP_CLOSED) rebuildPath(\"\")") !== -1, "only OPEN/junk bounce to Loop; a closed header must race");
@@ -2266,7 +2272,7 @@ sim.setTrack("");
 sim.rebuildPath("");
 assert(sim.MAP_SURF.length === 0, "Campus Loop clears custom surface");
 assert(!sim.MAP_CLOSED, "Campus default is not a custom closed flag leak");
-assert(Math.abs(sim.TRACK_LEN - 1978.98) < 2, "Default Campus Loop length " + sim.TRACK_LEN);
+assert(Math.abs(sim.TRACK_LEN - 1997.74) < 2, "Default Campus Loop length " + sim.TRACK_LEN);
 var line = sim.projectTrack(0, -80);
 assert(line.onAsphalt && !line.grass, "Campus S/F is asphalt again");
 

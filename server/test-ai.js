@@ -246,7 +246,7 @@ function assert(cond, msg) {
   if (!cond) throw new Error(msg);
 }
 
-assert(Math.abs(sim.TRACK_LEN - 1978.98) < 2, "Campus Loop length " + sim.TRACK_LEN);
+assert(Math.abs(sim.TRACK_LEN - 1997.74) < 2, "Campus Loop length " + sim.TRACK_LEN);
 var line = sim.projectTrack(0, -80);
 assert(line.onAsphalt && !line.grass, "racing line is asphalt");
 var shoulder = sim.projectTrack(0, -80 - 8.6 - 2);
@@ -274,7 +274,10 @@ for (wi = 0; wi < sim.WALLS.length; wi++) {
   var mx = (ww.ax + ww.bx) * 0.5;
   var mz = (ww.az + ww.bz) * 0.5;
   if (mx > 64 && mx < 98 && mz > -61.5 && mz < -52.5) pitHit += 1;
-  if (mx > -20 && mx < 40 && mz < -88) rightSF += 1;
+  var xLo = Math.min(ww.ax, ww.bx);
+  var xHi = Math.max(ww.ax, ww.bx);
+  var zHi = Math.max(ww.az, ww.bz);
+  if (xLo < 40 && xHi > -20 && zHi < -88) rightSF += 1;
   if (ww.kind === "tall") tallN += 1;
 }
 assert(pitHit === 0, "left pit peel has no clip-grab wall");
