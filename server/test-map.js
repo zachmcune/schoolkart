@@ -815,10 +815,12 @@ assert(src.indexOf("if (launchCall === \"DUMP\") launchCall = \"SLUGGISH\"") !==
 assert(!/function applyLaunch\([\s\S]{0,500}dumpLaunch/.test(src), "lights-out does not spin onto grass");
 assert(!/function applyCpuLaunch\([\s\S]{0,900}dumpLaunch/.test(src), "room Bowie does not dump-spin at GO");
 assert(src.indexOf("function slotHeading") !== -1 && src.indexOf("gridHeading = slotHeading(g)") !== -1, "room grid keeps the slot heading");
-assert(src.indexOf("function onRaceRibbon") !== -1, "ribbon test is shared by lane, grab, and banner");
+assert(src.indexOf("function onRaceRibbon") !== -1, "ribbon test is shared by lane and grab");
 assert(src.indexOf("if (onRaceRibbon(r.x, r.z)) return false") !== -1, "on-ribbon never enters pit lane or grab");
 assert(src.indexOf("if (!isDriveableLoop() && r.z <= SF_Z + ASPHALT) return false") !== -1, "campus center/right of the ribbon is never the pit lane");
-assert(src.indexOf("if (onRaceRibbon(player.x, player.z)) inBox = false") !== -1, "PIT LANE banner cannot light on the ribbon");
+assert(src.indexOf("var inBox = inPitGrab(player)") !== -1, "PIT LANE banner is the halfway box, not the peel mouth");
+assert(src.indexOf("inBox = inPitLane(player) || inPitGrab(player)") === -1, "peel mouth does not paint PIT LANE");
+assert(src.indexOf("player.heading = slotHeading({ h: gridHeading })") !== -1, "campus GO snaps heading east");
 assert(src.indexOf("return inRect(r.x, r.z, PIT_GRAB)") !== -1, "campus pit grab is the halfway box");
 assert(src.indexOf("var onRace = ribbon && ribbon.dist <= ASPHALT") !== -1, "full racing ribbon is on-race");
 assert(src.indexOf("r.z > leftOfRace && r.z < PIT_LANE.z1 + 4") === -1, "pit grab does not eat toward the racing line");
@@ -1763,6 +1765,7 @@ function proveLoopRibbonNotPit() {
   assert(!sim.inPitGrab({ x: 74, z: -82.4 }) && !sim.inPitLane({ x: 74, z: -82.4 }), "right of the peel is not PIT LANE");
   assert(!sim.inPitGrab({ x: 20, z: -80 }) && !sim.inPitLane({ x: 20, z: -80 }), "peel mouth on the ribbon is not PIT LANE");
   assert(!sim.inPitGrab({ x: 20, z: -62 }), "peel entry is not halfway");
+  assert(!sim.inPitGrab({ x: 38, z: -67.4 }), "peel mouth at 16 kph / 8s is not a grab or PIT LANE banner");
 }
 
 function proveStayRightNoGrab() {
@@ -1808,7 +1811,18 @@ function proveStayRightNoGrab() {
   }
   assert(grabbed === 0, "10s on the racing line never auto-grabs, grabs=" + grabbed);
   assert(on / n > 0.88, "following the ribbon past 8s stays on asphalt, on=" + on + "/" + n);
-  assert(!sim.inPitGrab(car), "after 10s still not in the pit box");
+  assert(!sim.inPitGrab(car) && !sim.inPitLane(car), "after 10s still not in the pit box");
+
+  var crawl = blankCar(g.x, g.z, 0.35, 0);
+  crawl.fuel = 100;
+  crawl.tires = 100;
+  grabbed = 0;
+  for (t = 0; t < 9; t += 1 / 60) {
+    sim.applyMotion(crawl, 0, true, false, false, 1 / 60, true);
+    if (crawl.speed > 5.1) crawl.speed = 5.1;
+    if (sim.inPitGrab(crawl)) grabbed += 1;
+  }
+  assert(grabbed === 0, "16 kph crawl with leftover left yaw hits the mouth, not the halfway banner, grabs=" + grabbed);
 }
 
 function proveMeshOverlap() {

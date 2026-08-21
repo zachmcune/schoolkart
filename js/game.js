@@ -4635,6 +4635,12 @@
     else if (launchCall === "GOOD") launchMul = 1.08;
     else launchMul = 0.55;
     launchCallT = 2;
+    // Campus GO faces race. Leftover peel yaw + W-only crawls into
+    // the pit mouth at ~8s / 16 kph and painted PIT LANE.
+    if (!isDriveableLoop()) {
+      player.heading = slotHeading({ h: gridHeading });
+      player.slide = 0;
+    }
     launchPuffs(player);
   }
 
@@ -4828,8 +4834,9 @@
     if (hud.tireNum) hud.tireNum.textContent = String(Math.round(tires));
     paintRevs();
 
-    var inBox = inPitLane(player) || inPitGrab(player);
-    if (onRaceRibbon(player.x, player.z)) inBox = false;
+    // PIT LANE banner is the halfway LEFT box only. The peel mouth
+    // (PIT_LANE x=8) is not a grab and must not paint the racing line.
+    var inBox = inPitGrab(player);
     var visiting = pitServicing || pitVisit || pitHudPct > 0;
     var pitting = state === "racing" && (visiting || inBox || pitFlash > 0 || pitAwayT < 0.48);
     if (pitServicing) {
