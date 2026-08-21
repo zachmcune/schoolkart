@@ -2292,6 +2292,41 @@
     root.add(leaves);
   }
 
+  var DRESS_KEEP = ASPHALT + RUNOFF + 4;
+
+  function inPitBox(x, z, pad) {
+    pad = pad == null ? 4 : pad;
+    var boxes = [PIT_ENTRY, PIT_LANE, PIT_GRAB, PIT_EXIT];
+    var i;
+    for (i = 0; i < boxes.length; i++) {
+      var b = boxes[i];
+      if (!b || b.x1 < b.x0) continue;
+      if (x >= b.x0 - pad && x <= b.x1 + pad && z >= b.z0 - pad && z <= b.z1 + pad) return true;
+    }
+    return false;
+  }
+
+  function dressClear(x, z, radius) {
+    radius = radius == null ? 2.4 : radius;
+    var pr = projectTrack(x, z);
+    if (!pr || pr.dist < DRESS_KEEP + radius) return false;
+    if (pr.onAsphalt || pr.onRunoff || pr.inPit) return false;
+    if (onPitPavement(x, z) || inPitBox(x, z, radius + 3)) return false;
+    return true;
+  }
+
+  function dressOffset(p, side, dist, radius) {
+    var dir = (side || 1) >= 0 ? 1 : -1;
+    var d = Math.max(Math.abs(dist) || DRESS_KEEP + 6, DRESS_KEEP + (radius || 2) + 2);
+    var i;
+    for (i = 0; i < 10; i++) {
+      var o = sideOf(p, dir * d);
+      if (dressClear(o.x, o.z, radius)) return o;
+      d += 6;
+    }
+    return null;
+  }
+
   function treesAlong(names, side, dist, step, root, leafColor) {
     var allow = {};
     var i;
@@ -2304,7 +2339,8 @@
       var s;
       for (s = PATH[i].startS; s < PATH[i].startS + PATH[i].len; s += step || 14) {
         var p = centerlinePoint(s);
-        var off = sideOf(p, (side || 1) * (dist || 20));
+        var off = dressOffset(p, side, dist || 24, 2.6);
+        if (!off) continue;
         spots.push({ x: off.x, z: off.z, y: p.y || 0, s: 0.8 + ((s * 13) % 7) * 0.05 });
       }
     }
@@ -2331,8 +2367,10 @@
     w = w || 12;
     h = h || 8;
     d = d || 9;
+    var rad = Math.max(w, d) * 0.5 + 1.4;
     walkNamed(names, step || 22, function (p) {
-      var o = sideOf(p, (side || 1) * (dist || 20));
+      var o = dressOffset(p, side, dist || 28, rad);
+      if (!o) return;
       addBoxYaw(o.x, (p.y || 0) + h * 0.5, o.z, w, h, d, body, root, p.h);
       addBoxYaw(o.x, (p.y || 0) + h + 0.4, o.z, w + 1, 0.7, d + 1, roof, root, p.h);
     });
@@ -2340,7 +2378,8 @@
 
   function lanternsAlong(names, side, dist, step, root) {
     walkNamed(names, step || 16, function (p) {
-      var o = sideOf(p, (side || 1) * (dist || 14));
+      var o = dressOffset(p, side, dist || 18, 1.2);
+      if (!o) return;
       addBox(o.x, (p.y || 0) + 2.4, o.z, 0.22, 4.8, 0.22, 0x2a2018, root);
       addBox(o.x, (p.y || 0) + 4.9, o.z, 0.7, 0.35, 0.7, 0xf0d878, root);
     });
@@ -2348,7 +2387,8 @@
 
   function floodlightsAlong(names, side, dist, step, root) {
     walkNamed(names, step || 28, function (p) {
-      var o = sideOf(p, (side || 1) * (dist || 20));
+      var o = dressOffset(p, side, dist || 24, 1.6);
+      if (!o) return;
       addFloodlight(o.x, o.z, root, p.y || 0);
     });
   }
@@ -2360,21 +2400,25 @@
       var s;
       for (s = PATH[i].startS; s < PATH[i].startS + PATH[i].len; s += 9) {
         var p = centerlinePoint(s);
-        var L = sideOf(p, 13);
-        var R = sideOf(p, -13);
-        addBoxYaw(L.x, 5.4 + (p.y || 0), L.z, 11, 10.2, 11, 0x5a5048, root, p.h);
-        addBoxYaw(R.x, 6.2 + (p.y || 0), R.z, 13, 12.4, 13, 0x4a443c, root, p.h);
-        addBoxYaw(L.x + 3, 9 + (p.y || 0), L.z, 8, 6, 8, 0x6a6054, root, p.h + 0.2);
+        var L = dressOffset(p, 1, 22, 6) || sideOf(p, 24);
+        var R = dressOffset(p, -1, 22, 6) || sideOf(p, -24);
+        addBoxYaw(L.x, 5.4 + (p.y || 0), L.z, 10, 10.2, 10, 0x5a5048, root, p.h);
+        addBoxYaw(R.x, 6.2 + (p.y || 0), R.z, 12, 12.4, 12, 0x4a443c, root, p.h);
       }
       var mid = namedPoint("tunnel", 0.5);
       if (mid) {
-        addBoxYaw(mid.x, 12 + (mid.y || 0), mid.z, Math.min(48, PATH[i].len * 0.85), 10, 24, 0x3a3630, root, mid.h);
-        addBoxYaw(mid.x, 16 + (mid.y || 0), mid.z, 22, 6, 18, 0x4a4038, root, mid.h);
+        addBoxYaw(mid.x, 11.4 + (mid.y || 0), mid.z, Math.min(40, PATH[i].len * 0.8), 3.2, ASPHALT * 2 + 4, 0x3a3630, root, mid.h);
       }
-      var a = namedPoint("tunnel", 0.05);
-      var b = namedPoint("tunnel", 0.95);
-      if (a) addBoxYaw(a.x, 5.2 + (a.y || 0), a.z, 3.4, 8.6, 16, 0x1a1612, root, a.h);
-      if (b) addBoxYaw(b.x, 5.2 + (b.y || 0), b.z, 3.4, 8.6, 16, 0x1a1612, root, b.h);
+      function portalFrame(pt) {
+        if (!pt) return;
+        var L = sideOf(pt, ASPHALT + 1.6);
+        var R = sideOf(pt, -(ASPHALT + 1.6));
+        addBoxYaw(L.x, 4.2 + (pt.y || 0), L.z, 2.2, 8.2, 3.2, 0x1a1612, root, pt.h);
+        addBoxYaw(R.x, 4.2 + (pt.y || 0), R.z, 2.2, 8.2, 3.2, 0x1a1612, root, pt.h);
+        addBoxYaw(pt.x, 8.4 + (pt.y || 0), pt.z, ASPHALT * 2 + 2.4, 1.6, 3.2, 0x1a1612, root, pt.h);
+      }
+      portalFrame(namedPoint("tunnel", 0.05));
+      portalFrame(namedPoint("tunnel", 0.95));
     }
   }
 
@@ -2383,7 +2427,10 @@
     for (k = 0; k < steps; k++) {
       var u = k / Math.max(1, steps - 1);
       var ang = -0.15 + u * 2.35;
-      addBox(cx + Math.cos(ang) * r, 3.2 + Math.sin(u * Math.PI) * 4.2, cz + Math.sin(ang) * r, 14, 3.8, 7.2, 0x8a5040, root);
+      var x = cx + Math.cos(ang) * r;
+      var z = cz + Math.sin(ang) * r;
+      if (!dressClear(x, z, 8)) continue;
+      addBox(x, 3.2 + Math.sin(u * Math.PI) * 4.2, z, 14, 3.8, 7.2, 0x8a5040, root);
     }
   }
 
@@ -3012,32 +3059,38 @@
 
   function dressCampus() {
     var root = campusRoot;
-    addBuilding(8, 4.2, SF_Z - 18, 38, 8.4, 9, 0x8a4030, 0xd8b48a, root, 0);
-    addBuilding(-22, 5.2, -34, 18, 10.4, 14, 0xb4532e, 0x8a3a22, root, 0);
-    addBuilding(28, 4.8, -38, 16, 9.6, 16, 0xa34628, 0x7a301c, root, 0);
-    addBuilding(-40, 3.8, -30, 20, 7.6, 12, 0xc4683a, 0x8a4030, root, 0);
-    addBuilding(52, 4.4, -42, 18, 8.2, 12, 0xa34628, 0xd8b48a, root, 0);
-    addBuilding(-8, 4.6, 12, 22, 8.8, 14, 0xb4532e, 0x8a3a22, root, 0);
-    addBuilding(90, 4.0, -36, 20, 7.8, 12, 0xc4683a, 0x8a4030, root, 0);
-    addBuilding(-70, 3.8, -28, 18, 7.4, 12, 0xa34628, 0xd8b48a, root, 0);
-    buildingsAlong(["start"], 1, 30, 36, root, 0xb4532e, 0x8a3a22, 16, 8.2, 12);
-    buildingsAlong(["north", "west"], 1, 28, 32, root, 0xa34628, 0x7a301c, 18, 7.6, 12);
-    addGrandstand(20, 0, SF_Z - 22, 48, 8, 0, root, 0x3a3030, 0xd8b48a);
-    addGrandstand(86, 0, SF_Z - 22, 28, 7, 0, root, 0x3a3030, 0xd8b48a);
+    addBuilding(8, 4.2, SF_Z - 34, 38, 8.4, 9, 0x8a4030, 0xd8b48a, root, 0);
+    addBuilding(-22, 5.2, -16, 18, 10.4, 14, 0xb4532e, 0x8a3a22, root, 0);
+    addBuilding(28, 4.8, -18, 16, 9.6, 16, 0xa34628, 0x7a301c, root, 0);
+    addBuilding(-40, 3.8, -12, 20, 7.6, 12, 0xc4683a, 0x8a4030, root, 0);
+    addBuilding(52, 4.4, -16, 18, 8.2, 12, 0xa34628, 0xd8b48a, root, 0);
+    addBuilding(-8, 4.6, 18, 22, 8.8, 14, 0xb4532e, 0x8a3a22, root, 0);
+    addBuilding(90, 4.0, -14, 20, 7.8, 12, 0xc4683a, 0x8a4030, root, 0);
+    addBuilding(-70, 3.8, -10, 18, 7.4, 12, 0xa34628, 0xd8b48a, root, 0);
+    buildingsAlong(["start"], 1, 44, 36, root, 0xb4532e, 0x8a3a22, 16, 8.2, 12);
+    buildingsAlong(["north", "west"], 1, 30, 32, root, 0xa34628, 0x7a301c, 18, 7.6, 12);
+    addGrandstand(20, 0, SF_Z - 28, 48, 8, 0, root, 0x3a3030, 0xd8b48a);
+    addGrandstand(86, 0, SF_Z - 28, 28, 7, 0, root, 0x3a3030, 0xd8b48a);
     var lot;
     for (lot = 0; lot < 12; lot++) {
-      addBox(70 + (lot % 4) * 6.4, 0.22, -48 - Math.floor(lot / 4) * 8, 4.6, 0.12, 2.6, 0x2a2a2e, root);
-      addBox(70 + (lot % 4) * 6.4, 0.7, -48 - Math.floor(lot / 4) * 8, 3.4, 0.85, 1.6, [0x2ec8c3, 0xd8b48a, 0xc4683a, 0x3a5470][lot % 4], root);
+      var lx = 176 + (lot % 4) * 6.4;
+      var lz = -36 - Math.floor(lot / 4) * 8;
+      if (!dressClear(lx, lz, 3)) continue;
+      addBox(lx, 0.22, lz, 4.6, 0.12, 2.6, 0x2a2a2e, root);
+      addBox(lx, 0.7, lz, 3.4, 0.85, 1.6, [0x2ec8c3, 0xd8b48a, 0xc4683a, 0x3a5470][lot % 4], root);
     }
     var hp = namedPoint("hairpin", 0.5);
     if (hp) {
-      var gym = sideOf(hp, 28);
-      addBuilding(gym.x, 5.2, gym.z, 28, 10.4, 18, 0x8a4030, 0xd8b48a, root, hp.h);
-      var field = sideOf(hp, -26);
-      addBuilding(field.x, 3.4, field.z, 22, 6.8, 14, 0xa34628, 0x7a301c, root, hp.h);
+      var gym = dressOffset(hp, 1, 36, 14);
+      if (gym) addBuilding(gym.x, 5.2, gym.z, 28, 10.4, 18, 0x8a4030, 0xd8b48a, root, hp.h);
+      var field = dressOffset(hp, -1, 32, 12);
+      if (field) addBuilding(field.x, 3.4, field.z, 22, 6.8, 14, 0xa34628, 0x7a301c, root, hp.h);
     }
     var north = namedPoint("north", 0.4);
-    if (north) addBuilding(sideOf(north, 32).x, 4.2, sideOf(north, 32).z, 24, 8.4, 14, 0xb4532e, 0x8a3a22, root, north.h);
+    if (north) {
+      var hall = dressOffset(north, 1, 34, 12);
+      if (hall) addBuilding(hall.x, 4.2, hall.z, 24, 8.4, 14, 0xb4532e, 0x8a3a22, root, north.h);
+    }
     var towerX = 8;
     var towerZ = -28;
     addBox(towerX, 11, towerZ, 7.2, 22, 7.2, 0x9a3f2a, root);
@@ -3078,23 +3131,27 @@
       mesh.position.set(x, 0.44, z);
       root.add(mesh);
     }
-    lawn(12, -44, 20, 16);
-    lawn(-24, -42, 14, 12);
-    lawn(58, -52, 36, 14);
-    lawn(-10, 20, 22, 16);
-    lawn(40, 8, 18, 12);
-    lawn(-56, -40, 20, 14);
-    lawn(110, -50, 24, 12);
-    treesAlong(["north", "start", "west", "sweeper"], 1, 22, 14, root, 0x3f7a30);
-    treesAlong(["north", "start", "west"], -1, 26, 15, root, 0x4a8a38);
+    function tryLawn(x, z, w, d) {
+      if (!dressClear(x, z, Math.max(w, d) * 0.45)) return;
+      lawn(x, z, w, d);
+    }
+    tryLawn(12, -20, 20, 16);
+    tryLawn(-24, -14, 14, 12);
+    tryLawn(58, -18, 24, 12);
+    tryLawn(-10, 24, 22, 16);
+    tryLawn(40, 16, 18, 12);
+    tryLawn(-56, -12, 20, 14);
+    tryLawn(188, -28, 20, 12);
+    treesAlong(["north", "start", "west", "sweeper"], 1, 28, 14, root, 0x3f7a30);
+    treesAlong(["north", "start", "west"], -1, 28, 15, root, 0x4a8a38);
   }
 
   function dressHarbor() {
     var root = harborRoot;
     var waterMat = new THREE.MeshLambertMaterial({ color: 0x2a8a8c, emissive: 0x0a3034, side: THREE.DoubleSide });
     var sf = namedPoint("start", 0.35) || { x: 40, z: SF_Z, h: 0, y: 0 };
-    var port = sideOf(sf, -48);
-    var water = new THREE.Mesh(new THREE.PlaneGeometry(560, 240), waterMat);
+    var port = dressOffset(sf, -1, 70, 8) || sideOf(sf, -72);
+    var water = new THREE.Mesh(new THREE.PlaneGeometry(420, 70), waterMat);
     water.rotation.x = -Math.PI * 0.5;
     water.position.set(port.x, 0.02, port.z);
     root.add(water);
@@ -3102,98 +3159,127 @@
     var poolPt = namedPoint("pool", 0.45);
     if (tabac || poolPt) {
       var harbor2 = tabac || poolPt;
-      var basinW = sideOf(harbor2, -36);
-      var water2 = new THREE.Mesh(new THREE.PlaneGeometry(220, 140), waterMat);
+      var basinW = dressOffset(harbor2, -1, 48, 8) || sideOf(harbor2, -50);
+      var water2 = new THREE.Mesh(new THREE.PlaneGeometry(140, 56), waterMat);
       water2.rotation.x = -Math.PI * 0.5;
       water2.position.set(basinW.x, 0.02, basinW.z);
       root.add(water2);
     }
-    var quay = sideOf(sf, -18);
-    addBoxYaw(quay.x, 0.7, quay.z, 260, 1.2, 6, 0xc8b8a0, root, sf.h);
+    var quay = dressOffset(sf, -1, 22, 4);
+    if (quay) addBoxYaw(quay.x, 0.7, quay.z, 220, 1.2, 5, 0xc8b8a0, root, sf.h);
     var yi;
     for (yi = 0; yi < 14; yi++) {
       var yp = namedPoint("start", 0.06 + yi * 0.062);
       if (!yp) continue;
-      var yo = sideOf(yp, -26 - (yi % 3) * 7);
+      var yo = dressOffset(yp, -1, 32 + (yi % 3) * 7, 5);
+      if (!yo) continue;
       addYacht(yo.x, yo.z, yp.h + (yi % 2 ? 0.25 : -0.18), root, 0.82 + (yi % 3) * 0.14);
     }
-    buildingsAlong(["start"], 1, 20, 16, root, 0xe8c8a8, 0xc47858, 14, 10, 10);
-    buildingsAlong(["start"], 1, 36, 20, root, 0xf0d2b4, 0xd8a078, 12, 14, 9);
-    buildingsAlong(["climb", "square", "devote"], 1, 18, 16, root, 0xe8c8a8, 0xc47858, 12, 9, 9);
-    buildingsAlong(["climb", "square"], -1, 18, 18, root, 0xf0d2b4, 0xb87850, 11, 8, 8);
-    buildingsAlong(["portier", "tabac", "rascasse"], 1, 16, 14, root, 0xe8ddd0, 0xc4b49a, 11, 8, 8);
-    lanternsAlong(["start"], -1, 15, 14, root);
-    lanternsAlong(["start"], 1, 14, 18, root);
+    buildingsAlong(["start"], 1, 44, 18, root, 0xe8c8a8, 0xc47858, 14, 10, 10);
+    buildingsAlong(["start"], 1, 62, 22, root, 0xf0d2b4, 0xd8a078, 12, 14, 9);
+    buildingsAlong(["climb", "square", "devote"], 1, 26, 16, root, 0xe8c8a8, 0xc47858, 12, 9, 9);
+    buildingsAlong(["climb", "square"], -1, 26, 18, root, 0xf0d2b4, 0xb87850, 11, 8, 8);
+    buildingsAlong(["portier", "tabac", "rascasse"], 1, 26, 16, root, 0xe8ddd0, 0xc4b49a, 11, 8, 8);
+    lanternsAlong(["start"], -1, 20, 14, root);
+    lanternsAlong(["start"], 1, 40, 18, root);
     var cas = namedPoint("casino", 0.45);
     if (cas) {
-      var hill = sideOf(cas, 34);
-      addBuilding(hill.x, 14, hill.z, 24, 16, 18, 0xe8d2a0, 0xc9a24a, root, cas.h);
-      addBoxYaw(hill.x, 24.5, hill.z, 12, 5, 12, 0xf0d878, root, cas.h);
-      var dome = new THREE.Mesh(
-        new THREE.SphereGeometry(5.4, 8, 6, 0, Math.PI * 2, 0, Math.PI * 0.55),
-        new THREE.MeshLambertMaterial({ color: 0xf0d878 })
-      );
-      dome.position.set(hill.x, 28, hill.z);
-      root.add(dome);
+      var hill = dressOffset(cas, 1, 38, 14);
+      if (hill) {
+        addBuilding(hill.x, 14, hill.z, 24, 16, 18, 0xe8d2a0, 0xc9a24a, root, cas.h);
+        addBoxYaw(hill.x, 24.5, hill.z, 12, 5, 12, 0xf0d878, root, cas.h);
+        var dome = new THREE.Mesh(
+          new THREE.SphereGeometry(5.4, 8, 6, 0, Math.PI * 2, 0, Math.PI * 0.55),
+          new THREE.MeshLambertMaterial({ color: 0xf0d878 })
+        );
+        dome.position.set(hill.x, 28, hill.z);
+        root.add(dome);
+      }
       var t;
-      for (t = 0; t < 5; t++) {
-        var step = sideOf(cas, 26 - t * 2.6);
-        addBoxYaw(step.x, 1.1 + t * 0.85, step.z, 16 - t, 0.55, 7, 0xd8c4a0, root, cas.h);
+      for (t = 0; t < 4; t++) {
+        var step = dressOffset(cas, 1, 30 + t * 3, 5);
+        if (step) addBoxYaw(step.x, 1.1 + t * 0.85, step.z, 14 - t, 0.55, 6, 0xd8c4a0, root, cas.h);
       }
     }
     var u;
     for (u = 0; u <= 10; u++) {
       var hp = namedPoint("hairpin", u / 10);
       if (!hp) continue;
-      var wrap = sideOf(hp, 15);
+      var wrap = dressOffset(hp, -1, 26, 8);
+      if (!wrap) continue;
       addBuilding(wrap.x, 6.8 + (u % 3) * 0.6, wrap.z, 13, 9.4 + (u % 2) * 1.4, 8, 0xe8ddd0, 0xc4b49a, root, hp.h);
     }
     addRockTunnel(root);
     var pool = namedPoint("pool", 0.45);
     if (pool) {
-      var basin = sideOf(pool, 16);
-      addBoxYaw(basin.x, 0.16, basin.z, 18, 0.22, 9, 0x3ec8d8, root, pool.h);
-      addBoxYaw(basin.x + Math.cos(pool.h) * 14, 0.16, basin.z + Math.sin(pool.h) * 14, 14, 0.22, 8, 0x2ab0c4, root, pool.h);
-      addBoxYaw(sideOf(pool, 24).x, 3.4, sideOf(pool, 24).z, 12, 4.6, 9, 0xe8ddd0, root, pool.h);
-      addBoxYaw(sideOf(pool, 19).x, 4.6, sideOf(pool, 19).z, 0.4, 6.2, 1.8, 0xf4efe6, root, pool.h);
+      var basin = dressOffset(pool, 1, 26, 8);
+      if (basin) {
+        addBoxYaw(basin.x, 0.16, basin.z, 16, 0.22, 8, 0x3ec8d8, root, pool.h);
+        addBoxYaw(basin.x + Math.cos(pool.h) * 12, 0.16, basin.z + Math.sin(pool.h) * 12, 12, 0.22, 7, 0x2ab0c4, root, pool.h);
+      }
+      var club = dressOffset(pool, 1, 36, 8);
+      if (club) {
+        addBoxYaw(club.x, 3.4, club.z, 12, 4.6, 9, 0xe8ddd0, root, pool.h);
+        addBoxYaw(club.x, 4.6, club.z, 0.4, 6.2, 1.8, 0xf4efe6, root, pool.h);
+      }
     }
     var ras = namedPoint("rascasse", 0.5);
-    if (ras) addBuilding(sideOf(ras, 17).x, 5.4, sideOf(ras, 17).z, 16, 9.2, 12, 0xe0c4a8, 0xb87850, root, ras.h);
+    if (ras) {
+      var rasB = dressOffset(ras, 1, 28, 9);
+      if (rasB) addBuilding(rasB.x, 5.4, rasB.z, 16, 9.2, 12, 0xe0c4a8, 0xb87850, root, ras.h);
+    }
   }
 
   function dressPark() {
     var root = parkRoot;
-    treesAlong(["start", "biassono", "serraglio", "parabola"], 1, 20, 10, root, 0x2f6a30);
-    treesAlong(["start", "biassono", "serraglio", "parabola"], -1, 22, 11, root, 0x3a7a34);
-    treesAlong(["lesmo", "rettifilo", "roggia"], 1, 20, 9, root, 0x2a5a28);
-    treesAlong(["lesmo", "rettifilo", "roggia"], -1, 20, 9, root, 0x2a5a28);
+    treesAlong(["start", "biassono", "serraglio", "parabola"], 1, 26, 10, root, 0x2f6a30);
+    treesAlong(["start", "biassono", "serraglio", "parabola"], -1, 26, 11, root, 0x3a7a34);
+    treesAlong(["lesmo", "rettifilo", "roggia"], 1, 24, 9, root, 0x2a5a28);
+    treesAlong(["lesmo", "rettifilo", "roggia"], -1, 24, 9, root, 0x2a5a28);
     var sf = namedPoint("start", 0.25) || { x: 0, z: SF_Z, h: 0, y: 0 };
-    addGrandstand(sideOf(sf, -22).x, 0, sideOf(sf, -22).z, 96, 11, sf.h, root, 0x2a3038, 0xc4a070);
-    var tower = sideOf(sf, 18);
-    addBoxYaw(tower.x, 13, tower.z, 4.4, 26, 4.4, 0xd8d2c6, root, sf.h);
-    addBoxYaw(tower.x, 26.4, tower.z, 7.2, 1.1, 7.2, 0x8a3a22, root, sf.h);
-    addBoxYaw(tower.x, 8, tower.z, 6.2, 2.2, 6.2, 0xc4b49a, root, sf.h);
+    var stand = dressOffset(sf, -1, 28, 8);
+    if (stand) addGrandstand(stand.x, 0, stand.z, 96, 10, sf.h, root, 0x2a3038, 0xc4a070);
+    var tower = dressOffset(sf, 1, 46, 5);
+    if (tower) {
+      addBoxYaw(tower.x, 13, tower.z, 4.4, 26, 4.4, 0xd8d2c6, root, sf.h);
+      addBoxYaw(tower.x, 26.4, tower.z, 7.2, 1.1, 7.2, 0x8a3a22, root, sf.h);
+      addBoxYaw(tower.x, 8, tower.z, 6.2, 2.2, 6.2, 0xc4b49a, root, sf.h);
+    }
     var para = namedPoint("parabola", 0.55);
-    if (para) addGrandstand(sideOf(para, -24).x, 0, sideOf(para, -24).z, 52, 9, para.h, root, 0x2a3038, 0xc4a070);
+    if (para) {
+      var pStand = dressOffset(para, -1, 28, 7);
+      if (pStand) addGrandstand(pStand.x, 0, pStand.z, 52, 9, para.h, root, 0x2a3038, 0xc4a070);
+    }
     var les = namedPoint("lesmo", 0.35);
     var ser = namedPoint("serraglio", 0.35);
     if (les && ser) addBankingArc((les.x + ser.x) * 0.5 - 20, (les.z + ser.z) * 0.5 + 8, 62, 14, root);
     else if (les) addBankingArc(les.x - 40, les.z - 20, 56, 12, root);
     var first = namedPoint("rettifilo", 0.35) || namedPoint("roggia", 0.3);
     if (first) {
-      var villa = sideOf(first, 52);
-      addBuilding(villa.x, 6.2, villa.z, 30, 10.4, 20, 0xe8ddd0, 0xc4b090, root, first.h);
-      addBuilding(villa.x + Math.cos(first.h) * 22, 5, villa.z + Math.sin(first.h) * 22, 16, 8, 12, 0xd8c8b0, 0xb0a080, root, first.h);
-      addBoxYaw(sideOf(first, -18).x, 0.18, sideOf(first, -18).z, 22, 0.22, 10, 0xc4b080, root, first.h);
+      var villa = dressOffset(first, 1, 56, 16);
+      if (villa) {
+        addBuilding(villa.x, 6.2, villa.z, 30, 10.4, 20, 0xe8ddd0, 0xc4b090, root, first.h);
+        var wing = dressOffset(first, 1, 78, 10);
+        if (wing) addBuilding(wing.x, 5, wing.z, 16, 8, 12, 0xd8c8b0, 0xb0a080, root, first.h);
+      }
+      var gravel = dressOffset(first, -1, 22, 6);
+      if (gravel) addBoxYaw(gravel.x, 0.18, gravel.z, 18, 0.22, 8, 0xc4b080, root, first.h);
     }
     var second = namedPoint("roggia", 0.4);
-    if (second) addBoxYaw(sideOf(second, -18).x, 0.18, sideOf(second, -18).z, 20, 0.22, 9, 0xc4b080, root, second.h);
+    if (second) {
+      var g2 = dressOffset(second, -1, 22, 6);
+      if (g2) addBoxYaw(g2.x, 0.18, g2.z, 16, 0.22, 8, 0xc4b080, root, second.h);
+    }
     var lawn = new THREE.Mesh(
       new THREE.PlaneGeometry(90, 48),
       new THREE.MeshLambertMaterial({ color: 0x4a9a40, side: THREE.DoubleSide })
     );
     lawn.rotation.x = -Math.PI * 0.5;
-    if (first) lawn.position.set(sideOf(first, 26).x, 0.08, sideOf(first, 26).z);
+    if (first) {
+      var lawnAt = dressOffset(first, 1, 40, 12);
+      if (lawnAt) lawn.position.set(lawnAt.x, 0.08, lawnAt.z);
+      else lawn.position.set(40, 0.08, 20);
+    }
     else lawn.position.set(40, 0.08, 20);
     root.add(lawn);
   }
@@ -3201,62 +3287,74 @@
   function dressDesert() {
     var root = desertRoot;
     var sf = namedPoint("start", 0.3) || { x: 20, z: SF_Z, h: 0, y: 0 };
-    var tower = sideOf(sf, 26);
+    var tower = dressOffset(sf, 1, 48, 10) || sideOf(sf, 50);
     addBoxYaw(tower.x, 3.2, tower.z, 16, 6.2, 16, 0xe8d8c0, root, sf.h);
     addBoxYaw(tower.x, 10.4, tower.z, 12, 8.4, 12, 0xd8c8b0, root, sf.h);
     addBoxYaw(tower.x, 16.2, tower.z, 11, 1.6, 11, 0xa8d0e0, root, sf.h);
     addBoxYaw(tower.x, 22, tower.z, 8.2, 10, 8.2, 0xf4efe6, root, sf.h);
     addBoxYaw(tower.x, 28.4, tower.z, 6.4, 4.8, 6.4, 0xd0e0e8, root, sf.h);
     addBoxYaw(tower.x, 32.2, tower.z, 8, 1.2, 8, 0xc4a070, root, sf.h);
-    addGrandstand(sideOf(sf, -24).x, 0, sideOf(sf, -24).z, 110, 12, sf.h, root, 0x2a2420, 0xd8c4a0);
-    floodlightsAlong(["start", "t1", "oasis", "back"], 1, 20, 26, root);
-    floodlightsAlong(["start", "t1", "oasis", "back"], -1, 20, 26, root);
+    var mainStand = dressOffset(sf, -1, 30, 8);
+    if (mainStand) addGrandstand(mainStand.x, 0, mainStand.z, 110, 11, sf.h, root, 0x2a2420, 0xd8c4a0);
+    floodlightsAlong(["start", "t1", "oasis", "back"], 1, 28, 26, root);
+    floodlightsAlong(["start", "t1", "oasis", "back"], -1, 26, 26, root);
     var t1 = namedPoint("t1", 0.4);
     if (t1) {
-      addGrandstand(sideOf(t1, 26).x, 0, sideOf(t1, 26).z, 44, 9, t1.h, root, 0x2a2420, 0xd8c4a0);
+      var t1s = dressOffset(t1, 1, 32, 7);
+      if (t1s) addGrandstand(t1s.x, 0, t1s.z, 44, 9, t1.h, root, 0x2a2420, 0xd8c4a0);
       var pal = sideOf(t1, -96);
       pal.x += Math.cos(t1.h) * 36;
       pal.z += Math.sin(t1.h) * 36;
-      addBuilding(pal.x, 6.2, pal.z, 24, 8.4, 18, 0xd4b080, 0xc49858, root, t1.h);
-      addBuilding(pal.x + 18, 4.6, pal.z + 10, 14, 6.8, 12, 0xc4a070, 0xb08848, root, t1.h);
-      var dome = new THREE.Mesh(
-        new THREE.SphereGeometry(8, 8, 6, 0, Math.PI * 2, 0, Math.PI * 0.52),
-        new THREE.MeshLambertMaterial({ color: 0xe8c878 })
-      );
-      dome.position.set(pal.x, 12.2, pal.z);
-      root.add(dome);
+      if (dressClear(pal.x, pal.z, 14)) {
+        addBuilding(pal.x, 6.2, pal.z, 24, 8.4, 18, 0xd4b080, 0xc49858, root, t1.h);
+        addBuilding(pal.x + 18, 4.6, pal.z + 10, 14, 6.8, 12, 0xc4a070, 0xb08848, root, t1.h);
+        var dome = new THREE.Mesh(
+          new THREE.SphereGeometry(8, 8, 6, 0, Math.PI * 2, 0, Math.PI * 0.52),
+          new THREE.MeshLambertMaterial({ color: 0xe8c878 })
+        );
+        dome.position.set(pal.x, 12.2, pal.z);
+        root.add(dome);
+      }
     }
     var names = ["t1", "oasis", "kink", "sweeper"];
     var i;
     for (i = 0; i < names.length; i++) {
       var c = namedPoint(names[i], 0.5);
       if (!c) continue;
-      addBoxYaw(sideOf(c, -22).x, 1.2, sideOf(c, -22).z, 22, 2.4, 9, 0xc4a06a, root, c.h);
-      addBoxYaw(sideOf(c, 24).x, 1.6, sideOf(c, 24).z, 16, 3.0, 8, 0x6a5840, root, c.h);
-      addBoxYaw(sideOf(c, -28).x, 0.7, sideOf(c, -28).z, 28, 1.2, 12, 0xd8b878, root, c.h);
+      var bermR = dressOffset(c, -1, 28, 8);
+      var bermL = dressOffset(c, 1, 30, 7);
+      if (bermR) addBoxYaw(bermR.x, 1.2, bermR.z, 20, 2.4, 8, 0xc4a06a, root, c.h);
+      if (bermL) addBoxYaw(bermL.x, 1.6, bermL.z, 14, 3.0, 7, 0x6a5840, root, c.h);
     }
   }
 
   function dressForest() {
     var root = forestRoot;
-    treesAlong(null, 1, 18, 10, root, 0x2a5a28);
-    treesAlong(null, -1, 20, 11, root, 0x245224);
+    treesAlong(null, 1, 24, 10, root, 0x2a5a28);
+    treesAlong(null, -1, 24, 11, root, 0x245224);
     var sf = namedPoint("start", 0.3) || { x: 0, z: SF_Z, h: 0, y: 0 };
-    addGrandstand(sideOf(sf, -22).x, sf.y || 0, sideOf(sf, -22).z, 76, 10, sf.h, root, 0x2a3030, 0x8a7a60);
-    addBuilding(sideOf(sf, 22).x, 3.6 + (sf.y || 0), sideOf(sf, 22).z, 26, 6.6, 12, 0x8a8070, 0x6a6050, root, sf.h);
+    var stand = dressOffset(sf, -1, 28, 7);
+    if (stand) addGrandstand(stand.x, sf.y || 0, stand.z, 76, 10, sf.h, root, 0x2a3030, 0x8a7a60);
+    var pits = dressOffset(sf, 1, 46, 12);
+    if (pits) addBuilding(pits.x, 3.6 + (sf.y || 0), pits.z, 26, 6.6, 12, 0x8a8070, 0x6a6050, root, sf.h);
     var source = namedPoint("source", 0.5);
-    if (source) addGrandstand(sideOf(source, -20).x, source.y || 0, sideOf(source, -20).z, 28, 7, source.h, root, 0x2a3030, 0x8a7a60);
+    if (source) {
+      var srcStand = dressOffset(source, -1, 26, 6);
+      if (srcStand) addGrandstand(srcStand.x, source.y || 0, srcStand.z, 28, 7, source.h, root, 0x2a3030, 0x8a7a60);
+    }
     var crest = namedPoint("raidillon", 0.85);
     if (crest) {
-      var hotel = sideOf(crest, 20);
-      addBuilding(hotel.x, 5.4 + (crest.y || 0), hotel.z, 22, 8.8, 13, 0xd8d0c4, 0x8a4030, root, crest.h);
-      addBoxYaw(sideOf(crest, -18).x, 0.22 + (crest.y || 0), sideOf(crest, -18).z, 24, 0.32, 11, 0xe0c888, root, crest.h);
+      var hotel = dressOffset(crest, 1, 28, 11);
+      if (hotel) addBuilding(hotel.x, 5.4 + (crest.y || 0), hotel.z, 22, 8.8, 13, 0xd8d0c4, 0x8a4030, root, crest.h);
+      var paint = dressOffset(crest, -1, 22, 6);
+      if (paint) addBoxYaw(paint.x, 0.22 + (crest.y || 0), paint.z, 20, 0.32, 9, 0xe0c888, root, crest.h);
     }
     var mid = namedPoint("raidillon", 0.45) || namedPoint("forest", 0.35);
     var drop = namedPoint("drop", 0.5);
     if (mid) {
-      var village = sideOf(mid, -100);
+      var village = dressOffset(mid, -1, 100, 10) || sideOf(mid, -100);
       var vy = drop && drop.y != null ? drop.y : 0;
+      if (!dressClear(village.x, village.z, 10)) return;
       addBuilding(village.x, 3.4 + vy, village.z, 12, 6, 10, 0x8a8a88, 0x6a6058, root, 0.4);
       addBuilding(village.x + 16, 3.0 + vy, village.z + 8, 10, 5.4, 8, 0x7a7a76, 0x5a5048, root, 0.2);
       addBuilding(village.x - 14, 2.6 + vy, village.z + 12, 9, 4.8, 8, 0x7a7068, 0x5a5048, root, 0.1);

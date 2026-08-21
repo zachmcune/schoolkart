@@ -78,6 +78,7 @@ var code = [
   "var BUILTIN_KERBS = { campus: CAMPUS_KERBS, harbor: ['devote','casino','hairpin','chicane','pool','rascasse','harbor'], park: ['rettifilo','roggia','lesmo','ascari','parabola'], desert: ['t1','oasis','kink','sweeper'], forest: ['source','eau','raidillon','busstop'] };",
   "var stampTrees = [];",
   "var RIBBON_SEGS = 360;",
+  "var DRESS_KEEP = ASPHALT + RUNOFF + 4;",
   "var trackCode = '';",
   "var state = 'racing';",
   "var raceTime = 3;",
@@ -141,6 +142,8 @@ var code = [
   sliceFn("rebuildPath"),
   sliceFn("projectOn"),
   sliceFn("projectTrack"),
+  sliceFn("inPitBox"),
+  sliceFn("dressClear"),
   sliceFn("faceRaceAt"),
   sliceFn("rideHeight"),
   sliceFn("steerWheelYaw"),
@@ -226,6 +229,8 @@ var code = [
   "  isDriveableLoop: isDriveableLoop,",
   "  lockRacePath: lockRacePath,",
   "  rideHeight: rideHeight,",
+  "  dressClear: dressClear,",
+  "  inPitBox: inPitBox,",
   "  steerWheelYaw: steerWheelYaw,",
   "  hitCarFeel: hitCarFeel,",
   "  MAP_DXY: MAP_DXY,",
@@ -2806,7 +2811,8 @@ assert(src.indexOf("function pickBuiltin") !== -1, "title circuit picker");
 assert(src.indexOf("Fairmont") !== -1 && src.indexOf("Sakhir") !== -1, "real-circuit landmark comments");
 assert(src.indexOf("function addRockTunnel") !== -1, "Harbor tunnel is a rock mass, not a plank");
 assert(src.indexOf("function addBankingArc") !== -1, "Park old banking is an infield arc");
-assert(src.indexOf("sideOf(p, (side || 1) * (dist || 20))") !== -1, "tree belts dress both sides of the ribbon");
+assert(src.indexOf("function dressClear") !== -1 && src.indexOf("function dressOffset") !== -1, "dressing stays off the ribbon and pit");
+assert(src.indexOf("dressOffset(p, side, dist") !== -1, "tree belts walk off the ribbon on both sides");
 assert(src.indexOf("rettifilo") !== -1, "Royal Park names the first chicane after Rettifilo");
 sim.rebuildPath("PARK");
 var parkNames = sim.PATH.map(function (p) { return p.name; }).join(" ");
@@ -2818,6 +2824,20 @@ assert(harborNames.indexOf("hairpin") !== -1 && harborNames.indexOf("tunnel") !=
 sim.rebuildPath("FOREST");
 var forestNames = sim.PATH.map(function (p) { return p.name; }).join(" ");
 assert(forestNames.indexOf("source") !== -1 && forestNames.indexOf("raidillon") !== -1 && forestNames.indexOf("busstop") !== -1, "Forest keeps Source / Raidillon / bus-stop");
+sim.rebuildPath("");
+var dressMaps = ["", "HARBOR", "PARK", "DESERT", "FOREST"];
+var dm;
+for (dm = 0; dm < dressMaps.length; dm++) {
+  var dcode = dressMaps[dm];
+  var dlabel = dcode || "CAMPUS";
+  sim.rebuildPath(dcode);
+  var onLine = sim.centerlinePoint(24);
+  assert(!sim.dressClear(onLine.x, onLine.z, 2), dlabel + " centerline is not a dress spot");
+  assert(sim.inPitBox(80, -57, 2), dlabel + " default pit box is live");
+  assert(!sim.dressClear(80, -57, 2), dlabel + " pit lane is not a dress spot");
+  assert(!sim.dressClear(40, -70, 3), dlabel + " pit-side of S/F is not a dress spot");
+  assert(sim.dressClear(420, 420, 4), dlabel + " far skirt is a dress spot");
+}
 sim.rebuildPath("");
 
 console.log(
