@@ -4605,35 +4605,68 @@
     var avz = Math.sin(a.heading) * a.speed + Math.cos(a.heading) * a.slide;
     var bvx = Math.cos(b.heading) * b.speed + -Math.sin(b.heading) * b.slide;
     var bvz = Math.sin(b.heading) * b.speed + Math.cos(b.heading) * b.slide;
-    var rel = (avx - bvx) * nx + (avz - bvz) * nz;
+    var dx = b.x - a.x;
+    var dz = b.z - a.z;
+    var dlen = Math.hypot(dx, dz) || 1;
+    dx /= dlen;
+    dz /= dlen;
+    var aSpd = Math.hypot(avx, avz);
+    var bSpd = Math.hypot(bvx, bvz);
+    var leadA = aSpd >= bSpd;
+    var cx = leadA ? avx : bvx;
+    var cz = leadA ? avz : bvz;
+    var crashL = leadA ? aSpd : bSpd;
+    if (crashL > 1.2) {
+      cx /= crashL;
+      cz /= crashL;
+    } else {
+      cx = dx;
+      cz = dz;
+    }
+    // SAT MTV is the short unstick. A nose-on-tail ram's smallest
+    // overlap is the width axis, so SAT looks like a side tap and
+    // bounces the faster car. Close along centers / travel instead.
+    var cand = [
+      [nx, nz],
+      [dx, dz],
+      [cx, cz],
+    ];
+    var rel = -1;
+    var cnx = nx;
+    var cnz = nz;
+    var ci;
+    for (ci = 0; ci < cand.length; ci++) {
+      var rx = cand[ci][0];
+      var rz = cand[ci][1];
+      var rl = Math.hypot(rx, rz) || 1;
+      rx /= rl;
+      rz /= rl;
+      if (rx * dx + rz * dz < 0) {
+        rx = -rx;
+        rz = -rz;
+      }
+      var r = (avx - bvx) * rx + (avz - bvz) * rz;
+      if (r > rel) {
+        rel = r;
+        cnx = rx;
+        cnz = rz;
+      }
+    }
     if (rel > 0) {
       // Speed-weighted inelastic crash. Faster car keeps going; the
       // slower one is launched that way. Equal-mass j = rel*0.72 used
       // to bounce a max-speed ram backwards like a pinball.
-      var aSpd = Math.hypot(avx, avz);
-      var bSpd = Math.hypot(bvx, bvz);
-      var leadA = aSpd >= bSpd;
-      var cx = leadA ? avx : bvx;
-      var cz = leadA ? avz : bvz;
-      var crashL = leadA ? aSpd : bSpd;
-      if (crashL > 1.2) {
-        cx /= crashL;
-        cz /= crashL;
-      } else {
-        cx = nx;
-        cz = nz;
-      }
       var ma = 0.7 + 0.95 * clamp(aSpd / MAX_SPEED, 0, 1);
       var mb = 0.7 + 0.95 * clamp(bSpd / MAX_SPEED, 0, 1);
       var jimp = (1.16 * rel) / (1 / ma + 1 / mb);
-      avx -= (jimp / ma) * nx;
-      avz -= (jimp / ma) * nz;
-      bvx += (jimp / mb) * nx;
-      bvz += (jimp / mb) * nz;
+      avx -= (jimp / ma) * cnx;
+      avz -= (jimp / ma) * cnz;
+      bvx += (jimp / mb) * cnx;
+      bvz += (jimp / mb) * cnz;
       if (crashL > 12 && Math.abs(aSpd - bSpd) > 4.5) {
         var alongFast = leadA ? avx * cx + avz * cz : bvx * cx + bvz * cz;
         var alongSlow = leadA ? bvx * cx + bvz * cz : avx * cx + avz * cz;
-        var floor = crashL * 0.26;
+        var floor = crashL * 0.28;
         if (alongFast < floor) {
           var add = floor - alongFast;
           avx += cx * add;
@@ -4643,9 +4676,9 @@
           alongFast = floor;
           alongSlow += add;
         }
-        var wantSlow = Math.max(alongFast * 0.58, crashL * 0.3);
+        var wantSlow = Math.max(alongFast * 0.7, crashL * 0.42);
         if (alongSlow < wantSlow) {
-          var kick = (wantSlow - alongSlow) * 0.75;
+          var kick = (wantSlow - alongSlow) * 0.85;
           if (leadA) {
             bvx += cx * kick;
             bvz += cz * kick;
@@ -4658,8 +4691,8 @@
     }
     var pace = Math.max(Math.abs(a.speed), Math.abs(b.speed), Math.hypot(avx, avz), Math.hypot(bvx, bvz));
     var impact = Math.max(rel, 0, pace * 0.34, 2.6);
-    hitCarFeel(a, avx, avz, -nx, -nz, impact);
-    hitCarFeel(b, bvx, bvz, nx, nz, impact);
+    hitCarFeel(a, avx, avz, -cnx, -cnz, impact);
+    hitCarFeel(b, bvx, bvz, cnx, cnz, impact);
     poseCar(a);
     poseCar(b);
     if (impact > 4 && !(a.hitFxT > 0) && !(b.hitFxT > 0)) {

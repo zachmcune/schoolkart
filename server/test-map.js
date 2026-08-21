@@ -42,6 +42,7 @@ var code = [
   "var GRASS_ROLL = 4;",
   "var GRASS_DUMP = 40;",
   "var TIRE_FLOOR = 22;",
+  "var KERB_RAISE = 0.055;",
   "var MAX_SPEED = 48;",
   "var ACCEL = 16;",
   "var BRAKE_DECEL = 20;",
@@ -115,6 +116,9 @@ var code = [
   sliceFn("faceRaceAt"),
   sliceFn("rideHeight"),
   sliceFn("steerWheelYaw"),
+  sliceFn("kerbDepthAt"),
+  sliceFn("sampleWheelKerbs"),
+  sliceFn("wheelWorld"),
   sliceFn("hitCarFeel"),
   sliceFn("applyMotion"),
   sliceFn("updateLaps"),
@@ -814,6 +818,7 @@ assert(!/function bashCars\([\s\S]{0,900}heading = Math.atan2/.test(src), "bashC
 assert(src.indexOf("function bashOtherCars") !== -1, "room Bowie is bashed from the race tick");
 assert(src.indexOf("function meshOverlap") !== -1 && src.indexOf("var MESH_HALF_W = 1.2") !== -1, "hit box is the visible mesh box, not a sausage");
 assert(src.indexOf("var impact = Math.max(rel, 0, pace * 0.34, 2.6)") !== -1, "overlap at a crawl still yaws");
+assert(src.indexOf("Speed-weighted inelastic crash") !== -1, "max-speed ram plows through, does not bounce back");
 assert(src.indexOf("if (impact < 1.1 && pace < 3)") === -1, "slow side-by-side does not skip feel");
 assert(/function pinGrid\([\s\S]{0,400}faceRaceAt/.test(src), "grid pin faces the ribbon, not leftover yaw");
 assert(src.indexOf("if (!isDriveableLoop()) return 0;") !== -1, "Campus grid is east, not a pit-peel left yaw");
