@@ -37,8 +37,8 @@
   var LIMP_ACCEL = 2;
   var STEER_RATE = 2.35;
   var MAX_LAT = 28;
-  var TILT_DEAD = 6;
-  var TILT_SPAN = 26;
+  var TILT_DEAD = 4;
+  var TILT_SPAN = 18;
   // Burn is the clock. Retuned for measured TRACK_LEN (~1979). 5 laps
   // still force ONE box — a second stop should never be required.
   var IDLE_FUEL = 0.46;
@@ -6820,7 +6820,7 @@
     }
     // Match keyboard: A / left = +steer, D / right = -steer.
     var target = (d > 0 ? -1 : 1) * mag;
-    touchCtl.gyroFilt += (target - touchCtl.gyroFilt) * 0.42;
+    touchCtl.gyroFilt += (target - touchCtl.gyroFilt) * 0.55;
     if (Math.abs(touchCtl.gyroFilt) < 0.02) touchCtl.gyroFilt = 0;
     touchCtl.steer = touchCtl.gyroFilt;
   }
