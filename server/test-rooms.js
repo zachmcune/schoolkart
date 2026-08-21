@@ -235,8 +235,8 @@ waitHealth()
                   assert(js.indexOf("var nearI = -1") !== -1 && js.indexOf("function mergeColinearWalls") !== -1, "one collider per edge; joins do not stack");
                   assert(/else if \(!\(r\.hitYawT > 0\)\) \{\s*r\.speed \*= 0\.82/.test(js), "pinned graze does not restack speed dumps");
                   assert(js.indexOf("ribbonFitsFootprint") !== -1 && js.indexOf("ribbonsStack") !== -1, "modules fit; chicane S does not stack");
-                  assert(js.indexOf("var ACCEL = 16") !== -1 && js.indexOf("var COAST = 5") !== -1, "slow wind-up; coast bleeds");
-                  assert(js.indexOf("var BRAKE_DECEL = 20") !== -1, "Space is a planned squeeze for the 180");
+                  assert(js.indexOf("var ACCEL = 5") !== -1 && js.indexOf("var COAST = 2") !== -1, "slow wind-up; coast bleeds");
+                  assert(js.indexOf("var BRAKE_DECEL = 6") !== -1, "Space is a planned squeeze for the 180");
                   assert(js.indexOf("function inChicaneS") !== -1, "chicane S is the S, not the approach");
                   assert(js.indexOf("inChicaneS(info) && r.speed") === -1, "S never speed-dumps or steer-locks");
                   assert(js.indexOf('info.name === "hairpin" || info.name === "chicane"') === -1, "name alone does not lock A/D before the S");

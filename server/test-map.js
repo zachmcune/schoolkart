@@ -1476,9 +1476,9 @@ function proveTiltFeel() {
 }
 proveTiltFeel();
 
-assert(src.indexOf("var ACCEL = 16") !== -1, "wind-up is slow (arcade, not a snap)");
-assert(src.indexOf("var COAST = 5") !== -1, "coast bleeds speed");
-assert(src.indexOf("var BRAKE_DECEL = 20") !== -1, "Space is a planned squeeze");
+assert(src.indexOf("var ACCEL = 5") !== -1, "wind-up is slow (arcade, not a snap)");
+assert(src.indexOf("var COAST = 2") !== -1, "coast bleeds speed");
+assert(src.indexOf("var BRAKE_DECEL = 6") !== -1, "Space is a planned squeeze");
 assert(src.indexOf("var MAX_LAT = 28") !== -1, "custom 90s are not glued to hide a spin");
 assert(src.indexOf("function inChicaneS") !== -1, "chicane S is the S, not the approach slab");
 assert(src.indexOf('info.name === "hairpin" || info.name === "chicane"') === -1, "name alone does not lock A/D on hairpin/chicane");
