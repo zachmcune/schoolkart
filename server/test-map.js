@@ -845,6 +845,11 @@ assert(src.indexOf("r.z > leftOfRace && r.z < PIT_LANE.z1 + 4") === -1, "pit gra
 assert(src.indexOf("launchT = GETAWAY_T") !== -1 && src.indexOf("var GETAWAY_T = 1.5") !== -1, "SLUGGISH is a 1.5s getaway, not a grass limp");
 assert(src.indexOf("mpMode && playerGridX != null") !== -1, "room grid keeps the slot, not Campus P2");
 assert(src.indexOf("z: SF_Z + (i % 2 ? GRID_OUT_B : GRID_OUT_A), h: 0") !== -1, "campus room grid is outside the pit peel");
+assert(src.indexOf("x: -6 - Math.floor(i / 2) * 8") !== -1, "campus grid is 2-wide so Add Bowie parks beside the host");
+assert(src.indexOf("x: -6 - i * 8") === -1, "campus no longer stacks cars single-file behind the chase cam");
+assert(src.indexOf("var gxs = [-6, -6, -14]") !== -1, "painted boxes match the 2-wide grid");
+assert(src.indexOf("function roomBotLook") !== -1 && src.indexOf('p.name === "BowieKnife99"') !== -1, "room Bowie is gold #12, not a skin-slot ghost");
+assert(src.indexOf("hostBots[p.id].mesh.visible = true") !== -1, "Add Bowie parks a visible mesh");
 assert(src.indexOf("var GRID_OUT_A = -2.4") !== -1 && src.indexOf("var GRID_OUT_B = -5.2") !== -1, "campus slots sit on the outside ribbon");
 assert(src.indexOf("function steerWheelYaw") !== -1 && src.indexOf("return -steer * 0.42") !== -1, "A = POINT LEFT, D = POINT RIGHT");
 assert(src.indexOf("function attachNameTag") !== -1 && src.indexOf("function layoutNameTags") !== -1, "halo nametags exist");
@@ -1956,12 +1961,18 @@ function proveGridFacesRace() {
   sim.lockRacePath("");
   var g0 = sim.gridSlot(0);
   var g1 = sim.gridSlot(1);
-  assert(g0.z < -80, "host slot is outside the peel, not infield +Z, z=" + g0.z.toFixed(2));
+  assert(g0.x === -6 && g0.z === -82.4, "host slot stays put, x=" + g0.x + " z=" + g0.z);
+  assert(g1.x === g0.x, "Add Bowie parks beside the host, not 8m behind the lens, x=" + g1.x);
   assert(g1.z < g0.z, "second row is further outside, not on the peel");
+  assert(g0.z < -80, "host slot is outside the peel, not infield +Z, z=" + g0.z.toFixed(2));
+  assert(Math.abs(g1.z - ( -80 - 5.2)) < 0.01, "Bowie sits on the outside mate box");
   var pr0 = sim.projectTrack(g0.x, g0.z);
+  var pr1 = sim.projectTrack(g1.x, g1.z);
   assert(pr0.onAsphalt, "host room grid is on the asphalt ribbon");
+  assert(pr1.onAsphalt, "Bowie grid is on the asphalt ribbon");
   assert(!sim.onPitPavement(g0.x, g0.z) && !sim.onPitPavement(g1.x, g1.z), "room grid is not on the pit peel");
   assert(Math.abs(angDiff(sim.slotHeading(g0), 0)) < 0.05, "keep the slot heading east, h=" + sim.slotHeading(g0).toFixed(3));
+  assert(Math.abs(angDiff(sim.slotHeading(g1), 0)) < 0.05, "Bowie faces the same heading as the host");
   assert(Math.abs(angDiff(sim.faceRaceAt(g0.x, g0.z), 0)) < 0.05, "campus faceRaceAt stays east");
   assert(Math.abs(angDiff(sim.faceRaceAt(g1.x, g1.z), 0)) < 0.05, "outside slot also faces east");
   var r = blankCar(g0.x, g0.z, 1.2, 8);
@@ -1969,6 +1980,34 @@ function proveGridFacesRace() {
   sim.pinGrid(r, g0.x, g0.z, sim.slotHeading(g0));
   assert(Math.abs(angDiff(r.heading, 0)) < 0.05, "pinGrid keeps the slot heading, leftover yaw=" + r.heading.toFixed(3));
   assert(r.speed === 0 && r.slide === 0, "grid pin is stopped, not pre-rolling");
+}
+
+function proveBowieInChaseCam() {
+  sim.lockRacePath("");
+  var host = sim.gridSlot(0);
+  var bowie = sim.gridSlot(1);
+  var back = 5.15;
+  var camX = host.x - Math.cos(host.h) * back;
+  var camZ = host.z - Math.sin(host.h) * back;
+  var ahead = (bowie.x - camX) * Math.cos(host.h) + (bowie.z - camZ) * Math.sin(host.h);
+  var lat = (bowie.x - camX) * -Math.sin(host.h) + (bowie.z - camZ) * Math.cos(host.h);
+  assert(ahead > 3, "Bowie is in front of the chase-cam lens in the first 8s, ahead=" + ahead.toFixed(2));
+  assert(Math.abs(lat) < 4, "Bowie sits in the chase-cam frame, lat=" + lat.toFixed(2));
+  assert(Math.abs(host.z - bowie.z) > 2.4, "2-wide pair has a gap so lights-out is not a brick");
+  var parkedA = blankCar(host.x, host.z, host.h, 0);
+  var parkedB = blankCar(bowie.x, bowie.z, bowie.h, 0);
+  parkedA.fuel = parkedB.fuel = 100;
+  parkedA.tires = parkedB.tires = 100;
+  sim.bashCars(parkedA, parkedB);
+  assert(parkedA.x === host.x && parkedA.z === host.z, "lights-out pair does not spawn overlapping");
+  var clipA = blankCar(bowie.x - 2.2, bowie.z + 1.15, bowie.h, 18);
+  var clipB = blankCar(bowie.x, bowie.z, bowie.h, 10);
+  clipA.fuel = clipB.fuel = 100;
+  clipA.tires = clipB.tires = 100;
+  var hB = clipB.heading;
+  sim.bashCars(clipA, clipB);
+  var yaw = Math.abs(angDiff(clipB.heading, hB));
+  assert(yaw > 0.005, "first visible rear-quarter clip yaws, dH=" + yaw.toFixed(4));
 }
 
 function proveGetawayOnRibbon() {
@@ -2124,6 +2163,7 @@ proveStayRightNoGrab();
 proveCarHits();
 proveMeshOverlap();
 proveGridFacesRace();
+proveBowieInChaseCam();
 proveGetawayOnRibbon();
 proveStartDumpOnAsphalt();
 proveTileIcons();
@@ -2214,6 +2254,8 @@ assert(wallClear(sim.gridSlot(0).x, sim.gridSlot(0).z) > 5, "Campus host grid is
 assert(wallClear(sim.gridSlot(1).x, sim.gridSlot(1).z) > 5, "Campus P2 grid is not inside a wall");
 var srv = fs.readFileSync(path.join(__dirname, "index.js"), "utf8");
 assert(srv.indexOf("z: -80 + lat") !== -1 && srv.indexOf("slot % 2 ? -5.2 : -2.4") !== -1, "server room grid matches the outside ribbon");
+assert(srv.indexOf("x: -6 - Math.floor(slot / 2) * 8") !== -1, "server parks Add Bowie beside the host");
+assert(srv.indexOf("x: -6 - slot * 8") === -1, "server no longer stacks Bowie behind the chase cam");
 assert(Math.abs(sim.TRACK_LEN - 1997.74) < 2, "Campus Loop length unchanged after custom grid prove");
 
 assert(src.indexOf("lockRacePath") !== -1 && src.indexOf("isDriveableLoop") !== -1, "open/junk boards refuse and bounce to Loop");

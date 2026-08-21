@@ -86,7 +86,10 @@
       var p = slotOnPath(Math.max(0, TRACK_LEN - 6 - i * 8), i % 2 ? 1 : -1);
       return { x: p.x, z: p.z, h: p.h };
     }
-    return { x: -6 - i * 8, z: SF_Z + (i % 2 ? GRID_OUT_B : GRID_OUT_A), h: 0 };
+    // 2-wide F1. Host slot 0 stays put. Mate (slot 1 / Add Bowie) is
+    // the same X, further outside — single-file parked #12 behind the
+    // chase-cam lens so the roster showed a ghost.
+    return { x: -6 - Math.floor(i / 2) * 8, z: SF_Z + (i % 2 ? GRID_OUT_B : GRID_OUT_A), h: 0 };
   }
 
   function slotHeading(g) {
@@ -1818,7 +1821,7 @@
     trackRoot.add(stripe);
 
     if (!customMap) {
-      var gxs = [-6, -14, -22];
+      var gxs = [-6, -6, -14];
       var gzs = [SF_Z + GRID_OUT_A, SF_Z + GRID_OUT_B, SF_Z + GRID_OUT_A];
       for (var gb = 0; gb < 3; gb++) {
         addBox(gxs[gb], 0.09, gzs[gb], 5.2, 0.03, 2.6, 0xffffff, trackRoot);
@@ -5153,6 +5156,12 @@
     hostBots = {};
   }
 
+  function roomBotLook(p) {
+    if (p && p.name === "BowieKnife99") return { color: 0xd4a017, num: 12 };
+    var skin = SKINS[((p && p.slot) || 0) % SKINS.length];
+    return { color: skin.color, num: skin.num };
+  }
+
   function adoptHostBots() {
     if (!mpMode || !net || !net.isHost()) {
       clearHostBots();
@@ -5163,12 +5172,13 @@
       if (!p.bot) return;
       keep[p.id] = true;
       if (!hostBots[p.id]) {
-        var skin = SKINS[p.slot % SKINS.length];
+        var look = roomBotLook(p);
         var g = gridSlot(p.slot);
-        var r = createRacer("cpu", skin.color, p.name || skin.name, skin.num);
-        resetRacer(r, g.x, g.z, slotHeading(g), TRACK_LEN - 6 - p.slot * 8);
+        var r = createRacer("cpu", look.color, p.name || "Bot", look.num);
+        resetRacer(r, g.x, g.z, slotHeading(g), TRACK_LEN - 6 - Math.floor(p.slot / 2) * 8);
         hostBots[p.id] = r;
       }
+      hostBots[p.id].mesh.visible = true;
       if (p.name && hostBots[p.id].name !== p.name) {
         hostBots[p.id].name = p.name;
         paintNameTag(hostBots[p.id]);

@@ -227,10 +227,10 @@ function makeRoom() {
 }
 
 function slotPose(slot) {
-  // Same campus grid as js/game.js gridSlot: outside the south straight.
-  // Even slots used to sit on the open pit peel (+Z). Host is slot 0.
+  // Same 2-wide campus grid as js/game.js gridSlot. Host slot 0 stays.
+  // Mate (Add Bowie / slot 1) shares X, sits further outside.
   var lat = slot % 2 ? -5.2 : -2.4;
-  return { x: -6 - slot * 8, z: -80 + lat, h: 0 };
+  return { x: -6 - Math.floor(slot / 2) * 8, z: -80 + lat, h: 0 };
 }
 
 function blankCar(id, name, slot, ws) {
