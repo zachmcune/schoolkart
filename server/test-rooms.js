@@ -115,7 +115,7 @@ waitHealth()
         assert(html.indexOf('rel="manifest"') !== -1, "web app manifest link");
         assert(html.indexOf("apple-mobile-web-app-capable") !== -1, "iOS home screen capable");
         assert(html.indexOf('apple-mobile-web-app-title" content="SchoolKart"') !== -1, "iOS title");
-        assert(html.indexOf('SK_BUILD = "mp73"') !== -1, "cache bump mp73");
+        assert(html.indexOf('SK_BUILD = "mp74"') !== -1, "cache bump mp74");
         assert(html.indexOf('maxlength="240"') !== -1, "share-string fits a full board");
         assert(html.indexOf('id="title-track"') !== -1, "title label matches Solo load");
         assert(html.indexOf('aria-label="90"') !== -1 && html.indexOf('aria-label="sweeper"') !== -1, "palette has 90 and sweeper chips");
@@ -149,7 +149,7 @@ waitHealth()
           .then(function (sr) {
             return sr.text().then(function (sw) {
               assert(sr.status === 200, "sw 200");
-              assert(sw.indexOf('BUILD = "mp73"') !== -1, "SW build matches cache");
+              assert(sw.indexOf('BUILD = "mp74"') !== -1, "SW build matches cache");
               assert(/cache:\s*"no-store"/.test(sw), "network-first no-store");
               assert(sw.indexOf("websocket") !== -1, "SW leaves websocket alone");
             });
@@ -181,9 +181,10 @@ waitHealth()
                   assert(js.indexOf("function motionKph") !== -1, "speedo follows translation");
                   assert(js.indexOf("function hitCarFeel") !== -1, "car hits: tap / ram / shove");
                   assert(js.indexOf("tap = wiggle, ram = spin") !== -1, "rear-quarter tap wiggles; ram spins");
-                  assert(js.indexOf("function carSeg") !== -1 && js.indexOf("function closestSegSeg") !== -1, "cars are capsules, not ghosts");
                   assert(js.indexOf("function faceRaceAt") !== -1, "grid faces race direction");
-                  assert(!/function bashCars\([\s\S]{0,1600}if \(rel >= 0\)/.test(js), "same-speed clip still yaws");
+                  assert(!/function bashCars\([\s\S]{0,900}if \(rel >= 0\)/.test(js), "closing hits are not skipped");
+                  assert((js.match(/bashCars\(player, hostBots\[ids\[i\]\]\)/g) || []).length >= 3, "room Bowie bash matches Solo three-pass");
+                  assert(js.indexOf("function carSeg") === -1, "did not invent a new collision system");
                   assert(js.indexOf("pitHudPct") !== -1 && js.indexOf("pitAwayT") !== -1, "pit % does not bounce while stuck");
                   assert(js.indexOf("function tileIconPts") !== -1 && js.indexOf("function tileIconSvg") !== -1, "90/sweeper/hairpin are in-square SVG silhouettes");
                   var artJs = js.slice(js.indexOf("function tileIconPts"), js.indexOf("function paintTrackEditor"));

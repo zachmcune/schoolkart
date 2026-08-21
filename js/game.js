@@ -57,9 +57,7 @@
   var TIRE_FLOOR = 22;
   var TEAL = 0x2ec8c3;
   var TEAL_DEEP = 0x148f8c;
-  var CAR_NOSE = 3.2;
-  var CAR_TAIL = 2.15;
-  var CAR_SKIN = 1.05;
+  var HIT_RADIUS = 3.45;
   var WALLS = [];
   var FX_MAX = 18;
 
@@ -332,82 +330,6 @@
     var ex = px - qx;
     var ez = pz - qz;
     return { x: qx, z: qz, d2: ex * ex + ez * ez, t: t, h: Math.atan2(dz, dx) };
-  }
-
-  function closestSegSeg(a0x, a0z, a1x, a1z, b0x, b0z, b1x, b1z) {
-    var ux = a1x - a0x;
-    var uz = a1z - a0z;
-    var vx = b1x - b0x;
-    var vz = b1z - b0z;
-    var wx = a0x - b0x;
-    var wz = a0z - b0z;
-    var uu = ux * ux + uz * uz;
-    var vv = vx * vx + vz * vz;
-    var uv = ux * vx + uz * vz;
-    var uw = ux * wx + uz * wz;
-    var vw = vx * wx + vz * wz;
-    var den = uu * vv - uv * uv;
-    var sN;
-    var sD = den;
-    var tN;
-    var tD = den;
-    if (den < 1e-8) {
-      sN = 0;
-      sD = 1;
-      tN = vw;
-      tD = vv;
-    } else {
-      sN = uv * vw - vv * uw;
-      tN = uu * vw - uv * uw;
-      if (sN < 0) {
-        sN = 0;
-        tN = vw;
-        tD = vv;
-      } else if (sN > sD) {
-        sN = sD;
-        tN = vw + uv;
-        tD = vv;
-      }
-    }
-    if (tN < 0) {
-      tN = 0;
-      if (-uw < 0) sN = 0;
-      else if (-uw > uu) {
-        sN = uu;
-        sD = uu;
-      } else {
-        sN = -uw;
-        sD = uu;
-      }
-    } else if (tN > tD) {
-      tN = tD;
-      if (-uw + uv < 0) sN = 0;
-      else if (-uw + uv > uu) {
-        sN = uu;
-        sD = uu;
-      } else {
-        sN = -uw + uv;
-        sD = uu;
-      }
-    }
-    var s = Math.abs(sD) < 1e-8 ? 0 : sN / sD;
-    var t = Math.abs(tD) < 1e-8 ? 0 : tN / tD;
-    var px = a0x + s * ux;
-    var pz = a0z + s * uz;
-    var qx = b0x + t * vx;
-    var qz = b0z + t * vz;
-    return { px: px, pz: pz, qx: qx, qz: qz, d: Math.hypot(px - qx, pz - qz) };
-  }
-
-  function carSeg(r) {
-    var c = Math.cos(r.heading);
-    var s = Math.sin(r.heading);
-    return {
-      ax: r.x - c * CAR_TAIL,
-      az: r.z - s * CAR_TAIL,
-      bx: r.x + c * CAR_NOSE,
-      bz: r.z + s * CAR_NOSE,
-    };
   }
 
   function closestOnArc(px, pz, cx, cz, r, a0, a1) {
@@ -4233,66 +4155,44 @@
     }
   }
 
-  function bashCars(a, b, holdB) {
-    if (!a || !b) return;
-    var sa = carSeg(a);
-    var sb = carSeg(b);
-    var hit = closestSegSeg(sa.ax, sa.az, sa.bx, sa.bz, sb.ax, sb.az, sb.bx, sb.bz);
-    var skin = CAR_SKIN * 2;
-    if (hit.d >= skin) return;
-    var nx;
-    var nz;
-    if (hit.d > 0.02) {
-      nx = (hit.qx - hit.px) / hit.d;
-      nz = (hit.qz - hit.pz) / hit.d;
-    } else {
-      nx = b.x - a.x;
-      nz = b.z - a.z;
-      var nlen = Math.hypot(nx, nz);
-      if (nlen < 0.0001) {
-        nx = 1;
-        nz = 0;
-        nlen = 1;
-      }
-      nx /= nlen;
-      nz /= nlen;
+  function bashCars(a, b) {
+    var dx = b.x - a.x;
+    var dz = b.z - a.z;
+    var d = Math.hypot(dx, dz);
+    if (d < 0.0001) {
+      dx = 1;
+      dz = 0;
+      d = 1;
     }
-    var overlap = skin - hit.d;
-    var push = Math.max(overlap * 0.5, 0.08);
-    if (holdB) {
-      a.x -= nx * overlap;
-      a.z -= nz * overlap;
-    } else {
-      a.x -= nx * push;
-      a.z -= nz * push;
-      b.x += nx * push;
-      b.z += nz * push;
-    }
+    if (d >= HIT_RADIUS) return;
+    var nx = dx / d;
+    var nz = dz / d;
+    var push = (HIT_RADIUS - d) * 0.62;
+    a.x -= nx * push;
+    a.z -= nz * push;
+    b.x += nx * push;
+    b.z += nz * push;
 
     var avx = Math.cos(a.heading) * a.speed + -Math.sin(a.heading) * a.slide;
     var avz = Math.sin(a.heading) * a.speed + Math.cos(a.heading) * a.slide;
     var bvx = Math.cos(b.heading) * b.speed + -Math.sin(b.heading) * b.slide;
     var bvz = Math.sin(b.heading) * b.speed + Math.cos(b.heading) * b.slide;
+    // n is a→b. rel > 0 means a is closing on b. The old skip treated
+    // that as already separating, so yaw never ran on a dive-in.
     var rel = (avx - bvx) * nx + (avz - bvz) * nz;
     if (rel < 0) {
-      var j = -rel * 0.72;
-      avx += j * nx;
-      avz += j * nz;
-      bvx -= j * nx;
-      bvz -= j * nz;
-    }
-    var pace = Math.max(Math.hypot(avx, avz), Math.hypot(bvx, bvz), Math.abs(a.speed), Math.abs(b.speed));
-    var impact = Math.max(-rel, 0);
-    if (impact < pace * 0.22) {
-      impact = Math.max(impact, pace * clamp(overlap / skin, 0.22, 1) * 0.78);
-    }
-    if (impact < 1.4 && overlap < 0.28 && pace < 6) {
       poseCar(a);
       poseCar(b);
       return;
     }
+    var j = rel * 0.72;
+    avx -= j * nx;
+    avz -= j * nz;
+    bvx += j * nx;
+    bvz += j * nz;
+    var impact = rel;
     hitCarFeel(a, avx, avz, -nx, -nz, impact);
-    if (!holdB) hitCarFeel(b, bvx, bvz, nx, nz, impact);
+    hitCarFeel(b, bvx, bvz, nx, nz, impact);
     poseCar(a);
     poseCar(b);
     if (impact > 4 && !(a.hitFxT > 0) && !(b.hitFxT > 0)) {
@@ -5207,13 +5107,20 @@
         updateLaps(hostBots[ids[i]]);
         bashCars(player, hostBots[ids[i]]);
         bashCars(player, hostBots[ids[i]]);
+        bashCars(player, hostBots[ids[i]]);
         bashAllWalls(hostBots[ids[i]]);
         emitRacerFx(hostBots[ids[i]], null, dt, false);
       }
       bashAllWalls(player);
       for (i = 0; i < ids.length; i++) {
-        for (j = i + 1; j < ids.length; j++) bashCars(hostBots[ids[i]], hostBots[ids[j]]);
+        for (j = i + 1; j < ids.length; j++) {
+          bashCars(hostBots[ids[i]], hostBots[ids[j]]);
+          bashCars(hostBots[ids[i]], hostBots[ids[j]]);
+          bashCars(hostBots[ids[i]], hostBots[ids[j]]);
+        }
         Object.keys(remotes).forEach(function (rid) {
+          bashCars(hostBots[ids[i]], remotes[rid].r);
+          bashCars(hostBots[ids[i]], remotes[rid].r);
           bashCars(hostBots[ids[i]], remotes[rid].r);
         });
       }
@@ -5303,7 +5210,7 @@
 
   function bashRemotes() {
     Object.keys(remotes).forEach(function (id) {
-      bashCars(player, remotes[id].r, true);
+      bashCars(player, remotes[id].r);
     });
   }
 
@@ -5603,6 +5510,7 @@
       if (mpMode) {
         poseRemotes();
         tickHostBots(simDt);
+        bashRemotes();
         bashRemotes();
         bashRemotes();
         sendNetState();
