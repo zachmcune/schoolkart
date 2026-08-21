@@ -2337,6 +2337,19 @@ function proveCarHits() {
 function proveTileIcons() {
   var pair = new Function(sliceFn("tileIconPts") + ";" + sliceFn("tileIconSvg") + "; return { pts: tileIconPts, svg: tileIconSvg };")();
   var icon = pair.pts;
+  function near(a, b, tol) {
+    return Math.hypot(a.x - b.x, a.y - b.y) < (tol || 0.6);
+  }
+  function hasPort(pts, x, y) {
+    var i;
+    for (i = 0; i < pts.length; i++) {
+      if (near(pts[i], { x: x, y: y })) return true;
+    }
+    return false;
+  }
+  function ends(pts) {
+    return { a: pts[0], b: pts[pts.length - 1] };
+  }
   function inside(type, rot, w, h, label) {
     var pts = icon(type, rot, w, h);
     assert(pts.length >= 8, label + " has a silhouette, n=" + pts.length);
@@ -2361,9 +2374,12 @@ function proveTileIcons() {
   }
   var r90 = inside("r", 0, 160, 160, "90");
   assert(r90.maxX - r90.minX > 50 && r90.maxY - r90.minY > 50, "90 is a quarter-circle, not a line");
-  inside("w", 0, 160, 160, "sweeper");
+  assert(hasPort(r90.pts, 160, 80) && hasPort(r90.pts, 80, 160), "90 rot 0 hits east and south mid-edges");
+  var sweep = inside("w", 0, 160, 160, "sweeper");
+  assert(hasPort(sweep.pts, 160, 40) && hasPort(sweep.pts, 40, 160), "sweeper is a wide 90, NE-east to SW-south");
   var hp = inside("H", 0, 320, 160, "hairpin");
   assert(hp.maxX - hp.minX > (hp.maxY - hp.minY) * 1.1, "hairpin is a U across the wide chip");
+  assert(hasPort(hp.pts, 80, 160) && hasPort(hp.pts, 240, 160), "hairpin U opens on the two south mid-edges");
   var chi = inside("C", 0, 160, 160, "chicane");
   var above = 0;
   var below = 0;
@@ -2373,6 +2389,48 @@ function proveTileIcons() {
     else below += 1;
   }
   assert(above > 3 && below > 3, "chicane S is not a flat line");
+  assert(hasPort(chi.pts, 0, 80) && hasPort(chi.pts, 160, 80), "chicane meets west and east mid-edges");
+  var str = icon("s", 0, 80, 80);
+  var strE = ends(str);
+  assert(near(strE.a, { x: 0, y: 40 }) && near(strE.b, { x: 80, y: 40 }), "short straight is edge-to-edge");
+  var strN = icon("s", 1, 80, 80);
+  var strNE = ends(strN);
+  assert(
+    (near(strNE.a, { x: 40, y: 0 }) && near(strNE.b, { x: 40, y: 80 })) ||
+      (near(strNE.a, { x: 40, y: 80 }) && near(strNE.b, { x: 40, y: 0 })),
+    "rotated short straight is north-south"
+  );
+  var longV = icon("S", 1, 80, 160);
+  var longVE = ends(longV);
+  assert(
+    (near(longVE.a, { x: 40, y: 0 }) && near(longVE.b, { x: 40, y: 160 })) ||
+      (near(longVE.a, { x: 40, y: 160 }) && near(longVE.b, { x: 40, y: 0 })),
+    "long rot 1 stays vertical on a tall chip"
+  );
+  var corner = icon("r", 0, 80, 80);
+  var neighbor = icon("s", 0, 80, 80);
+  var cEast = null;
+  var sWest = null;
+  var pi;
+  for (pi = 0; pi < corner.length; pi++) if (Math.abs(corner[pi].x - 80) < 0.6) cEast = corner[pi];
+  for (pi = 0; pi < neighbor.length; pi++) if (Math.abs(neighbor[pi].x) < 0.6) sWest = neighbor[pi];
+  assert(cEast && sWest && Math.abs(cEast.y - sWest.y) < 0.6, "90 east port lines up with a neighbor straight");
+  var cSouth = null;
+  var sNorth = null;
+  var belowS = icon("s", 1, 80, 80);
+  for (pi = 0; pi < corner.length; pi++) if (Math.abs(corner[pi].y - 80) < 0.6) cSouth = corner[pi];
+  for (pi = 0; pi < belowS.length; pi++) if (Math.abs(belowS[pi].y) < 0.6) sNorth = belowS[pi];
+  assert(cSouth && sNorth && Math.abs(cSouth.x - sNorth.x) < 0.6, "90 south port lines up with a neighbor straight");
+  function asphaltW(svg) {
+    var m = svg.match(/stroke="#3a3e46" stroke-width="([0-9.]+)"/);
+    return m ? +m[1] : 0;
+  }
+  var aw = asphaltW(pair.svg("s", 0, 80, 80));
+  assert(aw > 16, "board chips use a fat ribbon, w=" + aw);
+  assert(Math.abs(aw - asphaltW(pair.svg("w", 0, 160, 160))) < 0.05, "sweeper ribbon matches a 1-cell straight");
+  assert(Math.abs(aw - asphaltW(pair.svg("H", 0, 160, 80))) < 0.05, "hairpin ribbon matches a 1-cell straight");
+  assert(Math.abs(aw - asphaltW(pair.svg("C", 0, 80, 80))) < 0.05, "chicane ribbon matches a 1-cell straight");
+  assert(Math.abs(aw - asphaltW(pair.svg("S", 0, 160, 80))) < 0.05, "long ribbon matches a 1-cell straight");
 }
 
 function provePitPctSticky() {
