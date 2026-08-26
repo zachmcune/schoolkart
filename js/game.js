@@ -2100,7 +2100,7 @@
 
   function pitPaintClear(x, z, half) {
     half = half || 0;
-    if (!isDriveableLoop() && z - half < SF_Z + ASPHALT + 0.25) return false;
+    if (!isDriveableLoop() && z - half < SF_Z + ASPHALT + 0.45) return false;
     var segs = PATH.length ? PATH : MAP_SURF;
     if (segs && segs.length) {
       var race = projectOn(x, z, segs);
@@ -2542,14 +2542,37 @@
       var a = pointOnPitPath(s);
       var b = pointOnPitPath(Math.min(s + step + 0.55, endS));
       if (!a || !b) continue;
+      // Box stamps on the S-bends poke corners into the racing line.
+      // The ribbon covers in/out; stamps are the parallel only.
+      if (a.name === "pitin" || a.name === "pitout" || b.name === "pitin" || b.name === "pitout") continue;
       if (!pitPaintClear(a.x, a.z, half) || !pitPaintClear(b.x, b.z, half)) continue;
       var dx = b.x - a.x;
       var dz = b.z - a.z;
       var len = Math.hypot(dx, dz);
       if (len < 0.25) continue;
+      var mx = (a.x + b.x) * 0.5;
+      var mz = (a.z + b.z) * 0.5;
+      var yaw = -Math.atan2(dz, dx);
+      var fx = Math.cos(-yaw);
+      var fz = Math.sin(-yaw);
+      var lx = -fz;
+      var lz = fx;
+      var hl = (len + 0.7) * 0.5;
+      var corners = [
+        [mx + fx * hl + lx * half, mz + fz * hl + lz * half],
+        [mx + fx * hl - lx * half, mz + fz * hl - lz * half],
+        [mx - fx * hl + lx * half, mz - fz * hl + lz * half],
+        [mx - fx * hl - lx * half, mz - fz * hl - lz * half],
+      ];
+      var ci;
+      var blocked = false;
+      for (ci = 0; ci < 4; ci++) {
+        if (!pitPaintClear(corners[ci][0], corners[ci][1], 0)) blocked = true;
+      }
+      if (blocked) continue;
       var mesh = new THREE.Mesh(new THREE.BoxGeometry(len + 0.7, hgt, half * 2), mat);
-      mesh.position.set((a.x + b.x) * 0.5, y, (a.z + b.z) * 0.5);
-      mesh.rotation.y = -Math.atan2(dz, dx);
+      mesh.position.set(mx, y, mz);
+      mesh.rotation.y = yaw;
       trackRoot.add(mesh);
     }
   }
@@ -2573,12 +2596,12 @@
     });
     stampPitBand(PIT_HALF + 1.55, 0.05, 0.06, runoffMat, endS);
     stampPitBand(PIT_HALF, 0.09, 0.08, asphaltMat, endS);
-    var asphalt = makeSurfRibbon(PIT_PATH, PIT_HALF, 0.14, asphaltMat, null, null, 0, null, true);
+    var asphalt = makeSurfRibbon(PIT_PATH, PIT_HALF, 0.068, asphaltMat, null, null, 0, null, true);
     if (asphalt) trackRoot.add(asphalt);
-    var line = makeSurfRibbon(PIT_PATH, 0.28, 0.155, 0xd8d2c6, null, null, 0, null, true);
+    var line = makeSurfRibbon(PIT_PATH, 0.28, 0.09, 0xd8d2c6, null, null, 0, null, true);
     if (line) trackRoot.add(line);
-    var eL = makeSurfRibbon(PIT_PATH, 0.22, 0.135, 0xf4efe6, null, null, PIT_HALF - 0.38, null, true);
-    var eR = makeSurfRibbon(PIT_PATH, 0.22, 0.135, 0xf4efe6, null, null, -(PIT_HALF - 0.38), null, true);
+    var eL = makeSurfRibbon(PIT_PATH, 0.22, 0.082, 0xf4efe6, null, null, PIT_HALF - 0.38, null, true);
+    var eR = makeSurfRibbon(PIT_PATH, 0.22, 0.082, 0xf4efe6, null, null, -(PIT_HALF - 0.38), null, true);
     if (eL) trackRoot.add(eL);
     if (eR) trackRoot.add(eR);
   }
