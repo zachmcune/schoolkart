@@ -4921,6 +4921,8 @@
     r.launchT = 0;
     r.launchArmed = false;
     r.aiT = 0;
+    r.aiStuck = 0;
+    r.pitExitT = 0;
     r.hitYawT = 0;
     r.kerbBump = 0;
     r.mesh.position.set(x, rideHeight(x, z), z);
@@ -5249,7 +5251,9 @@
         if (r.speed < GRASS_MAX) r.speed = GRASS_MAX;
       }
       if (r.speed < -GRASS_MAX) r.speed = -GRASS_MAX;
-      if (r.speed > 0 && r.speed < GRASS_ROLL) r.speed = GRASS_ROLL;
+      // Crawl-forward lock must not eat reverse — that's how bots
+      // pin a barrier and never find the ribbon again.
+      if (!reverse && r.speed > 0 && r.speed < GRASS_ROLL) r.speed = GRASS_ROLL;
       if (r.speed > 0) r.tires -= 6.2 * dt;
     } else if (r.speed >= 0) {
       r.speed = clamp(r.speed, 0, maxV);
@@ -5798,16 +5802,15 @@
       }
     }
 
-    var maxOff = ASPHALT - 2.35;
-    if (maxOff < 2.4) maxOff = 2.4;
+    var maxOff = 2.8;
     var wgt = [];
     for (i = 0; i < n; i++) wgt[i] = 0;
     var c;
     for (c = 0; c < corners.length; c++) {
       var cr = corners[c];
-      var apexW = 1.15 + 0.055 * cr.r;
-      if (apexW < 1.35) apexW = 1.35;
-      if (apexW > 3.55) apexW = 3.55;
+      var apexW = 1.0 + 0.04 * cr.r;
+      if (apexW < 1.2) apexW = 1.2;
+      if (apexW > 2.8) apexW = 2.8;
       var entry = 28 + 0.55 * cr.r;
       if (entry < 32) entry = 32;
       if (entry > 70) entry = 70;
@@ -5879,15 +5882,15 @@
     for (i = 0; i < n; i++) {
       var rAbs = Math.abs(RACE.lkap[i]) > 1e-4 ? 1 / Math.abs(RACE.lkap[i]) : 999;
       var vLim = apexFromRadius(rAbs, 0.96);
-      var gLim = gripApex(rAbs, 1);
+      var gLim = gripApex(rAbs, 0.95);
       if (gLim < vLim) vLim = gLim;
       if (vLim > MAX_SPEED) vLim = MAX_SPEED;
       var ck = cornerKind(RACE.name[i]);
       var cr0 = RACE.r[i];
-      if (ck === "hairpin" && cr0 < 22) vLim = Math.min(vLim, 16.6);
-      else if (ck === "chicane" && cr0 < 28) vLim = Math.min(vLim, 21.4);
-      else if (ck === "the90" && cr0 < 20) vLim = Math.min(vLim, 23.2);
-      else if (ck === "kink" && cr0 < 24) vLim = Math.min(vLim, 24.5);
+      if (ck === "hairpin" && cr0 < 22) vLim = Math.min(vLim, 16.4);
+      else if (ck === "chicane" && cr0 < 28) vLim = Math.min(vLim, 21);
+      else if (ck === "the90" && cr0 < 20) vLim = Math.min(vLim, 21.2);
+      else if (ck === "kink" && cr0 < 24) vLim = Math.min(vLim, 24);
       RACE.v[i] = vLim;
     }
     var pass;
@@ -5940,7 +5943,7 @@
     var ds = RACE.ds;
     var steps = Math.ceil(look / ds);
     var k;
-    var bMul = p && p.hunter ? 0.68 : 0.7;
+    var bMul = 0.7;
     for (k = 0; k <= steps; k++) {
       var sample = raceAt(s + k * ds);
       var apex = sample.v;
@@ -6001,6 +6004,44 @@
     var b = base + gap * perM;
     if (b > maxB) b = maxB;
     return b;
+  }
+
+  function faceDot(r, tx, tz) {
+    var dx = tx - r.x;
+    var dz = tz - r.z;
+    var d = Math.hypot(dx, dz) || 1;
+    return (Math.cos(r.heading) * dx + Math.sin(r.heading) * dz) / d;
+  }
+
+  function noseBlocked(r) {
+    var now = projectTrack(r.x, r.z);
+    var hx = Math.cos(r.heading);
+    var hz = Math.sin(r.heading);
+    var look = now.dist > ASPHALT - 0.6 || now.grass ? 3.6 : 2.4;
+    var ax = r.x + hx * look;
+    var az = r.z + hz * look;
+    var i;
+    for (i = 0; i < WALLS.length; i++) {
+      var w = WALLS[i];
+      var here = closestOnSeg(r.x, r.z, w.ax, w.az, w.bx, w.bz);
+      var hereD = Math.sqrt(here.d2);
+      var rad = 1.35 + (w.thick || 0.55) * 0.5;
+      if (hereD > 4.2) continue;
+      var fx = (here.x - r.x) * hx + (here.z - r.z) * hz;
+      if (fx > 0.2 && hereD < rad + 1.8) return true;
+    }
+    if (now.dist <= ASPHALT - 0.5 && !now.grass) return false;
+    var pr = projectTrack(ax, az);
+    if (pr.grass && now.dist > ASPHALT - 0.2) return true;
+    if (pr.dist > ASPHALT + RUNOFF + 0.4 && pr.dist > now.dist + 1.2) return true;
+    return false;
+  }
+
+  function recoverSteer(r, tx, tz, reverse) {
+    var desired = Math.atan2(tz - r.z, tx - r.x);
+    var travel = reverse ? r.heading + Math.PI : r.heading;
+    var err = Math.atan2(Math.sin(desired - travel), Math.cos(desired - travel));
+    return clamp(err * 2.15, -1, 1);
   }
 
   function pickPrey(hunter, huntBias) {
@@ -6125,6 +6166,7 @@
         r.pitServicing = false;
         r.pitUsedVisit = true;
         r.pitTimer = 0;
+        r.pitExitT = 1.4;
       }
       poseCar(r);
       return;
@@ -6151,35 +6193,36 @@
 
     var skilled = p.hunter || p.craft;
     var pow = skilled ? 1.7 : 2;
-    var bMul = skilled ? 0.7 : p.brake;
+    var bMul = 0.7;
     var scanMeters = skilled ? Math.max(260, brakeWindow(MAX_SPEED, 15, 1.15) + 40) : 190 * p.brake;
     var scan = scanAhead(r.s, scanMeters);
     ensureRaceBrain();
-    // Pure Pursuit: long look on straights, shorten into curvature.
-    var look = clamp((14 + r.speed * 0.42) * p.look, 10, 28);
-    if (skilled) {
-      look = clamp((16 + r.speed * 0.46) * p.look, 11, 28);
-      if (scan.dBend < 88 && scan.dBend > 16) look = Math.min(look, 11 + scan.dBend * 0.3);
-    }
-    if (scan.dTight < 64) look = Math.min(look, 8 + scan.dTight * 0.22);
-    if (scan.dChi < 36) look = Math.min(look, 13);
+    var look = clamp((16 + r.speed * 0.44) * p.look, 11, 26);
+    if (scan.dBend < 88 && scan.dBend > 14) look = Math.min(look, 10 + scan.dBend * 0.28);
+    if (scan.dTight < 64) look = Math.min(look, 8 + scan.dTight * 0.2);
+    if (scan.dChi < 36) look = Math.min(look, 12);
     var want = raceWantAhead(r.s, r.speed, p);
     var hpApex = p.hairpin;
-    var hotHair = p.overshoot && !skilled && (r.lap % 2) === 0;
-    if (hotHair) hpApex = 18.8;
-    if (scan.dHair < 90 && (scan.tightR < 22 || scan.bendR < 22)) {
+    if (scan.dHair < 110 && (scan.tightR < 24 || scan.bendR < 24)) {
       var hairV = hpApex;
-      if (scan.bendR >= 22 && scan.tightR >= 22) hairV = apexFromRadius(Math.max(scan.bendR, 40), p.tight * 0.86);
+      if (scan.bendR >= 24 && scan.tightR >= 24) hairV = apexFromRadius(Math.max(scan.bendR, 40), 0.95);
       want = Math.min(want, approachWant(want, scan.dHair, brakeWindow(want, hairV, bMul), hairV, pow));
     }
     if (scan.dBend < 900 && scan.bendR < 200) {
-      var bendV = apexFromRadius(scan.bendR, p.tight || 0.92);
+      var bendV = apexFromRadius(scan.bendR, 0.95);
       if (scan.dHair < 24 && scan.bendR < 20) bendV = Math.min(bendV, hpApex);
+      if (scan.dTight < 80 && scan.tightR < scan.bendR) bendV = Math.min(bendV, apexFromRadius(scan.tightR, 0.95));
       want = Math.min(want, approachWant(want, scan.dBend, brakeWindow(want, bendV, bMul), bendV, pow));
-      want = Math.max(want, unwindWant(want, scan.d90, scan.d90Left, bendV, 20));
     }
-    want = Math.max(want, unwindWant(want, scan.dSweep, scan.sweepLeft, p.sweeper, 24));
-    want = Math.max(want, unwindWant(want, scan.dChi, scan.chiLeft, p.chicane, 14));
+    if (scan.dChi < 900) {
+      want = Math.min(want, approachWant(want, scan.dChi, brakeWindow(want, p.chicane, bMul), p.chicane, pow));
+    }
+    if (scan.d90 < 6 && scan.d90Left > 0 && scan.d90Left < 14) {
+      want = Math.max(want, unwindWant(want, scan.d90, scan.d90Left, p.the90, 20));
+    }
+    if (scan.dSweep < 6 && scan.dSweepLeft > 0 && scan.dSweepLeft < 16) {
+      want = Math.max(want, unwindWant(want, scan.dSweep, scan.sweepLeft, p.sweeper, 24));
+    }
     if (r.fuel <= 0) want = Math.min(want, LIMP_SPEED);
 
     var hunt = planHunt(r, p, want);
@@ -6195,15 +6238,8 @@
       hunt.want = Math.min(hunt.want, want);
       want = hunt.want;
     }
-    if (hunt.catchUp) {
-      var extra = hunt.want - want;
-      if (extra > 0) {
-        var room = 1;
-        if (scan.dHair < 36 || scan.dTight < 28) room = 0.28;
-        else if (scan.dBend < 50) room = 0.48;
-        else if (scan.dBend < 80) room = 0.72;
-        want = Math.min(MAX_SPEED, want + extra * room);
-      }
+    if (hunt.catchUp && scan.dHair > 90 && scan.dTight > 70 && scan.dBend > 80 && scan.dChi > 50) {
+      want = Math.min(MAX_SPEED, Math.max(want, hunt.want));
     }
     if ((hunt.block || hunt.pass) && scan.dHair > 36 && scan.dTight > 28) {
       want = Math.max(want, hunt.want);
@@ -6214,9 +6250,8 @@
     var nz = Math.cos(target.h);
     var inside = scan.inside || 1;
     var line = raceAt(r.s + look);
-    var off = line.off + Math.abs(p.lineOff) * inside * 0.35;
-    if (skilled && scan.dBend < 86) off += 0.35 * inside;
-    if (p.wideEntry && scan.dTight > 14 && scan.dTight < 52) off -= 1.45;
+    var off = line.off + Math.abs(p.lineOff) * inside * 0.2;
+    if (p.wideEntry && scan.dTight > 14 && scan.dTight < 52) off -= 1.1;
     if (hunt.pass) off = hunt.cover;
     else if (hunt.block) {
       off = line.off + Math.abs(p.lineOff) * inside * 0.2;
@@ -6295,31 +6330,61 @@
     var desiredH = Math.atan2(tz - r.z, tx - r.x);
     var err = Math.atan2(Math.sin(desiredH - r.heading), Math.cos(desiredH - r.heading));
     var steer = clamp(err * (hunt.on ? 2.05 : hunt.block || hunt.pass ? 2.0 : skilled ? 2.18 : 1.5), -1, 1);
-    var recover = proj.grass || proj.dist > 4.6;
-    var keepHit = p.hunter && hunt.on && hunt.noLift && !proj.grass;
+    if (!inPitLane(r) && !inPitGrab(r) && (r.pitExitT || 0) > 0) {
+      r.pitExitT -= dt;
+      if (r.pitExitT < 0) r.pitExitT = 0;
+    }
+    var inPit = peeling || inPitLane(r) || inPitGrab(r) || (r.pitExitT || 0) > 0;
+    var blocked = !inPit && noseBlocked(r);
+    var wayOff = !inPit && (proj.grass || proj.dist > ASPHALT + RUNOFF - 0.25);
+    var wide = !inPit && proj.dist > ASPHALT + 0.45;
+    var toward = faceDot(r, proj.x, proj.z);
+    if (inPit || (!wayOff && !blocked && proj.dist < ASPHALT - 0.6 && Math.abs(r.speed) > 2.5)) {
+      r.aiStuck = 0;
+    } else if (wayOff || blocked) {
+      r.aiStuck = (r.aiStuck || 0) + (Math.abs(r.speed) < 5.5 ? dt : dt * 0.35);
+    } else {
+      r.aiStuck = Math.max(0, (r.aiStuck || 0) - dt * 2);
+    }
+    var stuck = (r.aiStuck || 0) > 0.45;
+    if (wide && !wayOff && !blocked && !stuck) want = Math.min(want, 18);
+    var recover = !inPit && (wayOff || blocked || stuck);
+    var keepHit = p.hunter && hunt.on && hunt.noLift && !proj.grass && proj.dist < ASPHALT - 0.5 && !blocked;
+    var reverse = false;
     if (recover && !peeling && !keepHit) {
-      var home = Math.atan2(proj.z - r.z, proj.x - r.x);
-      var herr = Math.atan2(Math.sin(home - r.heading), Math.cos(home - r.heading));
-      steer = clamp(steer * 0.18 + herr * 1.55, -1, 1);
-      want = Math.min(want, proj.grass ? 9 : 14);
-      if (proj.dist > 8) want = Math.min(want, 7);
+      hunt.on = false;
+      hunt.noLift = false;
+      tx = proj.x;
+      tz = proj.z;
+      want = wayOff ? 8 : 12;
+      if (proj.dist > 10) want = 7;
+      if (blocked) want = Math.min(want, 6);
+      var mustRev = blocked || (wayOff && toward < -0.25) || stuck;
+      if (r.speed > 7 && (blocked || (wayOff && toward < -0.25))) {
+        reverse = false;
+        steer = recoverSteer(r, proj.x, proj.z, false);
+        applyMotion(r, steer, false, true, false, dt, false);
+        updateLaps(r);
+        return;
+      }
+      reverse = mustRev;
+      steer = recoverSteer(r, proj.x, proj.z, reverse);
     }
     r.aiT = (r.aiT || 0) + dt;
-    if (p.wobble && (r.aiT % 3.6) < 0.28) {
+    if (p.wobble && (r.aiT % 3.6) < 0.28 && !recover) {
       steer = clamp(steer + Math.sin(r.aiT * 9 + (r.s || 0)) * p.wobble, -1, 1);
     }
-    if (!p.hunter && !hunt.block && !hunt.pass) steer = avoidRams(r, steer);
+    if (!p.hunter && !hunt.block && !hunt.pass && !recover) steer = avoidRams(r, steer);
 
-    var reverse = false;
-    if (recover && proj.grass && r.speed < 5 && proj.dist > 7 && !keepHit) {
-      var out = Math.cos(r.heading) * (proj.x - r.x) + Math.sin(r.heading) * (proj.z - r.z);
-      if (out < -0.15) reverse = true;
-    }
     var slack = skilled ? (want > MAX_SPEED * 0.88 ? 2.4 : 1.05) : 2.2;
     var throttle = !reverse && r.speed < want - (skilled ? 0.05 : 0.4);
     var brake = !reverse && r.speed > want + slack;
-    if (hunt.on && hunt.noLift) {
+    if (hunt.on && hunt.noLift && !recover) {
       throttle = !reverse;
+      brake = false;
+    }
+    if (reverse) {
+      throttle = false;
       brake = false;
     }
     applyMotion(r, steer, throttle, brake, reverse, dt, false);
