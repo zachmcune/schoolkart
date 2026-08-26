@@ -2522,16 +2522,23 @@
 
   function paintPitRibbon() {
     if (!PIT_PATH.length || !trackRoot) return;
-    // Same asphalt, center, and white edges as the race ribbon — just
-    // smaller. No painted runoff: that read as a light-grey slab instead
-    // of a lane. Slightly raised so the peel sits on the main asphalt.
+    // Same recipe as the race ribbon: runoff, asphalt, center, white
+    // edges. Narrower runoff than the main straight so it reads as a
+    // smaller lane, not a grey slab. Raised so the peel sits on top.
+    var runoffMat = new THREE.MeshLambertMaterial({
+      color: 0x8d97a6,
+      emissive: 0x2a3038,
+      side: THREE.DoubleSide,
+    });
     var asphaltMat = new THREE.MeshLambertMaterial({
       color: 0x3a3e46,
       emissive: 0x101214,
       side: THREE.DoubleSide,
     });
+    var runoff = makeSurfRibbon(PIT_PATH, PIT_HALF + 1.55, 0.048, runoffMat);
     var asphalt = makeSurfRibbon(PIT_PATH, PIT_HALF, 0.07, asphaltMat);
     var line = makeSurfRibbon(PIT_PATH, 0.28, 0.095, 0xd8d2c6);
+    if (runoff) trackRoot.add(runoff);
     if (asphalt) trackRoot.add(asphalt);
     if (line) trackRoot.add(line);
     var eL = makeSurfRibbon(PIT_PATH, 0.22, 0.087, 0xf4efe6, null, null, PIT_HALF - 0.38);
@@ -2562,7 +2569,7 @@
     // The second road is the same asphalt as the race ribbon, just
     // smaller — it peels LEFT, runs the box, peels back. Not a slab.
     // A hole in the ribbon is a nack. A slide / one-road pit is a nack.
-    addBox(78, 0.042, -66.6, 168, 0.028, 9.2, 0x3f5c32, trackRoot);
+    addBox(78, 0.04, -67.5, 168, 0.024, 7.0, 0x3f5c32, trackRoot);
     addBox(62, 0.92, -51.2, 70, 1.7, 0.7, 0x2a2018, trackRoot);
     addBox(62, 1.82, -51.2, 70, 0.14, 0.78, TEAL, trackRoot);
   }
