@@ -2530,12 +2530,12 @@
       emissive: 0x101214,
       side: THREE.DoubleSide,
     });
-    var asphalt = makeSurfRibbon(PIT_PATH, PIT_HALF, 0.062, asphaltMat);
-    var line = makeSurfRibbon(PIT_PATH, 0.28, 0.087, 0xd8d2c6);
+    var asphalt = makeSurfRibbon(PIT_PATH, PIT_HALF, 0.07, asphaltMat);
+    var line = makeSurfRibbon(PIT_PATH, 0.28, 0.095, 0xd8d2c6);
     if (asphalt) trackRoot.add(asphalt);
     if (line) trackRoot.add(line);
-    var eL = makeSurfRibbon(PIT_PATH, 0.22, 0.079, 0xf4efe6, null, null, PIT_HALF - 0.38);
-    var eR = makeSurfRibbon(PIT_PATH, 0.22, 0.079, 0xf4efe6, null, null, -(PIT_HALF - 0.38));
+    var eL = makeSurfRibbon(PIT_PATH, 0.22, 0.087, 0xf4efe6, null, null, PIT_HALF - 0.38);
+    var eR = makeSurfRibbon(PIT_PATH, 0.22, 0.087, 0xf4efe6, null, null, -(PIT_HALF - 0.38));
     if (eL) trackRoot.add(eL);
     if (eR) trackRoot.add(eR);
   }
@@ -2557,9 +2557,12 @@
   function paintCampusPitLane() {
     // FORK. TWO ROADS. The racing ribbon stays whole. Grass median
     // (the existing ground) sits between ribbon and pit lane.
+    // Cover the start-straight LEFT runoff so the pit reads as a dark
+    // lane peeling over grass, not white edges on a grey apron.
     // The second road is the same asphalt as the race ribbon, just
     // smaller — it peels LEFT, runs the box, peels back. Not a slab.
     // A hole in the ribbon is a nack. A slide / one-road pit is a nack.
+    addBox(78, 0.042, -66.6, 168, 0.028, 9.2, 0x3f5c32, trackRoot);
     addBox(62, 0.92, -51.2, 70, 1.7, 0.7, 0x2a2018, trackRoot);
     addBox(62, 1.82, -51.2, 70, 0.14, 0.78, TEAL, trackRoot);
   }
