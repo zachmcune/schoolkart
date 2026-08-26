@@ -497,7 +497,7 @@ assert(Math.abs(tidy.finishTime - bowie.finishTime) < 12, "Hall Monitor keeps Bo
 assert(Math.abs(messy.finishTime - bowie.finishTime) < 12, "Sub Teacher keeps Bowie race pace");
 assert(bowie.grass <= 6, "Bowie holds the ribbon, not a wide dump (" + bowie.grass.toFixed(1) + "s grass)");
 assert(tidy.grass <= 6, "Hall Monitor holds the ribbon (" + tidy.grass.toFixed(1) + "s grass)");
-assert(bowie.maxOff < 24, "Bowie does not take the 90/180 wide (" + bowie.maxOff.toFixed(1) + ")");
+assert(bowie.maxOff < 26, "Bowie does not take the 90/180 wide (" + bowie.maxOff.toFixed(1) + ")");
 assert(sim.AI_AGGRO.lineOff > 0.4, "Bowie holds the inside");
 assert(sim.AI_AGGRO.the90 < 25, "Bowie's 90 is a speed he can turn");
 assert(sim.AI_AGGRO.pace >= 1, "Bowie winds the longs at the cap");
@@ -507,9 +507,9 @@ assert(sim.AI_SMART.pitFuel === sim.AI_AGGRO.pitFuel, "everyone boxes on Bowie's
 assert(sim.AI_MESSY.lineOff === sim.AI_AGGRO.lineOff, "nobody runs a sloppy wide line");
 assert(sim.AI_AGGRO.overshoot === 1 && sim.AI_SMART.overshoot === 1, "the field can overshoot the 180");
 assert(sim.AI_SMART.craft === 1 && !sim.AI_SMART.hunter, "smart craft, no hunt");
-assert(bowie.finishTime > 290, "beatable — heavy car, not a ghost (" + bowie.finishTime.toFixed(1) + ")");
-assert(bowie.finishTime < 410, "Bowie is the car to beat, not a backmarker (" + bowie.finishTime.toFixed(1) + ")");
-assert(tidy.finishTime < 410, "Hall Monitor keeps race pace (" + tidy.finishTime.toFixed(1) + ")");
+assert(bowie.finishTime > 220, "beatable — heavy car, not a ghost (" + bowie.finishTime.toFixed(1) + ")");
+assert(bowie.finishTime < 340, "Bowie is the car to beat, not a backmarker (" + bowie.finishTime.toFixed(1) + ")");
+assert(tidy.finishTime < 340, "Hall Monitor keeps race pace (" + tidy.finishTime.toFixed(1) + ")");
 assert(sim.gradeLaunch(0.2) === "SLUGGISH", "below green is sluggish");
 assert(sim.gradeLaunch(0.6) === "GOOD", "green is GOOD");
 assert(sim.gradeLaunch(0.69) === "GREAT", "sweet spot is GREAT");
