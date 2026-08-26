@@ -184,6 +184,9 @@ var code = [
   sliceFn("trackGap"),
   sliceFn("trackLeadGap"),
   sliceFn("catchBonus"),
+  sliceFn("faceDot"),
+  sliceFn("noseBlocked"),
+  sliceFn("recoverSteer"),
   sliceFn("pickPrey"),
   sliceFn("passSide"),
   sliceFn("planHunt"),
@@ -233,6 +236,10 @@ var code = [
   "  raceWantAhead: raceWantAhead,",
   "  trackGap: trackGap,",
   "  catchBonus: catchBonus,",
+  "  noseBlocked: noseBlocked,",
+  "  faceDot: faceDot,",
+  "  runRecover: runRecover,",
+  "  runWallStuck: runWallStuck,",
   "  RACE: RACE,",
   "  trackLen: trackLen,",
   "  sealCustom: sealCustom,",
@@ -257,7 +264,7 @@ var code = [
   "    fuel: 100, tires: 100, lap: 1, passedHalf: false, lastX: gridX, s: s0, lastS: s0,",
   "    brakeHold: 0, finished: false, finishTime: 0,",
   "    wantPit: false, didPit: false, pitServicing: false, pitTimer: 0, pitUsedVisit: false,",
-  "    launchMul: 1, launchT: 0, launchArmed: true, aiT: 0,",
+    "    launchMul: 1, launchT: 0, launchArmed: true, aiT: 0, aiStuck: 0, pitExitT: 0,",
   "    mesh: { visible: true, position: { x: gridX, y: 0, z: gridZ, set: function(x,y,z){ this.x=x; this.y=y; this.z=z; } }, rotation: { set: function(){}, x:0, y:0, z:0 }, userData: {} }",
   "  };",
   "  var dt = 1/30;",
@@ -295,7 +302,7 @@ var code = [
   "    fuel: 100, tires: 100, lap: 1, passedHalf: false, lastX: x, s: TRACK_LEN - 14, lastS: TRACK_LEN - 14,",
   "    brakeHold: 0, finished: false, finishTime: 0,",
   "    wantPit: false, didPit: false, pitServicing: false, pitTimer: 0, pitUsedVisit: false,",
-  "    launchMul: 1, launchT: 0, launchArmed: true, aiT: 0,",
+    "    launchMul: 1, launchT: 0, launchArmed: true, aiT: 0, aiStuck: 0, pitExitT: 0,",
   "    mesh: { visible: true, position: { x: x, y: 0, z: z, set: function(a,b,c){ this.x=a; this.y=b; this.z=c; } }, rotation: { set: function(){}, x:0, y:0, z:0 }, userData: {} }",
   "  };",
   "}",
@@ -410,6 +417,43 @@ var code = [
   "  var endFwd = (player.x - r.x) * fx + (player.z - r.z) * fz;",
   "  player.x = -9999; player.z = -9999; player.mesh.visible = false;",
   "  return { name: name, d0: d0, minD: minD, endD: endD, maxAbsLat: maxAbsLat, endFwd: endFwd, x: r.x, speed: r.speed };",
+  "}",
+  "function runRecover(name, seconds) {",
+  "  var r = blankBot(name, 0, SF_Z - 14, 3);",
+  "  r.heading = -Math.PI * 0.5;",
+  "  r.s = projectTrack(r.x, r.z).s;",
+  "  var d0 = projectTrack(r.x, r.z).dist;",
+  "  var grass = 0, reverseT = 0, minDist = d0;",
+  "  var dt = 1/30;",
+  "  raceTime = 2;",
+  "  for (var t = 0; t < seconds; t += dt) {",
+  "    var spd0 = r.speed;",
+  "    updateCpu(r, dt);",
+  "    var info = projectTrack(r.x, r.z);",
+  "    if (info.dist < minDist) minDist = info.dist;",
+  "    if (info.grass) grass += dt;",
+  "    if (r.speed < -0.4 || (spd0 >= 0 && r.speed < 0)) reverseT += dt;",
+  "  }",
+  "  var end = projectTrack(r.x, r.z);",
+  "  return { name: name, d0: d0, dist: end.dist, minDist: minDist, grass: grass, onAsphalt: !!end.onAsphalt, reverseT: reverseT, speed: r.speed };",
+  "}",
+  "function runWallStuck(name, seconds) {",
+  "  placeWalls();",
+  "  var r = blankBot(name, 0, SF_Z - 11.2, 6);",
+  "  r.heading = -Math.PI * 0.5;",
+  "  r.s = projectTrack(r.x, r.z).s;",
+  "  var d0 = projectTrack(r.x, r.z).dist;",
+  "  var reverseT = 0, minDist = d0;",
+  "  var dt = 1/30;",
+  "  raceTime = 2;",
+  "  for (var t = 0; t < seconds; t += dt) {",
+  "    updateCpu(r, dt);",
+  "    var info = projectTrack(r.x, r.z);",
+  "    if (info.dist < minDist) minDist = info.dist;",
+  "    if (r.speed < -0.2) reverseT += dt;",
+  "  }",
+  "  var end = projectTrack(r.x, r.z);",
+  "  return { name: name, d0: d0, dist: end.dist, minDist: minDist, reverseT: reverseT, blocked: noseBlocked(r), speed: r.speed };",
   "}",
   "function buildWideLoop() {",
   "  resetPathCursor();",
@@ -620,6 +664,41 @@ assert(longCatch.endD < longCatch.d0 - 28, "Bowie reels a 200m lead, not only ca
 assert(longCatch.speed > 40, "Bowie winds while closing a long gap");
 assert(sim.catchBonus(sim.AI_AGGRO, 180) > sim.catchBonus(sim.AI_SMART, 180), "Bowie's reel is nastier than the field");
 assert(sim.AI_AGGRO.reel === 1, "Bowie is the reeler");
+
+var recB = sim.runRecover("BowieKnife99", 7.0);
+var recH = sim.runRecover("Hall Monitor", 7.0);
+console.log(
+  "recover Bowie d0=" +
+    recB.d0.toFixed(1) +
+    " end=" +
+    recB.dist.toFixed(1) +
+    " min=" +
+    recB.minDist.toFixed(1) +
+    " rev=" +
+    recB.reverseT.toFixed(2) +
+    " on=" +
+    recB.onAsphalt +
+    " hall end=" +
+    recH.dist.toFixed(1)
+);
+assert(recB.d0 > 10, "recover starts off the ribbon");
+assert(recB.reverseT > 0.2, "Bowie reverses off the weeds, not a wall-pin (" + recB.reverseT.toFixed(2) + ")");
+assert(recB.minDist < 6 || recB.onAsphalt, "Bowie finds the ribbon again (min " + recB.minDist.toFixed(1) + ")");
+assert(recH.minDist < 6 || recH.onAsphalt, "Hall Monitor finds the ribbon again");
+
+var wallB = sim.runWallStuck("BowieKnife99", 6.0);
+console.log(
+  "wallStuck Bowie d0=" +
+    wallB.d0.toFixed(1) +
+    " end=" +
+    wallB.dist.toFixed(1) +
+    " min=" +
+    wallB.minDist.toFixed(1) +
+    " rev=" +
+    wallB.reverseT.toFixed(2)
+);
+assert(wallB.reverseT > 0.15, "Bowie backs off a barrier instead of pinning it (" + wallB.reverseT.toFixed(2) + ")");
+assert(wallB.minDist < wallB.d0 - 1.2, "Bowie leaves the wall and heads inward (" + wallB.minDist.toFixed(1) + ")");
 
 sim.bakeRaceBrain();
 assert(sim.RACE.n > 40, "race brain samples the ribbon");

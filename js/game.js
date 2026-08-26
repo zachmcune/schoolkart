@@ -832,7 +832,9 @@
   function buildCampusPitPath() {
     PIT_PATH.length = 0;
     var laneZ = (PIT_LANE.z0 + PIT_LANE.z1) * 0.5;
-    var mouthZ = -70.8;
+    // Meet the LEFT edge of the ribbon, then S-bend out. Starting on
+    // the racing line stacked a second road on the asphalt.
+    var mouthZ = -67.2;
     var st = { x: 6, z: mouthZ, h: 0 };
     pitSBend(st, laneZ - st.z, "pitin");
     var exitX = 116;
@@ -2110,7 +2112,18 @@
     return Math.abs(seg.a1 - seg.a0) * (seg.r || 0);
   }
 
-  function makeSurfRibbon(segs, half, y, color, onlyNames, uvStep, offset) {
+  function pitPaintClear(x, z, half) {
+    half = half || 0;
+    if (!isDriveableLoop() && z - half < SF_Z + ASPHALT + 0.45) return false;
+    var segs = PATH.length ? PATH : MAP_SURF;
+    if (segs && segs.length) {
+      var race = projectOn(x, z, segs);
+      if (race && race.hit && Math.sqrt(race.hit.d2) <= ASPHALT + 0.3) return false;
+    }
+    return true;
+  }
+
+  function makeSurfRibbon(segs, half, y, color, onlyNames, uvStep, offset, step, clipRace) {
     if (!segs || !segs.length) return null;
     var pos = [];
     var idx = [];
@@ -2123,11 +2136,18 @@
       var seg = segs[i];
       if (onlyNames && onlyNames.indexOf(seg.name) === -1) continue;
       var len = segLen(seg);
-      var n = Math.max(2, Math.round(len / 6));
+      var n = Math.max(2, Math.round(len / (step || 2.8)));
       var u;
-      var strip0 = used;
+      var strip = 0;
       for (u = 0; u <= n; u++) {
         var p = pointOnSeg(seg, u / n);
+        // Clip the path *center* off the racing line, not the half-width.
+        // Using PIT_HALF here opened a hole at the fork; the ribbon
+        // should kiss the left edge so the peel is one surface.
+        if (clipRace && !pitPaintClear(p.x, p.z, 0)) {
+          strip = 0;
+          continue;
+        }
         var nx = -Math.sin(p.h);
         var nz = Math.cos(p.h);
         if (sided) {
@@ -2141,13 +2161,13 @@
           uvs.push(used * uvStep, 1);
           uvs.push(used * uvStep, 0);
         }
-        if (u > 0) {
+        if (strip > 0) {
           var a = (used - 1) * 2;
           idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
         }
         used += 1;
+        strip += 1;
       }
-      if (used === strip0) used = strip0;
     }
     if (used < 2) return null;
     var geo = new THREE.BufferGeometry();
@@ -2532,58 +2552,135 @@
     return mesh;
   }
 
-  function paintPitRibbon() {
-    if (!PIT_PATH.length || !trackRoot) return;
+  function stampPitBand(half, y, hgt, mat, endS) {
+    var step = 1.15;
+    var s;
+    for (s = 0; s < endS; s += step) {
+      var a = pointOnPitPath(s);
+      var b = pointOnPitPath(Math.min(s + step + 0.55, endS));
+      if (!a || !b) continue;
+      // Box stamps on the S-bends poke corners into the racing line.
+      // The ribbon covers in/out; stamps are the parallel only.
+      if (a.name === "pitin" || a.name === "pitout" || b.name === "pitin" || b.name === "pitout") continue;
+      if (!pitPaintClear(a.x, a.z, half) || !pitPaintClear(b.x, b.z, half)) continue;
+      var dx = b.x - a.x;
+      var dz = b.z - a.z;
+      var len = Math.hypot(dx, dz);
+      if (len < 0.25) continue;
+      var mx = (a.x + b.x) * 0.5;
+      var mz = (a.z + b.z) * 0.5;
+      var yaw = -Math.atan2(dz, dx);
+      var fx = Math.cos(-yaw);
+      var fz = Math.sin(-yaw);
+      var lx = -fz;
+      var lz = fx;
+      var hl = (len + 0.7) * 0.5;
+      var corners = [
+        [mx + fx * hl + lx * half, mz + fz * hl + lz * half],
+        [mx + fx * hl - lx * half, mz + fz * hl - lz * half],
+        [mx - fx * hl + lx * half, mz - fz * hl + lz * half],
+        [mx - fx * hl - lx * half, mz - fz * hl - lz * half],
+      ];
+      var ci;
+      var blocked = false;
+      for (ci = 0; ci < 4; ci++) {
+        if (!pitPaintClear(corners[ci][0], corners[ci][1], 0)) blocked = true;
+      }
+      if (blocked) continue;
+      var mesh = new THREE.Mesh(new THREE.BoxGeometry(len + 0.7, hgt, half * 2), mat);
+      mesh.position.set(mx, y, mz);
+      mesh.rotation.y = yaw;
+      trackRoot.add(mesh);
+    }
+  }
+
+  function fillPitGore() {
+    // Pave the whole Y: from the racing ribbon's left edge out to the
+    // pit's outer edge. Raised boxes so the fill reads on the dark
+    // infield. They kiss the left edge and do not sit on the racing
+    // line. Grass median owns the parallel stretch.
+    if (isDriveableLoop() || !PIT_PATH.length || !trackRoot) return;
+    var trackEdge = SF_Z + ASPHALT;
+    var last = PIT_PATH[PIT_PATH.length - 1];
+    var endS = (last.startS || 0) + (last.len || 0);
     var asphaltMat = new THREE.MeshLambertMaterial({
       color: 0x3a3e46,
       emissive: 0x101214,
       side: THREE.DoubleSide,
     });
-    var asphalt = makeSurfRibbon(PIT_PATH, PIT_HALF, 0.12, asphaltMat);
-    var line = makeSurfRibbon(PIT_PATH, 0.28, 0.155, 0xd8d2c6);
+    var s;
+    for (s = 0; s < endS; s += 0.85) {
+      var p = pointOnPitPath(s);
+      if (!p || (p.name !== "pitin" && p.name !== "pitout")) continue;
+      if (p.x > 37 && p.x < 111) continue;
+      var outerZ = p.z + Math.abs(Math.cos(p.h)) * PIT_HALF;
+      if (outerZ <= trackEdge + 0.35) continue;
+      var depth = outerZ - trackEdge;
+      var mesh = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.1, depth), asphaltMat);
+      mesh.position.set(p.x, 0.1, trackEdge + depth * 0.5);
+      trackRoot.add(mesh);
+    }
+  }
+
+  function paintPitRibbon() {
+    if (!PIT_PATH.length || !trackRoot) return;
+    // Same asphalt + runoff as the race ribbon, stamped along the
+    // S-curve so the fill stays visible (a flat ribbon vanished on
+    // the dark infield — only the white edges read).
+    var last = PIT_PATH[PIT_PATH.length - 1];
+    var endS = (last.startS || 0) + (last.len || 0);
+    var runoffMat = new THREE.MeshLambertMaterial({
+      color: 0x8d97a6,
+      emissive: 0x2a3038,
+      side: THREE.DoubleSide,
+    });
+    var asphaltMat = new THREE.MeshLambertMaterial({
+      color: 0x3a3e46,
+      emissive: 0x101214,
+      side: THREE.DoubleSide,
+    });
+    stampPitBand(PIT_HALF + 1.55, 0.05, 0.06, runoffMat, endS);
+    stampPitBand(PIT_HALF, 0.09, 0.08, asphaltMat, endS);
+    fillPitGore();
+    var asphalt = makeSurfRibbon(PIT_PATH, PIT_HALF, 0.068, asphaltMat, null, null, 0, null, true);
     if (asphalt) trackRoot.add(asphalt);
+    // Lane markings start once it is its own road. An inner white edge
+    // on the S-bend drew a second line in the crotch and made the Y
+    // read as two roads with a hole.
+    var line = makeSurfRibbon(PIT_PATH, 0.28, 0.09, 0xd8d2c6, ["pitlane"], null, 0, null, true);
     if (line) trackRoot.add(line);
-    var eL = makeSurfRibbon(PIT_PATH, 0.2, 0.16, 0xf4efe6, null, null, PIT_HALF - 0.2);
-    var eR = makeSurfRibbon(PIT_PATH, 0.2, 0.16, 0xf4efe6, null, null, -(PIT_HALF - 0.2));
+    var eL = makeSurfRibbon(PIT_PATH, 0.22, 0.082, 0xf4efe6, null, null, PIT_HALF - 0.38, null, true);
+    var eR = makeSurfRibbon(PIT_PATH, 0.22, 0.082, 0xf4efe6, ["pitlane"], null, -(PIT_HALF - 0.38), null, true);
     if (eL) trackRoot.add(eL);
     if (eR) trackRoot.add(eR);
   }
 
+  function paintPitStalls() {
+    if (!PIT_PATH.length || !trackRoot || !PIT_META.on) return;
+    var gx = (PIT_GRAB.x0 + PIT_GRAB.x1) * 0.5;
+    var gz = (PIT_GRAB.z0 + PIT_GRAB.z1) * 0.5;
+    var pr = projectOn(gx, gz, PIT_PATH);
+    if (!pr) return;
+    var i;
+    for (i = -2; i <= 2; i++) {
+      var p = pointOnPitPath(pr.s + i * 3.6);
+      if (!p) continue;
+      addBoxYaw(p.x, 0.09, p.z, 0.85, 0.02, PIT_HALF * 1.55, 0xffffff, trackRoot, -p.h);
+    }
+  }
+
   function paintCampusPitLane() {
-    // FORK. TWO ROADS. The racing ribbon stays whole. Grass median,
-    // then a second raised asphalt road to the LEFT. A hole in the
-    // ribbon is a nack. A slide / one-road pit is a nack.
-    var laneX = (PIT_LANE.x0 + PIT_LANE.x1) * 0.5;
-    var laneW = PIT_LANE.x1 - PIT_LANE.x0;
-    var laneZ = (PIT_LANE.z0 + PIT_LANE.z1) * 0.5;
-    addBox(80, 0.07, -66.45, 92, 0.1, 9.4, 0x5db844, trackRoot);
-    addBox(laneX, 0.14, laneZ, laneW, 0.16, PIT_LANE.z1 - PIT_LANE.z0, 0x3a3e46, trackRoot);
-    addBox(laneX, 0.23, laneZ, laneW, 0.03, 0.46, 0xd8d2c6, trackRoot);
-    addBox(laneX, 0.24, PIT_LANE.z0, laneW, 0.06, 0.5, 0xf4efe6, trackRoot);
-    addBox(laneX, 0.24, PIT_LANE.z1, laneW, 0.06, 0.5, 0xf4efe6, trackRoot);
-    paintPitRibbon();
-    addBox(12, 1.15, -67.4, 0.45, 2.3, 0.45, 0x2a2018, trackRoot);
-    addBox(26, 1.15, -67.4, 0.45, 2.3, 0.45, 0x2a2018, trackRoot);
+    // FORK. TWO ROADS. The racing ribbon stays whole. Asphalt gore
+    // fills the Y so the peel is a clean transition. Grass median
+    // (the existing ground) sits between ribbon and pit lane.
+    // Cover the start-straight LEFT runoff so the pit reads as a dark
+    // lane peeling over grass, not white edges on a grey apron.
+    // The second road is the same asphalt as the race ribbon, just
+    // smaller — it peels LEFT, runs the box, peels back. Not a slab.
+    // A hole in the ribbon is a nack. A slide / one-road pit is a nack.
+    addBox(74, 0.04, -66.6, 72, 0.024, 8.2, 0x3f5c32, trackRoot);
     addBox(62, 0.92, -51.2, 70, 1.7, 0.7, 0x2a2018, trackRoot);
     addBox(62, 1.82, -51.2, 70, 0.14, 0.78, TEAL, trackRoot);
-    var pitDecal = labelPlane("PIT", 7.6, 3.0, "#0a2a28", "#2ec8c3");
-    pitDecal.rotation.x = -Math.PI * 0.5;
-    pitDecal.position.set(81, 0.28, -57.1);
-    trackRoot.add(pitDecal);
-    var inPt = pointOnPitPath(18) || { x: 20, z: -64 };
-    var outPt = pointOnPitPath(PIT_PATH.length ? PIT_PATH[PIT_PATH.length - 1].startS + 12 : 0) || { x: 148, z: -64 };
-    var inDecal = labelPlane("IN", 5.8, 2.4, "#102018", "#ffe566");
-    inDecal.rotation.x = -Math.PI * 0.5;
-    inDecal.position.set(inPt.x, 0.26, inPt.z);
-    trackRoot.add(inDecal);
-    var outDecal = labelPlane("OUT", 6.0, 2.4, "#102018", "#7cffd4");
-    outDecal.rotation.x = -Math.PI * 0.5;
-    outDecal.position.set(outPt.x, 0.26, outPt.z);
-    trackRoot.add(outDecal);
-    var hsh;
-    for (hsh = 0; hsh < 5; hsh++) {
-      addBox(70 + hsh * 3.6, 0.26, -57.1, 1.15, 0.03, 7.4, 0xffffff, trackRoot);
-    }
   }
 
   function paveRect(b, y, color) {
@@ -2658,28 +2755,18 @@
       if (kR) trackRoot.add(kR);
     }
 
-    var p;
-    var pitCol = isDriveableLoop() ? 0x3d4a5c : 0x3a3e46;
-    for (p = 0; p < PIT_PAVE.length; p++) {
-      var pvBox = PIT_PAVE[p];
-      if (PIT_PATH.length && (pvBox === PIT_ENTRY || pvBox === PIT_EXIT)) continue;
-      var pv = paveRect(pvBox, 0.09, pitCol);
-      trackRoot.add(pv);
-    }
-    if (PIT_PATH.length && isDriveableLoop()) paintPitRibbon();
-    if (PIT_META.on) {
-      var grab = paveRect(PIT_GRAB, 0.13, TEAL);
-      trackRoot.add(grab);
-      addBox((PIT_LANE.x0 + PIT_LANE.x1) * 0.5, 0.125, PIT_LANE.z0, PIT_LANE.x1 - PIT_LANE.x0, 0.04, 0.38, 0xffe566, trackRoot);
-      addBox((PIT_LANE.x0 + PIT_LANE.x1) * 0.5, 0.125, PIT_LANE.z1, PIT_LANE.x1 - PIT_LANE.x0, 0.04, 0.38, 0x7cffd4, trackRoot);
+    if (PIT_PATH.length) {
+      paintPitRibbon();
+    } else {
+      var p;
+      for (p = 0; p < PIT_PAVE.length; p++) {
+        trackRoot.add(paveRect(PIT_PAVE[p], 0.09, 0x3a3e46));
+      }
     }
     if (!isDriveableLoop()) {
       paintCampusPitLane();
     } else if (PIT_META.on) {
-      var pitDecal2 = labelPlane("PIT", 7.2, 2.8, "#0a2a28", "#2ec8c3");
-      pitDecal2.rotation.x = -Math.PI * 0.5;
-      pitDecal2.position.set((PIT_GRAB.x0 + PIT_GRAB.x1) * 0.5, 0.16, (PIT_GRAB.z0 + PIT_GRAB.z1) * 0.5);
-      trackRoot.add(pitDecal2);
+      paintPitStalls();
     }
 
     var start = centerlinePoint(0);
@@ -4921,6 +5008,8 @@
     r.launchT = 0;
     r.launchArmed = false;
     r.aiT = 0;
+    r.aiStuck = 0;
+    r.pitExitT = 0;
     r.hitYawT = 0;
     r.kerbBump = 0;
     r.mesh.position.set(x, rideHeight(x, z), z);
@@ -5249,7 +5338,9 @@
         if (r.speed < GRASS_MAX) r.speed = GRASS_MAX;
       }
       if (r.speed < -GRASS_MAX) r.speed = -GRASS_MAX;
-      if (r.speed > 0 && r.speed < GRASS_ROLL) r.speed = GRASS_ROLL;
+      // Crawl-forward lock must not eat reverse — that's how bots
+      // pin a barrier and never find the ribbon again.
+      if (!reverse && r.speed > 0 && r.speed < GRASS_ROLL) r.speed = GRASS_ROLL;
       if (r.speed > 0) r.tires -= 6.2 * dt;
     } else if (r.speed >= 0) {
       r.speed = clamp(r.speed, 0, maxV);
@@ -5805,16 +5896,15 @@
       }
     }
 
-    var maxOff = ASPHALT - 2.35;
-    if (maxOff < 2.4) maxOff = 2.4;
+    var maxOff = 2.8;
     var wgt = [];
     for (i = 0; i < n; i++) wgt[i] = 0;
     var c;
     for (c = 0; c < corners.length; c++) {
       var cr = corners[c];
-      var apexW = 1.15 + 0.055 * cr.r;
-      if (apexW < 1.35) apexW = 1.35;
-      if (apexW > 3.55) apexW = 3.55;
+      var apexW = 1.0 + 0.04 * cr.r;
+      if (apexW < 1.2) apexW = 1.2;
+      if (apexW > 2.8) apexW = 2.8;
       var entry = 28 + 0.55 * cr.r;
       if (entry < 32) entry = 32;
       if (entry > 70) entry = 70;
@@ -5886,15 +5976,15 @@
     for (i = 0; i < n; i++) {
       var rAbs = Math.abs(RACE.lkap[i]) > 1e-4 ? 1 / Math.abs(RACE.lkap[i]) : 999;
       var vLim = apexFromRadius(rAbs, 0.96);
-      var gLim = gripApex(rAbs, 1);
+      var gLim = gripApex(rAbs, 0.95);
       if (gLim < vLim) vLim = gLim;
       if (vLim > MAX_SPEED) vLim = MAX_SPEED;
       var ck = cornerKind(RACE.name[i]);
       var cr0 = RACE.r[i];
-      if (ck === "hairpin" && cr0 < 22) vLim = Math.min(vLim, 16.6);
-      else if (ck === "chicane" && cr0 < 28) vLim = Math.min(vLim, 21.4);
-      else if (ck === "the90" && cr0 < 20) vLim = Math.min(vLim, 23.2);
-      else if (ck === "kink" && cr0 < 24) vLim = Math.min(vLim, 24.5);
+      if (ck === "hairpin" && cr0 < 22) vLim = Math.min(vLim, 16.4);
+      else if (ck === "chicane" && cr0 < 28) vLim = Math.min(vLim, 21);
+      else if (ck === "the90" && cr0 < 20) vLim = Math.min(vLim, 21.2);
+      else if (ck === "kink" && cr0 < 24) vLim = Math.min(vLim, 24);
       RACE.v[i] = vLim;
     }
     var pass;
@@ -5947,7 +6037,7 @@
     var ds = RACE.ds;
     var steps = Math.ceil(look / ds);
     var k;
-    var bMul = p && p.hunter ? 0.68 : 0.7;
+    var bMul = 0.7;
     for (k = 0; k <= steps; k++) {
       var sample = raceAt(s + k * ds);
       var apex = sample.v;
@@ -6008,6 +6098,44 @@
     var b = base + gap * perM;
     if (b > maxB) b = maxB;
     return b;
+  }
+
+  function faceDot(r, tx, tz) {
+    var dx = tx - r.x;
+    var dz = tz - r.z;
+    var d = Math.hypot(dx, dz) || 1;
+    return (Math.cos(r.heading) * dx + Math.sin(r.heading) * dz) / d;
+  }
+
+  function noseBlocked(r) {
+    var now = projectTrack(r.x, r.z);
+    var hx = Math.cos(r.heading);
+    var hz = Math.sin(r.heading);
+    var look = now.dist > ASPHALT - 0.6 || now.grass ? 3.6 : 2.4;
+    var ax = r.x + hx * look;
+    var az = r.z + hz * look;
+    var i;
+    for (i = 0; i < WALLS.length; i++) {
+      var w = WALLS[i];
+      var here = closestOnSeg(r.x, r.z, w.ax, w.az, w.bx, w.bz);
+      var hereD = Math.sqrt(here.d2);
+      var rad = 1.35 + (w.thick || 0.55) * 0.5;
+      if (hereD > 4.2) continue;
+      var fx = (here.x - r.x) * hx + (here.z - r.z) * hz;
+      if (fx > 0.2 && hereD < rad + 1.8) return true;
+    }
+    if (now.dist <= ASPHALT - 0.5 && !now.grass) return false;
+    var pr = projectTrack(ax, az);
+    if (pr.grass && now.dist > ASPHALT - 0.2) return true;
+    if (pr.dist > ASPHALT + RUNOFF + 0.4 && pr.dist > now.dist + 1.2) return true;
+    return false;
+  }
+
+  function recoverSteer(r, tx, tz, reverse) {
+    var desired = Math.atan2(tz - r.z, tx - r.x);
+    var travel = reverse ? r.heading + Math.PI : r.heading;
+    var err = Math.atan2(Math.sin(desired - travel), Math.cos(desired - travel));
+    return clamp(err * 2.15, -1, 1);
   }
 
   function pickPrey(hunter, huntBias) {
@@ -6132,6 +6260,7 @@
         r.pitServicing = false;
         r.pitUsedVisit = true;
         r.pitTimer = 0;
+        r.pitExitT = 1.4;
       }
       poseCar(r);
       return;
@@ -6158,36 +6287,37 @@
 
     var skilled = p.hunter || p.craft;
     var pow = skilled ? 1.7 : 2;
-    var bMul = skilled ? 0.7 : p.brake;
+    var bMul = 0.7;
     var planV = planSpeed(r, MAX_SPEED);
     var scanMeters = skilled ? Math.max(260, brakeWindow(planV, 15, 1.15) + 40) : 190 * p.brake;
     var scan = scanAhead(r.s, scanMeters);
     ensureRaceBrain();
-    // Pure Pursuit: long look on straights, shorten into curvature.
-    var look = clamp((14 + r.speed * 0.42) * p.look, 10, 28);
-    if (skilled) {
-      look = clamp((16 + r.speed * 0.46) * p.look, 11, 28);
-      if (scan.dBend < 88 && scan.dBend > 16) look = Math.min(look, 11 + scan.dBend * 0.3);
-    }
-    if (scan.dTight < 64) look = Math.min(look, 8 + scan.dTight * 0.22);
-    if (scan.dChi < 36) look = Math.min(look, 13);
+    var look = clamp((16 + r.speed * 0.44) * p.look, 11, 26);
+    if (scan.dBend < 88 && scan.dBend > 14) look = Math.min(look, 10 + scan.dBend * 0.28);
+    if (scan.dTight < 64) look = Math.min(look, 8 + scan.dTight * 0.2);
+    if (scan.dChi < 36) look = Math.min(look, 12);
     var want = raceWantAhead(r.s, r.speed, p);
     var hpApex = p.hairpin;
-    var hotHair = p.overshoot && !skilled && (r.lap % 2) === 0;
-    if (hotHair) hpApex = 18.8;
-    if (scan.dHair < 90 && (scan.tightR < 22 || scan.bendR < 22)) {
+    if (scan.dHair < 110 && (scan.tightR < 24 || scan.bendR < 24)) {
       var hairV = hpApex;
-      if (scan.bendR >= 22 && scan.tightR >= 22) hairV = apexFromRadius(Math.max(scan.bendR, 40), p.tight * 0.86);
+      if (scan.bendR >= 24 && scan.tightR >= 24) hairV = apexFromRadius(Math.max(scan.bendR, 40), 0.95);
       want = Math.min(want, approachWant(want, scan.dHair, brakeWindow(want, hairV, bMul), hairV, pow));
     }
     if (scan.dBend < 900 && scan.bendR < 200) {
-      var bendV = apexFromRadius(scan.bendR, p.tight || 0.92);
+      var bendV = apexFromRadius(scan.bendR, 0.95);
       if (scan.dHair < 24 && scan.bendR < 20) bendV = Math.min(bendV, hpApex);
+      if (scan.dTight < 80 && scan.tightR < scan.bendR) bendV = Math.min(bendV, apexFromRadius(scan.tightR, 0.95));
       want = Math.min(want, approachWant(want, scan.dBend, brakeWindow(want, bendV, bMul), bendV, pow));
-      want = Math.max(want, unwindWant(want, scan.d90, scan.d90Left, bendV, 20));
     }
-    want = Math.max(want, unwindWant(want, scan.dSweep, scan.sweepLeft, p.sweeper, 24));
-    want = Math.max(want, unwindWant(want, scan.dChi, scan.chiLeft, p.chicane, 14));
+    if (scan.dChi < 900) {
+      want = Math.min(want, approachWant(want, scan.dChi, brakeWindow(want, p.chicane, bMul), p.chicane, pow));
+    }
+    if (scan.d90 < 6 && scan.d90Left > 0 && scan.d90Left < 14) {
+      want = Math.max(want, unwindWant(want, scan.d90, scan.d90Left, p.the90, 20));
+    }
+    if (scan.dSweep < 6 && scan.dSweepLeft > 0 && scan.dSweepLeft < 16) {
+      want = Math.max(want, unwindWant(want, scan.dSweep, scan.sweepLeft, p.sweeper, 24));
+    }
     if (r.fuel <= 0) want = Math.min(want, LIMP_SPEED);
 
     var hunt = planHunt(r, p, want);
@@ -6203,15 +6333,8 @@
       hunt.want = Math.min(hunt.want, want);
       want = hunt.want;
     }
-    if (hunt.catchUp) {
-      var extra = hunt.want - want;
-      if (extra > 0) {
-        var room = 1;
-        if (scan.dHair < 36 || scan.dTight < 28) room = 0.28;
-        else if (scan.dBend < 50) room = 0.48;
-        else if (scan.dBend < 80) room = 0.72;
-        want = Math.min(MAX_SPEED, want + extra * room);
-      }
+    if (hunt.catchUp && scan.dHair > 90 && scan.dTight > 70 && scan.dBend > 80 && scan.dChi > 50) {
+      want = Math.min(MAX_SPEED, Math.max(want, hunt.want));
     }
     if ((hunt.block || hunt.pass) && scan.dHair > 36 && scan.dTight > 28) {
       want = Math.max(want, hunt.want);
@@ -6222,9 +6345,8 @@
     var nz = Math.cos(target.h);
     var inside = scan.inside || 1;
     var line = raceAt(r.s + look);
-    var off = line.off + Math.abs(p.lineOff) * inside * 0.35;
-    if (skilled && scan.dBend < 86) off += 0.35 * inside;
-    if (p.wideEntry && scan.dTight > 14 && scan.dTight < 52) off -= 1.45;
+    var off = line.off + Math.abs(p.lineOff) * inside * 0.2;
+    if (p.wideEntry && scan.dTight > 14 && scan.dTight < 52) off -= 1.1;
     if (hunt.pass) off = hunt.cover;
     else if (hunt.block) {
       off = line.off + Math.abs(p.lineOff) * inside * 0.2;
@@ -6303,31 +6425,61 @@
     var desiredH = Math.atan2(tz - r.z, tx - r.x);
     var err = Math.atan2(Math.sin(desiredH - r.heading), Math.cos(desiredH - r.heading));
     var steer = clamp(err * (hunt.on ? 2.05 : hunt.block || hunt.pass ? 2.0 : skilled ? 2.18 : 1.5), -1, 1);
-    var recover = proj.grass || proj.dist > 4.6;
-    var keepHit = p.hunter && hunt.on && hunt.noLift && !proj.grass;
+    if (!inPitLane(r) && !inPitGrab(r) && (r.pitExitT || 0) > 0) {
+      r.pitExitT -= dt;
+      if (r.pitExitT < 0) r.pitExitT = 0;
+    }
+    var inPit = peeling || inPitLane(r) || inPitGrab(r) || (r.pitExitT || 0) > 0;
+    var blocked = !inPit && noseBlocked(r);
+    var wayOff = !inPit && (proj.grass || proj.dist > ASPHALT + RUNOFF - 0.25);
+    var wide = !inPit && proj.dist > ASPHALT + 0.45;
+    var toward = faceDot(r, proj.x, proj.z);
+    if (inPit || (!wayOff && !blocked && proj.dist < ASPHALT - 0.6 && Math.abs(r.speed) > 2.5)) {
+      r.aiStuck = 0;
+    } else if (wayOff || blocked) {
+      r.aiStuck = (r.aiStuck || 0) + (Math.abs(r.speed) < 5.5 ? dt : dt * 0.35);
+    } else {
+      r.aiStuck = Math.max(0, (r.aiStuck || 0) - dt * 2);
+    }
+    var stuck = (r.aiStuck || 0) > 0.45;
+    if (wide && !wayOff && !blocked && !stuck) want = Math.min(want, 18);
+    var recover = !inPit && (wayOff || blocked || stuck);
+    var keepHit = p.hunter && hunt.on && hunt.noLift && !proj.grass && proj.dist < ASPHALT - 0.5 && !blocked;
+    var reverse = false;
     if (recover && !peeling && !keepHit) {
-      var home = Math.atan2(proj.z - r.z, proj.x - r.x);
-      var herr = Math.atan2(Math.sin(home - r.heading), Math.cos(home - r.heading));
-      steer = clamp(steer * 0.18 + herr * 1.55, -1, 1);
-      want = Math.min(want, proj.grass ? 9 : 14);
-      if (proj.dist > 8) want = Math.min(want, 7);
+      hunt.on = false;
+      hunt.noLift = false;
+      tx = proj.x;
+      tz = proj.z;
+      want = wayOff ? 8 : 12;
+      if (proj.dist > 10) want = 7;
+      if (blocked) want = Math.min(want, 6);
+      var mustRev = blocked || (wayOff && toward < -0.25) || stuck;
+      if (r.speed > 7 && (blocked || (wayOff && toward < -0.25))) {
+        reverse = false;
+        steer = recoverSteer(r, proj.x, proj.z, false);
+        applyMotion(r, steer, false, true, false, dt, false);
+        updateLaps(r);
+        return;
+      }
+      reverse = mustRev;
+      steer = recoverSteer(r, proj.x, proj.z, reverse);
     }
     r.aiT = (r.aiT || 0) + dt;
-    if (p.wobble && (r.aiT % 3.6) < 0.28) {
+    if (p.wobble && (r.aiT % 3.6) < 0.28 && !recover) {
       steer = clamp(steer + Math.sin(r.aiT * 9 + (r.s || 0)) * p.wobble, -1, 1);
     }
-    if (!p.hunter && !hunt.block && !hunt.pass) steer = avoidRams(r, steer);
+    if (!p.hunter && !hunt.block && !hunt.pass && !recover) steer = avoidRams(r, steer);
 
-    var reverse = false;
-    if (recover && proj.grass && r.speed < 5 && proj.dist > 7 && !keepHit) {
-      var out = Math.cos(r.heading) * (proj.x - r.x) + Math.sin(r.heading) * (proj.z - r.z);
-      if (out < -0.15) reverse = true;
-    }
     var slack = skilled ? (want > MAX_SPEED * 0.88 ? 2.4 : 1.05) : 2.2;
     var throttle = !reverse && r.speed < want - (skilled ? 0.05 : 0.4);
     var brake = !reverse && r.speed > want + slack;
-    if (hunt.on && hunt.noLift) {
+    if (hunt.on && hunt.noLift && !recover) {
       throttle = !reverse;
+      brake = false;
+    }
+    if (reverse) {
+      throttle = false;
       brake = false;
     }
     applyMotion(r, steer, throttle, brake, reverse, dt, false);
@@ -7271,8 +7423,8 @@
       ctx.lineWidth = 3.4;
       ctx.stroke();
     }
-    ctx.strokeStyle = "#e8b86d";
-    ctx.lineWidth = 2;
+    ctx.strokeStyle = "#2ec8c3";
+    ctx.lineWidth = 1.8;
     if (PIT_PATH.length) {
       ctx.beginPath();
       var ps;
