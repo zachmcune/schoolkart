@@ -2801,6 +2801,52 @@ assertBuiltin("HARBOR", "Harbor Street", { flat: true, menu: "HARBOR STREET" });
 assertBuiltin("PARK", "Royal Park", { flat: true, menu: "ROYAL PARK" });
 assertBuiltin("DESERT", "Desert Dusk", { flat: true, menu: "DESERT DUSK" });
 assertBuiltin("FOREST", "Forest Climb", { flat: false, menu: "FOREST CLIMB" });
+assert(
+  sliceFn("updateLaps").indexOf("PATH.length && TRACK_LEN > 80") !== -1,
+  "built-in ribbons count laps by s-wrap, not only MAP_CLOSED"
+);
+
+function proveRibbonLaps(code, label) {
+  sim.rebuildPath(code);
+  var stripe = sim.projectTrack(0, -80);
+  var startS = stripe.onAsphalt ? stripe.s - 18 : sim.TRACK_LEN - 18;
+  if (startS < 0) startS += sim.TRACK_LEN;
+  var pose = sim.centerlinePoint(startS);
+  var first = blankCar(pose.x, pose.z, pose.h, 0);
+  first.s = startS;
+  first.lastS = startS;
+  first.passedHalf = false;
+  first.lap = 1;
+  var sWalk;
+  for (sWalk = startS; sWalk < startS + 40; sWalk += 4) {
+    var q = sim.centerlinePoint(sWalk);
+    first.x = q.x;
+    first.z = q.z;
+    first.heading = q.h;
+    sim.updateLaps(first);
+  }
+  assert(first.lap === 1, label + " does not gift a lap at lights-out, lap=" + first.lap);
+  var lapper = blankCar(pose.x, pose.z, pose.h, 0);
+  lapper.s = startS;
+  lapper.lastS = startS;
+  lapper.passedHalf = false;
+  lapper.lap = 1;
+  for (sWalk = startS; sWalk < startS + sim.TRACK_LEN + 40; sWalk += 6) {
+    var p = sim.centerlinePoint(sWalk);
+    lapper.x = p.x;
+    lapper.z = p.z;
+    lapper.heading = p.h;
+    sim.updateLaps(lapper);
+  }
+  assert(lapper.lap >= 2, label + " counts a lap on the ribbon, lap=" + lapper.lap);
+  assert(!lapper.finished, label + " one tour is not a race finish");
+}
+
+proveRibbonLaps("", "Campus Loop");
+proveRibbonLaps("HARBOR", "Harbor Street");
+proveRibbonLaps("PARK", "Royal Park");
+proveRibbonLaps("DESERT", "Desert Dusk");
+proveRibbonLaps("FOREST", "Forest Climb");
 sim.rebuildPath("");
 assert(sim.menuTrackName() === "CAMPUS LOOP", "empty code is Campus");
 assert(src.indexOf("harborDressing") !== -1 && src.indexOf("dressHarbor") !== -1, "Harbor dressing group");
