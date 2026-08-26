@@ -2521,17 +2521,17 @@
   }
 
   function stampPitBand(half, y, hgt, mat, endS) {
-    var step = 2.4;
+    var step = 1.15;
     var s;
     for (s = 0; s < endS; s += step) {
       var a = pointOnPitPath(s);
-      var b = pointOnPitPath(Math.min(s + step + 0.45, endS));
+      var b = pointOnPitPath(Math.min(s + step + 0.55, endS));
       if (!a || !b) continue;
       var dx = b.x - a.x;
       var dz = b.z - a.z;
       var len = Math.hypot(dx, dz);
-      if (len < 0.3) continue;
-      var mesh = new THREE.Mesh(new THREE.BoxGeometry(len + 0.4, hgt, half * 2), mat);
+      if (len < 0.25) continue;
+      var mesh = new THREE.Mesh(new THREE.BoxGeometry(len + 0.7, hgt, half * 2), mat);
       mesh.position.set((a.x + b.x) * 0.5, y, (a.z + b.z) * 0.5);
       mesh.rotation.y = -Math.atan2(dz, dx);
       trackRoot.add(mesh);
@@ -2557,7 +2557,9 @@
     });
     stampPitBand(PIT_HALF + 1.55, 0.05, 0.06, runoffMat, endS);
     stampPitBand(PIT_HALF, 0.09, 0.08, asphaltMat, endS);
-    var line = makeSurfRibbon(PIT_PATH, 0.28, 0.14, 0xd8d2c6);
+    var asphalt = makeSurfRibbon(PIT_PATH, PIT_HALF, 0.14, asphaltMat);
+    if (asphalt) trackRoot.add(asphalt);
+    var line = makeSurfRibbon(PIT_PATH, 0.28, 0.155, 0xd8d2c6);
     if (line) trackRoot.add(line);
     var eL = makeSurfRibbon(PIT_PATH, 0.22, 0.135, 0xf4efe6, null, null, PIT_HALF - 0.38);
     var eR = makeSurfRibbon(PIT_PATH, 0.22, 0.135, 0xf4efe6, null, null, -(PIT_HALF - 0.38));
