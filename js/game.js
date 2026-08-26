@@ -2581,10 +2581,10 @@
   }
 
   function fillPitGore() {
-    // Asphalt in the Y crotch so the peel is a clean transition,
-    // not two roads with a hole of infield between them. Stamps stay
-    // off the S-bends (those cut the racing line). The racing ribbon
-    // stays whole — this only fills from its left edge out to the pit.
+    // Raised asphalt in the Y crotch — a flat ribbon vanishes on the
+    // dark infield (same reason the lane itself is stamped). Stamps
+    // stay off the racing line: they only fill from the left edge out
+    // to the pit. The racing ribbon stays whole.
     if (isDriveableLoop() || !PIT_PATH.length || !trackRoot) return;
     var trackEdge = SF_Z + ASPHALT;
     var last = PIT_PATH[PIT_PATH.length - 1];
@@ -2594,49 +2594,40 @@
       emissive: 0x101214,
       side: THREE.DoubleSide,
     });
-    var pos = [];
-    var idx = [];
-    var used = 0;
-    var strip = 0;
     var step = 1.05;
     var s;
-    for (s = 0; s <= endS + 0.001; s += step) {
-      var p = pointOnPitPath(Math.min(s, endS));
-      if (!p) {
-        strip = 0;
-        continue;
-      }
-      // Grass median owns the parallel stretch. Gore is the fork only.
-      if (p.x > 37 && p.x < 111) {
-        strip = 0;
-        continue;
-      }
-      var nx = -Math.sin(p.h);
-      var nz = Math.cos(p.h);
-      var innerX = p.x - nx * PIT_HALF;
-      var innerZ = p.z - nz * PIT_HALF;
-      if (innerZ <= trackEdge + 0.05) {
-        strip = 0;
-        continue;
-      }
-      pos.push(innerX, 0.058, trackEdge - 0.06);
-      pos.push(innerX, 0.058, innerZ + 0.16);
-      if (strip > 0) {
-        var a = (used - 1) * 2;
-        idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
-      }
-      used += 1;
-      strip += 1;
+    // Cover the left runoff at the mouths so the lane grows out of the
+    // ribbon (dark on the grey apron) instead of starting already peeled.
+    for (s = 0; s < endS; s += 1.1) {
+      var lip = pointOnPitPath(s);
+      if (!lip || (lip.name !== "pitin" && lip.name !== "pitout")) continue;
+      // Only while the path still sits on the left apron.
+      if (lip.z > trackEdge + PIT_HALF + 1.1) continue;
+      var outerZ = lip.z + Math.cos(lip.h) * PIT_HALF;
+      if (outerZ <= trackEdge + 0.5) continue;
+      var lipDepth = outerZ - trackEdge;
+      var lipMesh = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.08, lipDepth), asphaltMat);
+      lipMesh.position.set(lip.x, 0.09, trackEdge + lipDepth * 0.5);
+      trackRoot.add(lipMesh);
     }
-    if (used < 2) return;
-    var geo = new THREE.BufferGeometry();
-    geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
-    geo.setIndex(idx);
-    var nrm = [];
-    var ni;
-    for (ni = 0; ni < pos.length; ni += 3) nrm.push(0, 1, 0);
-    geo.setAttribute("normal", new THREE.Float32BufferAttribute(nrm, 3));
-    trackRoot.add(new THREE.Mesh(geo, asphaltMat));
+    for (s = 0; s < endS; s += step) {
+      var a = pointOnPitPath(s);
+      var b = pointOnPitPath(Math.min(s + step + 0.45, endS));
+      if (!a || !b) continue;
+      // Grass median owns the parallel stretch. Gore is the fork only.
+      if (a.x > 37 && a.x < 111) continue;
+      var innerA = a.z - Math.cos(a.h) * PIT_HALF;
+      var innerB = b.z - Math.cos(b.h) * PIT_HALF;
+      var innerZ = Math.max(innerA, innerB);
+      if (innerZ <= trackEdge + 0.1) continue;
+      var depth = innerZ - trackEdge + 0.45;
+      var mz = trackEdge + depth * 0.5;
+      if (mz - depth * 0.5 < trackEdge - 0.18) continue;
+      var len = Math.max(Math.abs(b.x - a.x) + 0.7, 1.15);
+      var mesh = new THREE.Mesh(new THREE.BoxGeometry(len, 0.08, depth), asphaltMat);
+      mesh.position.set((a.x + b.x) * 0.5, 0.09, mz);
+      trackRoot.add(mesh);
+    }
   }
 
   function paintPitRibbon() {
@@ -2661,10 +2652,13 @@
     fillPitGore();
     var asphalt = makeSurfRibbon(PIT_PATH, PIT_HALF, 0.068, asphaltMat, null, null, 0, null, true);
     if (asphalt) trackRoot.add(asphalt);
-    var line = makeSurfRibbon(PIT_PATH, 0.28, 0.09, 0xd8d2c6, null, null, 0, null, true);
+    // Lane markings start once it is its own road. An inner white edge
+    // on the S-bend drew a second line in the crotch and made the Y
+    // read as two roads with a hole.
+    var line = makeSurfRibbon(PIT_PATH, 0.28, 0.09, 0xd8d2c6, ["pitlane"], null, 0, null, true);
     if (line) trackRoot.add(line);
     var eL = makeSurfRibbon(PIT_PATH, 0.22, 0.082, 0xf4efe6, null, null, PIT_HALF - 0.38, null, true);
-    var eR = makeSurfRibbon(PIT_PATH, 0.22, 0.082, 0xf4efe6, null, null, -(PIT_HALF - 0.38), null, true);
+    var eR = makeSurfRibbon(PIT_PATH, 0.22, 0.082, 0xf4efe6, ["pitlane"], null, -(PIT_HALF - 0.38), null, true);
     if (eL) trackRoot.add(eL);
     if (eR) trackRoot.add(eR);
   }
