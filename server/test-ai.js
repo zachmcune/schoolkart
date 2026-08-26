@@ -164,6 +164,7 @@ var code = [
   sliceFn("approachWant"),
   sliceFn("unwindWant"),
   sliceFn("brakeWindow"),
+  sliceFn("planSpeed"),
   sliceFn("apexFromRadius"),
   sliceFn("eachRival"),
   sliceFn("avoidRams"),

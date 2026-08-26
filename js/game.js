@@ -5518,6 +5518,13 @@
     return (d + 14) * mul;
   }
 
+  function planSpeed(r, want) {
+    // Brake marks from the speed we can actually be carrying, not the
+    // 200 cap. A 200-to-apex stop is kilometers and crawls the lap.
+    var now = Math.abs(r && r.speed) || 0;
+    return Math.min(want, Math.max(now, 18) + 16);
+  }
+
   function apexFromRadius(r, mul) {
     // Speed the washed-out car can actually yaw around this radius.
     // Custom 90s are ~44m; Campus's decreasing 90 is ~12m. Same brain.
@@ -5741,7 +5748,8 @@
     var skilled = p.hunter || p.craft;
     var pow = skilled ? 1.7 : 2;
     var bMul = skilled ? 0.7 : p.brake;
-    var scanMeters = skilled ? Math.max(260, brakeWindow(MAX_SPEED, 15, 1.15) + 40) : 190 * p.brake;
+    var planV = planSpeed(r, MAX_SPEED);
+    var scanMeters = skilled ? Math.max(260, brakeWindow(planV, 15, 1.15) + 40) : 190 * p.brake;
     var scan = scanAhead(r.s, scanMeters);
     var look = (12 + r.speed * 0.3) * p.look;
     if (skilled) {
@@ -5765,23 +5773,23 @@
       if (scan.dChi < 900 && scan.dChi <= scan.dBend + 10) bendV = Math.min(bendV, p.chicane);
       if (scan.dKink < 900 && scan.dKink <= scan.dBend + 8) bendV = Math.min(bendV, 24);
       if (scan.dBend < 900) {
-        want = Math.min(want, approachWant(want, scan.dBend, brakeWindow(want, bendV, bMul), bendV, pow));
+        want = Math.min(want, approachWant(want, scan.dBend, brakeWindow(planSpeed(r, want), bendV, bMul), bendV, pow));
       }
       var hairV = scan.bendR < 20 ? hpApex : apexFromRadius(Math.max(scan.bendR, 40), p.tight * 0.86);
-      want = Math.min(want, approachWant(want, scan.dHair, brakeWindow(want, hairV, bMul), hairV, pow));
+      want = Math.min(want, approachWant(want, scan.dHair, brakeWindow(planSpeed(r, want), hairV, bMul), hairV, pow));
       if (scan.tightR < 28) {
         var cap = apexFromRadius(scan.tightR, p.tight);
         if (scan.dHair < 80 && scan.tightR < 20) cap = Math.min(cap, hpApex);
         if (cap < 12) cap = 12;
-        var tWin = brakeWindow(want, cap, bMul);
+        var tWin = brakeWindow(planSpeed(r, want), cap, bMul);
         // Decreasing 90: the 13m apex sits after a 40m entry. Don't crawl
         // the straight for it — slow once the first radius is in the window.
         if (scan.dBend + 12 < scan.dTight && scan.bendR > scan.tightR + 8) tWin *= 0.5;
         want = Math.min(want, approachWant(want, scan.dTight, tWin, cap, pow));
       }
-      want = Math.min(want, approachWant(want, scan.dChi, brakeWindow(want, p.chicane, bMul), p.chicane, pow));
+      want = Math.min(want, approachWant(want, scan.dChi, brakeWindow(planSpeed(r, want), p.chicane, bMul), p.chicane, pow));
       var sweepV = apexFromRadius(scan.bendR < 200 ? Math.max(scan.bendR, 80) : 130, 0.9);
-      want = Math.min(want, approachWant(want, scan.dSweep, brakeWindow(want, sweepV, bMul * 0.9), sweepV, pow));
+      want = Math.min(want, approachWant(want, scan.dSweep, brakeWindow(planSpeed(r, want), sweepV, bMul * 0.9), sweepV, pow));
       want = Math.max(want, unwindWant(want, scan.d90, scan.d90Left, bendV, 20));
       want = Math.max(want, unwindWant(want, scan.dSweep, scan.sweepLeft, p.sweeper, 24));
       want = Math.max(want, unwindWant(want, scan.dChi, scan.chiLeft, p.chicane, 14));
