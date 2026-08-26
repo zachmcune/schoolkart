@@ -2520,11 +2520,31 @@
     return mesh;
   }
 
+  function stampPitBand(half, y, hgt, mat, endS) {
+    var step = 2.4;
+    var s;
+    for (s = 0; s < endS; s += step) {
+      var a = pointOnPitPath(s);
+      var b = pointOnPitPath(Math.min(s + step + 0.45, endS));
+      if (!a || !b) continue;
+      var dx = b.x - a.x;
+      var dz = b.z - a.z;
+      var len = Math.hypot(dx, dz);
+      if (len < 0.3) continue;
+      var mesh = new THREE.Mesh(new THREE.BoxGeometry(len + 0.4, hgt, half * 2), mat);
+      mesh.position.set((a.x + b.x) * 0.5, y, (a.z + b.z) * 0.5);
+      mesh.rotation.y = -Math.atan2(dz, dx);
+      trackRoot.add(mesh);
+    }
+  }
+
   function paintPitRibbon() {
     if (!PIT_PATH.length || !trackRoot) return;
-    // Same recipe as the race ribbon: runoff, asphalt, center, white
-    // edges. Narrower runoff than the main straight so it reads as a
-    // smaller lane, not a grey slab. Raised so the peel sits on top.
+    // Same asphalt + runoff as the race ribbon, stamped along the
+    // S-curve so the fill stays visible (a flat ribbon vanished on
+    // the dark infield — only the white edges read).
+    var last = PIT_PATH[PIT_PATH.length - 1];
+    var endS = (last.startS || 0) + (last.len || 0);
     var runoffMat = new THREE.MeshLambertMaterial({
       color: 0x8d97a6,
       emissive: 0x2a3038,
@@ -2535,14 +2555,12 @@
       emissive: 0x101214,
       side: THREE.DoubleSide,
     });
-    var runoff = makeSurfRibbon(PIT_PATH, PIT_HALF + 1.55, 0.048, runoffMat);
-    var asphalt = makeSurfRibbon(PIT_PATH, PIT_HALF, 0.07, asphaltMat);
-    var line = makeSurfRibbon(PIT_PATH, 0.28, 0.095, 0xd8d2c6);
-    if (runoff) trackRoot.add(runoff);
-    if (asphalt) trackRoot.add(asphalt);
+    stampPitBand(PIT_HALF + 1.55, 0.05, 0.06, runoffMat, endS);
+    stampPitBand(PIT_HALF, 0.09, 0.08, asphaltMat, endS);
+    var line = makeSurfRibbon(PIT_PATH, 0.28, 0.14, 0xd8d2c6);
     if (line) trackRoot.add(line);
-    var eL = makeSurfRibbon(PIT_PATH, 0.22, 0.087, 0xf4efe6, null, null, PIT_HALF - 0.38);
-    var eR = makeSurfRibbon(PIT_PATH, 0.22, 0.087, 0xf4efe6, null, null, -(PIT_HALF - 0.38));
+    var eL = makeSurfRibbon(PIT_PATH, 0.22, 0.135, 0xf4efe6, null, null, PIT_HALF - 0.38);
+    var eR = makeSurfRibbon(PIT_PATH, 0.22, 0.135, 0xf4efe6, null, null, -(PIT_HALF - 0.38));
     if (eL) trackRoot.add(eL);
     if (eR) trackRoot.add(eR);
   }

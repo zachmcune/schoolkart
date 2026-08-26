@@ -937,7 +937,7 @@ assert(src.indexOf("Grass median") !== -1, "grass median sits between ribbon and
 assert(src.indexOf('pathLine(680, "start")') !== -1, "start road is long enough for W-only stay-right past 10s");
 assert(src.indexOf("The racing ribbon stays whole") !== -1, "second road is added beside the ribbon, not a hole");
 assert(src.indexOf("z0: -61.5") !== -1, "second asphalt road starts past the grass median");
-assert(src.indexOf("makeSurfRibbon(PIT_PATH, PIT_HALF, 0.07, asphaltMat)") !== -1, "pit lane is the same asphalt ribbon as the race track, just smaller");
+assert(src.indexOf("function stampPitBand") !== -1 && src.indexOf("stampPitBand(PIT_HALF, 0.09, 0.08, asphaltMat, endS)") !== -1, "pit lane is the same asphalt as the race track, just smaller");
 assert(src.indexOf("r.z <= SF_Z + ASPHALT + 8") !== -1, "grab requires the visible left lane, not the median");
 assert(src.indexOf("inRect(wx, wz, PIT_ENTRY) || inRect(wx, wz, PIT_EXIT)") !== -1, "left wall opens only at IN/OUT mouths");
 assert(src.indexOf("player.heading = slotHeading({ h: gridHeading })") !== -1, "campus GO snaps heading east");
