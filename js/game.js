@@ -2581,10 +2581,10 @@
   }
 
   function fillPitGore() {
-    // Raised asphalt in the Y crotch — a flat ribbon vanishes on the
-    // dark infield (same reason the lane itself is stamped). Stamps
-    // stay off the racing line: they only fill from the left edge out
-    // to the pit. The racing ribbon stays whole.
+    // Pave the whole Y: from the racing ribbon's left edge out to the
+    // pit's outer edge. Raised boxes so the fill reads on the dark
+    // infield. They kiss the left edge and do not sit on the racing
+    // line. Grass median owns the parallel stretch.
     if (isDriveableLoop() || !PIT_PATH.length || !trackRoot) return;
     var trackEdge = SF_Z + ASPHALT;
     var last = PIT_PATH[PIT_PATH.length - 1];
@@ -2594,38 +2594,16 @@
       emissive: 0x101214,
       side: THREE.DoubleSide,
     });
-    var step = 1.05;
     var s;
-    // Cover the left runoff at the mouths so the lane grows out of the
-    // ribbon (dark on the grey apron) instead of starting already peeled.
-    for (s = 0; s < endS; s += 1.1) {
-      var lip = pointOnPitPath(s);
-      if (!lip || (lip.name !== "pitin" && lip.name !== "pitout")) continue;
-      // Only while the path still sits on the left apron.
-      if (lip.z > trackEdge + PIT_HALF + 1.1) continue;
-      var outerZ = lip.z + Math.cos(lip.h) * PIT_HALF;
-      if (outerZ <= trackEdge + 0.5) continue;
-      var lipDepth = outerZ - trackEdge;
-      var lipMesh = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.08, lipDepth), asphaltMat);
-      lipMesh.position.set(lip.x, 0.09, trackEdge + lipDepth * 0.5);
-      trackRoot.add(lipMesh);
-    }
-    for (s = 0; s < endS; s += step) {
-      var a = pointOnPitPath(s);
-      var b = pointOnPitPath(Math.min(s + step + 0.45, endS));
-      if (!a || !b) continue;
-      // Grass median owns the parallel stretch. Gore is the fork only.
-      if (a.x > 37 && a.x < 111) continue;
-      var innerA = a.z - Math.cos(a.h) * PIT_HALF;
-      var innerB = b.z - Math.cos(b.h) * PIT_HALF;
-      var innerZ = Math.max(innerA, innerB);
-      if (innerZ <= trackEdge + 0.1) continue;
-      var depth = innerZ - trackEdge + 0.45;
-      var mz = trackEdge + depth * 0.5;
-      if (mz - depth * 0.5 < trackEdge - 0.18) continue;
-      var len = Math.max(Math.abs(b.x - a.x) + 0.7, 1.15);
-      var mesh = new THREE.Mesh(new THREE.BoxGeometry(len, 0.08, depth), asphaltMat);
-      mesh.position.set((a.x + b.x) * 0.5, 0.09, mz);
+    for (s = 0; s < endS; s += 0.85) {
+      var p = pointOnPitPath(s);
+      if (!p || (p.name !== "pitin" && p.name !== "pitout")) continue;
+      if (p.x > 37 && p.x < 111) continue;
+      var outerZ = p.z + Math.abs(Math.cos(p.h)) * PIT_HALF;
+      if (outerZ <= trackEdge + 0.35) continue;
+      var depth = outerZ - trackEdge;
+      var mesh = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.1, depth), asphaltMat);
+      mesh.position.set(p.x, 0.1, trackEdge + depth * 0.5);
       trackRoot.add(mesh);
     }
   }
