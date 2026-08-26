@@ -278,6 +278,7 @@
   var audio = { ctx: null, osc: null, gain: null };
   var gantryReds = [];
   var gantryBlues = [];
+  var menuOpen = false;
   var mpMode = false;
   var remotes = {};
   var hostBots = {};
@@ -407,10 +408,23 @@
     trackPaste: document.getElementById("track-paste"),
     tilePalette: document.getElementById("tile-palette"),
     tileBoard: document.getElementById("tile-board"),
+    tileBoardHost: document.querySelector(".tile-map-host"),
     tileTrash: document.getElementById("tile-trash"),
     tileRot: document.getElementById("btn-tile-rot"),
     circuitPicks: document.getElementById("circuit-picks"),
     circuitPicksEditor: document.getElementById("circuit-picks-editor"),
+    circuitPicksLobby: document.getElementById("circuit-picks-lobby"),
+    pause: document.getElementById("pause-screen"),
+    pauseEyebrow: document.getElementById("pause-eyebrow"),
+    pauseTitle: document.getElementById("pause-title"),
+    pauseStatus: document.getElementById("pause-status"),
+    pauseRoster: document.getElementById("pause-roster"),
+    pauseHost: document.getElementById("pause-host"),
+    pauseErr: document.getElementById("pause-err"),
+    pauseHint: document.getElementById("pause-hint"),
+    pauseAllBtn: document.getElementById("btn-pause-all"),
+    pauseSpeedBtn: document.getElementById("btn-pause-speed"),
+    menuBtn: document.getElementById("btn-menu"),
     lights: [
       document.getElementById("rl0"),
       document.getElementById("rl1"),
@@ -455,9 +469,9 @@
     if (n !== 0.75 && n !== 1.25) n = 1;
     gameSpeed = n;
     if (net) net.speed = n;
-    if (hud.speedBtn) {
-      hud.speedBtn.textContent = n === 1.25 ? "1.25x" : n === 0.75 ? "0.75x" : "1x";
-    }
+    var label = n === 1.25 ? "1.25x" : n === 0.75 ? "0.75x" : "1x";
+    if (hud.speedBtn) hud.speedBtn.textContent = label;
+    if (hud.pauseSpeedBtn) hud.pauseSpeedBtn.textContent = label;
   }
 
   function inRect(x, z, b) {
@@ -3450,10 +3464,20 @@
     }
     paint(hud.circuitPicks);
     paint(hud.circuitPicksEditor);
+    paint(hud.circuitPicksLobby);
+    paint(document.getElementById("pause-circuits"));
   }
 
   function pickBuiltin(code) {
-    applyTrack(cleanTrack(code || ""), true, true);
+    var next = cleanTrack(code || "");
+    if (mpMode && net && net.active && net.isHost() && (state === "start" || state === "racing")) {
+      if (net.setTrack) net.setTrack(next);
+      net.track = next;
+      paintCircuitPicks();
+      paintPauseMenu();
+      return;
+    }
+    applyTrack(next, true, true);
     if (net && net.active && net.isHost() && net.setTrack) {
       net.setTrack(isDriveableLoop() || isBuiltinCode(trackCode) ? trackCode : "");
     }
@@ -3935,6 +3959,43 @@
     return _tileArt[key];
   }
 
+  function editorTilePx(vw, vh) {
+    var floor = vh < 430 ? 28 : 40;
+    var short = vh < 520 ? vh * 0.08 : 72;
+    return Math.round(clamp(Math.min(vw * 0.09, short), floor, 72));
+  }
+
+  function editorBoardBox(maxW, maxH) {
+    var cell = Math.floor(Math.min(maxW / MAP_W, maxH / MAP_H));
+    if (!(cell > 3)) return { w: 0, h: 0, cell: 0 };
+    return { w: cell * MAP_W, h: cell * MAP_H, cell: cell };
+  }
+
+  function layoutTrackEditor() {
+    var screen = hud.trackScreen;
+    var board = hud.tileBoard;
+    var host = hud.tileBoardHost;
+    if (!screen || !board || screen.classList.contains("hidden")) return;
+    var vw = window.innerWidth || 800;
+    var vh = window.innerHeight || 600;
+    if (window.visualViewport) {
+      vw = window.visualViewport.width || vw;
+      vh = window.visualViewport.height || vh;
+    }
+    screen.style.setProperty("--tile", editorTilePx(vw, vh) + "px");
+    var box = host || board.parentNode;
+    if (!box || box.clientWidth < 8 || box.clientHeight < 8) return;
+    var fit = editorBoardBox(box.clientWidth, box.clientHeight);
+    if (!fit.w) return;
+    board.style.width = fit.w + "px";
+    board.style.height = fit.h + "px";
+  }
+
+  function scheduleTrackLayout() {
+    layoutTrackEditor();
+    requestAnimationFrame(layoutTrackEditor);
+  }
+
   function paintTrackEditor() {
     if (!hud.trackView) return;
     if (!trackCode || isBuiltinCode(trackCode)) {
@@ -4040,6 +4101,7 @@
     }
     hud.tileBoard.innerHTML = html;
     if (hud.tileRot) hud.tileRot.disabled = !tileSel;
+    scheduleTrackLayout();
   }
 
   function pushTrackUndo() {
@@ -4664,6 +4726,7 @@
       passedHalf: false,
       lastX: 0,
       s: 0,
+      lastS: 0,
       brakeHold: 0,
       finished: false,
       finishTime: 0,
@@ -4929,11 +4992,9 @@
       r.passedHalf = false;
     }
     pinS(player);
-    if (pose) {
-      eachCpu(function (r) {
-        pinS(r);
-      });
-    }
+    eachCpu(function (r) {
+      pinS(r);
+    });
     eachCpu(function (r) {
       r.mesh.visible = !mpMode;
     });
@@ -5002,10 +5063,23 @@
     if (r.finished) return;
     var prog = projectTrack(r.x, r.z);
     r.s = prog.s;
-    if (isDriveableLoop()) {
-      var prev = r.lastS != null ? r.lastS : r.s;
-      if (prev < TRACK_LEN * 0.5 && r.s >= TRACK_LEN * 0.5) r.passedHalf = true;
-      if (r.passedHalf && prev > TRACK_LEN * 0.72 && r.s < TRACK_LEN * 0.28 && prog.onAsphalt) {
+    // Any long ribbon — custom closed boards AND the built-in circuits.
+    // Harbor / Park / Desert / Forest never trip the old Campus x=8 / z>8
+    // gate, so they stayed on lap 1 until the clock ran out.
+    if (PATH.length && TRACK_LEN > 80) {
+      var origin = 0;
+      if (!isDriveableLoop()) {
+        // Built-in painted S/F is world (0, SF_Z), not path s=0 at x=-200.
+        var stripe = projectTrack(0, SF_Z);
+        if (stripe && stripe.onAsphalt) origin = stripe.s;
+      }
+      var prevRaw = r.lastS != null ? r.lastS : r.s;
+      var prev = prevRaw - origin;
+      var cur = r.s - origin;
+      if (prev < 0) prev += TRACK_LEN;
+      if (cur < 0) cur += TRACK_LEN;
+      if (prev < TRACK_LEN * 0.5 && cur >= TRACK_LEN * 0.5) r.passedHalf = true;
+      if (r.passedHalf && prev > TRACK_LEN * 0.72 && cur < TRACK_LEN * 0.28 && prog.onAsphalt) {
         r.passedHalf = false;
         r.lap += 1;
         if (r.lap > LAPS) {
@@ -5276,6 +5350,7 @@
     overshoot: 1,
     craft: 1,
     hunter: 1,
+    reel: 1,
   };
   // Everyone else: Bowie's racecraft, no divebomb / ram.
   var AI_SMART = {
@@ -5586,6 +5661,7 @@
     block: false,
     pass: false,
     cover: 0,
+    gap: 0,
   };
 
   function gripApex(radius, tight) {
@@ -5602,6 +5678,336 @@
     // those names on ~44m arcs — don't crawl a fat 90 like a campus 180.
     if (radius >= 42) return Math.max(namedCap, grip);
     return namedCap;
+  }
+
+  // Track-agnostic race brain (Heilmeier min-curvature line + FB speed
+  // profile + Pure Pursuit). Works on Campus names, built-in circuits,
+  // and any custom ribbon — geometry only, no per-map scripts.
+  var RACE = {
+    n: 0,
+    ds: 5,
+    stamp: -1,
+    pathN: -1,
+    s: [],
+    x: [],
+    z: [],
+    h: [],
+    nx: [],
+    nz: [],
+    name: [],
+    r: [],
+    kap: [],
+    off: [],
+    geo: [],
+    lkap: [],
+    v: [],
+    pitch: [],
+  };
+
+  function aiWrap(a) {
+    while (a > Math.PI) a -= Math.PI * 2;
+    while (a < -Math.PI) a += Math.PI * 2;
+    return a;
+  }
+
+  function raceDeltaS(s, apex) {
+    var d = s - apex;
+    if (TRACK_LEN > 4) {
+      if (d > TRACK_LEN * 0.5) d -= TRACK_LEN;
+      if (d < -TRACK_LEN * 0.5) d += TRACK_LEN;
+    }
+    return d;
+  }
+
+  function raceKey() {
+    var k = TRACK_LEN + PATH.length * 0.001;
+    var i;
+    for (i = 0; i < PATH.length; i++) {
+      var s = PATH[i];
+      if (!s) continue;
+      k += (s.r || 0) * (i + 1) * ((s.a1 || 0) >= (s.a0 || 0) ? 1 : -1);
+      k += (s.len || 0) * 0.01;
+      k += (s.ax || s.cx || 0) * 0.001 + (s.az || s.cz || 0) * 0.003;
+    }
+    return k;
+  }
+
+  function ensureRaceBrain() {
+    var key = raceKey();
+    if (RACE.stamp === key && RACE.n > 3) return;
+    bakeRaceBrain();
+  }
+
+  function bakeRaceBrain() {
+    RACE.stamp = raceKey();
+    RACE.pathN = PATH.length;
+    RACE.n = 0;
+    if (!PATH.length || !(TRACK_LEN > 16)) return;
+    var n = Math.max(32, Math.round(TRACK_LEN / 5));
+    if (n > 720) n = 720;
+    var ds = TRACK_LEN / n;
+    RACE.ds = ds;
+    RACE.n = n;
+    var i;
+    for (i = 0; i < n; i++) {
+      var p = centerlinePoint(i * ds);
+      RACE.s[i] = i * ds;
+      RACE.x[i] = p.x;
+      RACE.z[i] = p.z;
+      RACE.h[i] = p.h;
+      RACE.nx[i] = -Math.sin(p.h);
+      RACE.nz[i] = Math.cos(p.h);
+      RACE.name[i] = p.name;
+      RACE.r[i] = p.r;
+      RACE.pitch[i] = p.pitch || 0;
+      var dh = aiWrap(centerlinePoint(i * ds + ds).h - centerlinePoint(i * ds - ds).h);
+      var kap = dh / (2 * ds);
+      if (p.r > 0 && p.r < 400) {
+        var signed = (p.left || (kap >= 0 ? 1 : -1)) / p.r;
+        kap = kap * 0.25 + signed * 0.75;
+      }
+      RACE.kap[i] = kap;
+      RACE.off[i] = 0;
+      RACE.geo[i] = 0;
+      RACE.lkap[i] = kap;
+      RACE.v[i] = MAX_SPEED;
+    }
+
+    var corners = [];
+    i = 0;
+    while (i < n) {
+      if (Math.abs(RACE.kap[i]) > 1 / 180) {
+        var sign = RACE.kap[i] >= 0 ? 1 : -1;
+        var start = i;
+        var peak = i;
+        var peakK = Math.abs(RACE.kap[i]);
+        while (i < n && Math.abs(RACE.kap[i]) > 1 / 180 && (RACE.kap[i] >= 0 ? 1 : -1) === sign) {
+          if (Math.abs(RACE.kap[i]) > peakK) {
+            peak = i;
+            peakK = Math.abs(RACE.kap[i]);
+          }
+          i += 1;
+        }
+        corners.push({ i: peak, start: start, end: i - 1, sign: sign, k: peakK, r: 1 / peakK });
+      } else {
+        i += 1;
+      }
+    }
+    if (corners.length > 1) {
+      var first = corners[0];
+      var last = corners[corners.length - 1];
+      if (first.start === 0 && last.end === n - 1 && first.sign === last.sign) {
+        if (last.k > first.k) first.i = last.i;
+        first.k = Math.max(first.k, last.k);
+        first.r = 1 / first.k;
+        first.start = last.start;
+        corners.pop();
+      }
+    }
+
+    var maxOff = ASPHALT - 2.35;
+    if (maxOff < 2.4) maxOff = 2.4;
+    var wgt = [];
+    for (i = 0; i < n; i++) wgt[i] = 0;
+    var c;
+    for (c = 0; c < corners.length; c++) {
+      var cr = corners[c];
+      var apexW = 1.15 + 0.055 * cr.r;
+      if (apexW < 1.35) apexW = 1.35;
+      if (apexW > 3.55) apexW = 3.55;
+      var entry = 28 + 0.55 * cr.r;
+      if (entry < 32) entry = 32;
+      if (entry > 70) entry = 70;
+      var exit = 24 + 0.45 * cr.r;
+      if (exit < 28) exit = 28;
+      if (exit > 62) exit = 62;
+      var apexS = cr.i * ds;
+      for (i = 0; i < n; i++) {
+        var d = raceDeltaS(i * ds, apexS);
+        if (d < -entry || d > exit) continue;
+        var tgt;
+        if (d <= 0) {
+          var t = entry > 1 ? 1 + d / entry : 1;
+          if (t < 0) t = 0;
+          if (t > 1) t = 1;
+          var e = t * t;
+          tgt = (-apexW * 0.82 + (apexW + apexW * 0.82) * e) * cr.sign;
+        } else {
+          var u = exit > 1 ? d / exit : 1;
+          if (u > 1) u = 1;
+          tgt = (apexW + (-apexW * 0.7 - apexW) * u) * cr.sign;
+        }
+        var ww = cr.k * (d <= 0 ? 1.15 : 1);
+        RACE.geo[i] += tgt * ww;
+        wgt[i] += ww;
+      }
+    }
+    for (i = 0; i < n; i++) {
+      if (wgt[i] > 1e-6) RACE.geo[i] /= wgt[i];
+      else RACE.geo[i] = 0;
+      if (RACE.geo[i] > maxOff) RACE.geo[i] = maxOff;
+      if (RACE.geo[i] < -maxOff) RACE.geo[i] = -maxOff;
+      RACE.off[i] = RACE.geo[i];
+    }
+
+    var iter;
+    var nxt = [];
+    for (iter = 0; iter < 10; iter++) {
+      for (i = 0; i < n; i++) {
+        var im = (i - 1 + n) % n;
+        var ip = (i + 1) % n;
+        nxt[i] = RACE.off[i] * 0.58 + RACE.off[im] * 0.21 + RACE.off[ip] * 0.21;
+      }
+      for (i = 0; i < n; i++) RACE.off[i] = nxt[i];
+    }
+    for (i = 0; i < n; i++) {
+      var mix = RACE.off[i] * 0.7 + RACE.geo[i] * 0.3;
+      if (mix > maxOff) mix = maxOff;
+      if (mix < -maxOff) mix = -maxOff;
+      RACE.off[i] = mix;
+    }
+
+    for (i = 0; i < n; i++) {
+      var ip2 = (i + 1) % n;
+      var lx0 = RACE.x[i] + RACE.nx[i] * RACE.off[i];
+      var lz0 = RACE.z[i] + RACE.nz[i] * RACE.off[i];
+      var lx1 = RACE.x[ip2] + RACE.nx[ip2] * RACE.off[ip2];
+      var lz1 = RACE.z[ip2] + RACE.nz[ip2] * RACE.off[ip2];
+      RACE.h[i] = Math.atan2(lz1 - lz0, lx1 - lx0);
+    }
+    for (i = 0; i < n; i++) {
+      var im2 = (i - 1 + n) % n;
+      var ip3 = (i + 1) % n;
+      RACE.lkap[i] = aiWrap(RACE.h[ip3] - RACE.h[im2]) / (2 * ds);
+    }
+
+    var aBrk = Math.max(2.6, BRAKE_DECEL * 0.62);
+    var aAcc = ACCEL;
+    for (i = 0; i < n; i++) {
+      var rAbs = Math.abs(RACE.lkap[i]) > 1e-4 ? 1 / Math.abs(RACE.lkap[i]) : 999;
+      var vLim = apexFromRadius(rAbs, 0.96);
+      var gLim = gripApex(rAbs, 1);
+      if (gLim < vLim) vLim = gLim;
+      if (vLim > MAX_SPEED) vLim = MAX_SPEED;
+      var ck = cornerKind(RACE.name[i]);
+      var cr0 = RACE.r[i];
+      if (ck === "hairpin" && cr0 < 22) vLim = Math.min(vLim, 16.6);
+      else if (ck === "chicane" && cr0 < 28) vLim = Math.min(vLim, 21.4);
+      else if (ck === "the90" && cr0 < 20) vLim = Math.min(vLim, 23.2);
+      else if (ck === "kink" && cr0 < 24) vLim = Math.min(vLim, 24.5);
+      RACE.v[i] = vLim;
+    }
+    var pass;
+    for (pass = 0; pass < 2; pass++) {
+      for (i = n - 1; i >= 0; i--) {
+        var nxtI = (i + 1) % n;
+        var hill = RACE.pitch[i] * 12;
+        var aB = aBrk + hill;
+        if (aB < 2.2) aB = 2.2;
+        var back = Math.sqrt(RACE.v[nxtI] * RACE.v[nxtI] + 2 * aB * ds);
+        if (RACE.v[i] > back) RACE.v[i] = back;
+      }
+    }
+    for (pass = 0; pass < 2; pass++) {
+      for (i = 0; i < n; i++) {
+        var prv = (i - 1 + n) % n;
+        var climb = -RACE.pitch[i] * 12;
+        var aF = aAcc + climb;
+        if (aF < 1.6) aF = 1.6;
+        var fwd = Math.sqrt(RACE.v[prv] * RACE.v[prv] + 2 * aF * ds);
+        if (RACE.v[i] > fwd) RACE.v[i] = fwd;
+      }
+    }
+  }
+
+  function raceAt(s) {
+    ensureRaceBrain();
+    if (RACE.n < 4 || !(TRACK_LEN > 0)) return { off: 0, v: MAX_SPEED, kap: 0 };
+    s = ((s % TRACK_LEN) + TRACK_LEN) % TRACK_LEN;
+    var f = s / RACE.ds;
+    var i0 = Math.floor(f) % RACE.n;
+    if (i0 < 0) i0 += RACE.n;
+    var i1 = (i0 + 1) % RACE.n;
+    var t = f - Math.floor(f);
+    return {
+      off: RACE.off[i0] + (RACE.off[i1] - RACE.off[i0]) * t,
+      v: RACE.v[i0] + (RACE.v[i1] - RACE.v[i0]) * t,
+      kap: RACE.lkap[i0] + (RACE.lkap[i1] - RACE.lkap[i0]) * t,
+    };
+  }
+
+  function raceWantAhead(s, vNow, p) {
+    ensureRaceBrain();
+    var want = MAX_SPEED * ((p && p.pace) || 1);
+    if (RACE.n < 4) return want;
+    var v0 = vNow > 4 ? vNow : want;
+    var look = brakeWindow(v0, 14, 1.2);
+    if (look < 90) look = 90;
+    if (look > 280) look = 280;
+    var ds = RACE.ds;
+    var steps = Math.ceil(look / ds);
+    var k;
+    var bMul = p && p.hunter ? 0.68 : 0.7;
+    for (k = 0; k <= steps; k++) {
+      var sample = raceAt(s + k * ds);
+      var apex = sample.v;
+      if (!(apex > 0)) continue;
+      var win = brakeWindow(want, apex, bMul);
+      want = Math.min(want, approachWant(want, k * ds, win, apex, 1.7));
+    }
+    return want;
+  }
+
+  function raceProg(r) {
+    if (!r) return 0;
+    var s = r.s;
+    if (s == null || !isFinite(s)) {
+      if (r.x != null && r.z != null && PATH.length) s = projectTrack(r.x, r.z).s;
+      else return 0;
+    }
+    var lap = r.lap;
+    if (lap == null || !isFinite(lap)) lap = 1;
+    return (lap - 1) * TRACK_LEN + s;
+  }
+
+  function trackGap(from, to) {
+    if (!from || !to || !(TRACK_LEN > 8)) return 0;
+    var d = raceProg(to) - raceProg(from);
+    if (Math.abs(d) > TRACK_LEN * 2.6) {
+      var a = from.s;
+      var b = to.s;
+      if (a == null || !isFinite(a)) a = projectTrack(from.x, from.z).s;
+      if (b == null || !isFinite(b)) b = projectTrack(to.x, to.z).s;
+      d = b - a;
+      if (d < -TRACK_LEN * 0.5) d += TRACK_LEN;
+      if (d > TRACK_LEN * 0.5) d -= TRACK_LEN;
+    }
+    return d;
+  }
+
+  function trackLeadGap(self, p) {
+    var playerGap = 0;
+    var best = 0;
+    eachRival(self, function (o) {
+      if (o.pitServicing) return;
+      var g = trackGap(self, o);
+      if (g <= 6 || g > TRACK_LEN * 2.8) return;
+      if (o.kind === "player") playerGap = g;
+      if (g > best) best = g;
+    });
+    if (p && (p.hunter || p.reel) && playerGap > 6) return playerGap;
+    return best;
+  }
+
+  function catchBonus(p, gap) {
+    if (!(gap > 0)) return 0;
+    var hunter = !!(p && (p.hunter || p.reel));
+    var maxB = hunter ? 11.5 : 7;
+    var perM = hunter ? 0.1 : 0.055;
+    var base = hunter ? 3.4 : 1.6;
+    var b = base + gap * perM;
+    if (b > maxB) b = maxB;
+    return b;
   }
 
   function pickPrey(hunter, huntBias) {
@@ -5655,10 +6061,12 @@
     _hunt.block = false;
     _hunt.pass = false;
     _hunt.cover = 0;
+    _hunt.gap = 0;
     _hunt.want = want;
     var prey = pickPrey(r, p.hunter);
-    if (!prey.r) return _hunt;
-    if (prey.fwd < 2.2) {
+    var gap = trackLeadGap(r, p);
+    _hunt.gap = gap;
+    if (prey.r && prey.fwd < 2.2) {
       // Ahead of them / door-to-door. Cover the lane. Aiming at their
       // XY yaws 180 and rams — that's a U-turn, not a block.
       _hunt.block = true;
@@ -5668,7 +6076,7 @@
       _hunt.want = Math.min(MAX_SPEED, Math.max(want, (prey.r.speed || 0) + 2));
       return _hunt;
     }
-    if (p.hunter && prey.d <= 16) {
+    if (p.hunter && prey.r && prey.d <= 16) {
       var lead = prey.d * 0.14;
       if (lead > 3.2) lead = 3.2;
       if (lead < 0.45) lead = 0.45;
@@ -5686,16 +6094,19 @@
       }
       return _hunt;
     }
-    if (prey.d > 16) {
-      // Far lead: stay on the ribbon and wind. Cutting across dumps.
-      _hunt.catchUp = true;
-      _hunt.want = Math.min(MAX_SPEED, Math.max(want, (prey.r.speed || 0) + 10));
-      return _hunt;
+    if (prey.r && prey.fwd > 2.2 && prey.d <= 22 && !(_scan.dTight < 20 && _scan.tightR < 18)) {
+      _hunt.pass = true;
+      _hunt.cover = passSide(r, prey) * 2.45;
+      _hunt.want = Math.min(MAX_SPEED, Math.max(want, (prey.r.speed || 0) + 6));
     }
-    if (_scan.dTight < 20 && _scan.tightR < 18) return _hunt;
-    _hunt.pass = true;
-    _hunt.cover = passSide(r, prey) * 2.45;
-    _hunt.want = Math.min(MAX_SPEED, Math.max(want, (prey.r.speed || 0) + 6));
+    if (gap > 12) {
+      // Track-progress reel-in. Euclidean 96m used to drop a 200m lead.
+      _hunt.catchUp = true;
+      var bonus = catchBonus(p, gap);
+      var reelWant = Math.min(MAX_SPEED, want + bonus);
+      if (prey.r) reelWant = Math.min(MAX_SPEED, Math.max(reelWant, (prey.r.speed || 0) + (p.hunter ? 10 : 7)));
+      if (reelWant > _hunt.want) _hunt.want = reelWant;
+    }
     return _hunt;
   }
 
@@ -5751,70 +6162,32 @@
     var planV = planSpeed(r, MAX_SPEED);
     var scanMeters = skilled ? Math.max(260, brakeWindow(planV, 15, 1.15) + 40) : 190 * p.brake;
     var scan = scanAhead(r.s, scanMeters);
-    var look = (12 + r.speed * 0.3) * p.look;
+    ensureRaceBrain();
+    // Pure Pursuit: long look on straights, shorten into curvature.
+    var look = clamp((14 + r.speed * 0.42) * p.look, 10, 28);
     if (skilled) {
-      look = (18 + r.speed * 0.48) * p.look;
-      if (scan.dBend < 88 && scan.dBend > 16) look = Math.min(look, 11 + scan.dBend * 0.32);
+      look = clamp((16 + r.speed * 0.46) * p.look, 11, 28);
+      if (scan.dBend < 88 && scan.dBend > 16) look = Math.min(look, 11 + scan.dBend * 0.3);
     }
     if (scan.dTight < 64) look = Math.min(look, 8 + scan.dTight * 0.22);
     if (scan.dChi < 36) look = Math.min(look, 13);
-    var want = MAX_SPEED * p.pace;
-    if (skilled) want = MAX_SPEED;
+    var want = raceWantAhead(r.s, r.speed, p);
     var hpApex = p.hairpin;
-    // Empty-track 180: make it. Hot overshoot dumps wide and hands the pass.
     var hotHair = p.overshoot && !skilled && (r.lap % 2) === 0;
     if (hotHair) hpApex = 18.8;
-    if (skilled) {
-      var bendV = p.the90;
-      var bendMul = p.tight;
-      if (scan.dHair <= scan.dBend + 10 && scan.dHair < 900) bendMul *= 0.86;
-      if (scan.bendR < 200) bendV = apexFromRadius(scan.bendR, bendMul);
-      if (scan.dHair < 24 && scan.bendR < 20) bendV = Math.min(bendV, hpApex);
-      if (scan.dChi < 900 && scan.dChi <= scan.dBend + 10) bendV = Math.min(bendV, p.chicane);
-      if (scan.dKink < 900 && scan.dKink <= scan.dBend + 8) bendV = Math.min(bendV, 24);
-      if (scan.dBend < 900) {
-        want = Math.min(want, approachWant(want, scan.dBend, brakeWindow(planSpeed(r, want), bendV, bMul), bendV, pow));
-      }
-      // Campus 180s dump above ~17. Fat custom tiles reuse the name on
-      // ~44m arcs — carry grip pace, but not the swept-90 speed a 200
-      // cap would invent (that beaches a 5-lap fight).
-      var hairPt = scan.dHair < 900 ? centerlinePoint(r.s + scan.dHair) : null;
-      var hairR = hairPt && hairPt.r > 0 ? hairPt.r : 0;
-      var hairV = namedApex(scan.dHair, hpApex, hairR, p.tight);
-      if (hairR >= 42) hairV = Math.min(hairV, 28);
-      want = Math.min(want, approachWant(want, scan.dHair, brakeWindow(planSpeed(r, want), hairV, bMul), hairV, pow));
-      if (scan.tightR < 28) {
-        var cap = apexFromRadius(scan.tightR, p.tight);
-        if (scan.dHair < 80 && scan.tightR < 20) cap = Math.min(cap, hpApex);
-        if (cap < 12) cap = 12;
-        var tWin = brakeWindow(planSpeed(r, want), cap, bMul);
-        // Decreasing 90: the 13m apex sits after a 40m entry. Don't crawl
-        // the straight for it — slow once the first radius is in the window.
-        if (scan.dBend + 12 < scan.dTight && scan.bendR > scan.tightR + 8) tWin *= 0.5;
-        want = Math.min(want, approachWant(want, scan.dTight, tWin, cap, pow));
-      }
-      want = Math.min(want, approachWant(want, scan.dChi, brakeWindow(planSpeed(r, want), p.chicane, bMul), p.chicane, pow));
-      var sweepV = apexFromRadius(scan.bendR < 200 ? Math.max(scan.bendR, 80) : 130, 0.9);
-      want = Math.min(want, approachWant(want, scan.dSweep, brakeWindow(planSpeed(r, want), sweepV, bMul * 0.9), sweepV, pow));
-      want = Math.max(want, unwindWant(want, scan.d90, scan.d90Left, bendV, 20));
-      want = Math.max(want, unwindWant(want, scan.dSweep, scan.sweepLeft, p.sweeper, 24));
-      want = Math.max(want, unwindWant(want, scan.dChi, scan.chiLeft, p.chicane, 14));
-    } else {
-      var late = p.brake;
-      want = Math.min(want, approachWant(want, scan.dHair, 150 * p.brake, hpApex, pow));
-      if (scan.tightR < 22) {
-        var cap2 = Math.sqrt(MAX_LAT * scan.tightR) * p.tight;
-        if (hotHair && scan.dHair < 90) cap2 = Math.max(cap2, 18.5);
-        if (cap2 < 12) cap2 = 12;
-        want = Math.min(want, approachWant(want, scan.dTight, (48 + scan.tightR * 3.6) * p.brake, cap2, pow));
-      }
-      if (scan.dChi > 0 && scan.dChi < 900) {
-        want = Math.min(want, approachWant(want, scan.dChi, 58 * late, p.chicane, pow));
-      }
-      want = Math.min(want, approachWant(want, scan.d90, 68 * late, p.the90, pow));
-      want = Math.min(want, approachWant(want, scan.dSweep, 88 * late, p.sweeper, pow));
-      want = Math.min(want, approachWant(want, scan.dKink, 54 * late, 26, pow));
+    if (scan.dHair < 90 && (scan.tightR < 22 || scan.bendR < 22)) {
+      var hairV = hpApex;
+      if (scan.bendR >= 22 && scan.tightR >= 22) hairV = apexFromRadius(Math.max(scan.bendR, 40), p.tight * 0.86);
+      want = Math.min(want, approachWant(want, scan.dHair, brakeWindow(want, hairV, bMul), hairV, pow));
     }
+    if (scan.dBend < 900 && scan.bendR < 200) {
+      var bendV = apexFromRadius(scan.bendR, p.tight || 0.92);
+      if (scan.dHair < 24 && scan.bendR < 20) bendV = Math.min(bendV, hpApex);
+      want = Math.min(want, approachWant(want, scan.dBend, brakeWindow(want, bendV, bMul), bendV, pow));
+      want = Math.max(want, unwindWant(want, scan.d90, scan.d90Left, bendV, 20));
+    }
+    want = Math.max(want, unwindWant(want, scan.dSweep, scan.sweepLeft, p.sweeper, 24));
+    want = Math.max(want, unwindWant(want, scan.dChi, scan.chiLeft, p.chicane, 14));
     if (r.fuel <= 0) want = Math.min(want, LIMP_SPEED);
 
     var hunt = planHunt(r, p, want);
@@ -5830,10 +6203,17 @@
       hunt.want = Math.min(hunt.want, want);
       want = hunt.want;
     }
-    if (hunt.catchUp && scan.dHair > 90 && scan.dTight > 60 && scan.d90 > 80 && scan.dChi > 50 && scan.dBend > 70) {
-      want = Math.max(want, hunt.want);
+    if (hunt.catchUp) {
+      var extra = hunt.want - want;
+      if (extra > 0) {
+        var room = 1;
+        if (scan.dHair < 36 || scan.dTight < 28) room = 0.28;
+        else if (scan.dBend < 50) room = 0.48;
+        else if (scan.dBend < 80) room = 0.72;
+        want = Math.min(MAX_SPEED, want + extra * room);
+      }
     }
-    if ((hunt.block || hunt.pass) && scan.dHair > 50 && scan.dTight > 36 && scan.d90 > 50) {
+    if ((hunt.block || hunt.pass) && scan.dHair > 36 && scan.dTight > 28) {
       want = Math.max(want, hunt.want);
     }
 
@@ -5841,15 +6221,16 @@
     var nx = -Math.sin(target.h);
     var nz = Math.cos(target.h);
     var inside = scan.inside || 1;
-    var off = Math.abs(p.lineOff) * (skilled ? inside : 1);
-    if (!skilled) off = p.lineOff;
-    if (skilled && scan.dBend < 86) off += 0.5 * inside;
+    var line = raceAt(r.s + look);
+    var off = line.off + Math.abs(p.lineOff) * inside * 0.35;
+    if (skilled && scan.dBend < 86) off += 0.35 * inside;
     if (p.wideEntry && scan.dTight > 14 && scan.dTight < 52) off -= 1.45;
     if (hunt.pass) off = hunt.cover;
     else if (hunt.block) {
-      off = Math.abs(p.lineOff) * inside;
-      if (Math.abs(hunt.cover) > 0.45) off = clamp(off + hunt.cover * 0.62, -2.35, 2.1);
+      off = line.off + Math.abs(p.lineOff) * inside * 0.2;
+      if (Math.abs(hunt.cover) > 0.45) off = clamp(off + hunt.cover * 0.62, -2.8, 2.4);
     }
+    off = clamp(off, -(ASPHALT - 2.15), ASPHALT - 2.15);
     var tx = target.x + nx * off;
     var tz = target.z + nz * off;
     if (hunt.on) {
@@ -6395,7 +6776,7 @@
   }
 
   function playerInput() {
-    if (portraitRaceBlock()) {
+    if (menuOpen || worldFrozen() || portraitRaceBlock()) {
       return { steer: 0, throttle: false, reverse: false, brake: false };
     }
     var up = !!(drive.up || keys.ArrowUp || keys.KeyW);
@@ -6425,7 +6806,109 @@
     };
   }
 
+  function worldFrozen() {
+    if (mpMode) return !!(net && net.paused);
+    return menuOpen && (state === "start" || state === "racing");
+  }
+
+  function canOpenMenu() {
+    return state === "start" || state === "racing";
+  }
+
+  function closePauseMenu() {
+    menuOpen = false;
+    if (hud.pause) hud.pause.classList.add("hidden");
+  }
+
+  function openPauseMenu() {
+    if (!canOpenMenu()) return;
+    menuOpen = true;
+    keys = Object.create(null);
+    drive.up = drive.down = drive.left = drive.right = drive.space = false;
+    spaceBrakeArmed = true;
+    clearTouchDrive();
+    setRevSound(false);
+    paintPauseMenu();
+    if (hud.pause) hud.pause.classList.remove("hidden");
+  }
+
+  function togglePauseMenu() {
+    if (!canOpenMenu()) return;
+    if (menuOpen) closePauseMenu();
+    else openPauseMenu();
+  }
+
+  function resumeFromMenu() {
+    if (mpMode && net && net.isHost() && net.paused && net.pause) net.pause(false);
+    closePauseMenu();
+  }
+
+  function leaveRace() {
+    closePauseMenu();
+    mpMode = false;
+    joining = false;
+    lateJoinT = 0;
+    clearMe();
+    if (net) net.leave();
+    clearRemotes();
+    clearHostBots();
+    applyGameSpeed(1);
+    restoreLocalTrack();
+    state = "title";
+    setScreen("title");
+    showBoot("");
+  }
+
+  function hostPaused() {
+    return !!(mpMode && net && net.paused);
+  }
+
+  function paintPauseMenu() {
+    if (!hud.pause) return;
+    var frozen = worldFrozen();
+    var host = !!(mpMode && net && net.isHost());
+    var spec = menuTrackLabel();
+    if (hud.pauseEyebrow) {
+      hud.pauseEyebrow.textContent = mpMode ? (net && net.room ? "Room " + net.room : "Room") : "Solo";
+    }
+    if (hud.pauseTitle) hud.pauseTitle.textContent = frozen ? "PAUSED" : "MENU";
+    if (hud.pauseStatus) {
+      if (!mpMode) hud.pauseStatus.textContent = spec + " · 5 laps";
+      else if (frozen) hud.pauseStatus.textContent = "Host paused the race";
+      else if (host) hud.pauseStatus.textContent = spec + " · you are host";
+      else hud.pauseStatus.textContent = spec + " · race still going";
+      if (mpMode && net && cleanTrack(net.track || "") !== trackCode) {
+        hud.pauseStatus.textContent += " · next map queued";
+      }
+    }
+    if (hud.pauseHost) hud.pauseHost.classList.toggle("hidden", !host);
+    if (hud.pauseAllBtn) {
+      hud.pauseAllBtn.textContent = frozen ? "Resume everyone" : "Pause everyone";
+    }
+    var resume = document.getElementById("btn-resume");
+    if (resume) {
+      if (!mpMode) resume.textContent = "Resume";
+      else if (host && frozen) resume.textContent = "Resume everyone";
+      else resume.textContent = "Back to race";
+    }
+    if (hud.pauseHint) {
+      hud.pauseHint.textContent = mpMode && !host && frozen
+        ? "Wait for the host, or Leave"
+        : "Esc or P · menu";
+    }
+    if (hud.pauseErr) hud.pauseErr.textContent = (net && net.err) || "";
+    if (hud.pauseRoster) hud.pauseRoster.classList.toggle("hidden", !mpMode);
+    var liveRace = state === "start" || state === "racing";
+    var addBotBtn = document.getElementById("btn-pause-add-bot");
+    var removeBotBtn = document.getElementById("btn-pause-remove-bot");
+    if (addBotBtn) addBotBtn.disabled = liveRace;
+    if (removeBotBtn) removeBotBtn.disabled = liveRace;
+    paintCircuitPicks();
+    paintRoster();
+  }
+
   function setScreen(which) {
+    if (which !== "start" && which !== "racing") closePauseMenu();
     hud.title.classList.toggle("hidden", which !== "title");
     if (hud.lobby) hud.lobby.classList.toggle("hidden", which !== "lobby");
     if (hud.trackScreen) hud.trackScreen.classList.toggle("hidden", which !== "track");
@@ -6434,6 +6917,7 @@
     hud.root.classList.toggle("hidden", which === "title" || which === "lobby" || which === "track");
     hud.revWrap.classList.toggle("hidden", which !== "start");
     if (which === "title" || which === "track") refreshMenuTrackLabel();
+    if (which === "track") scheduleTrackLayout();
     if (which === "start" || which === "racing") {
       releaseTypeFocus();
       lockLandscape();
@@ -6724,6 +7208,7 @@
 
     var warn = "";
     if (lateJoinT > 0) warn = "RACE ALREADY GOING — you dropped in mid-race";
+    else if (hostPaused()) warn = "PAUSED — host stopped the race";
     else if (launchCallT > 0) warn = launchCall;
     else if (state === "racing" && player.fuel <= 0) warn = "EMPTY — LIMP HOME";
     else if (state === "racing" && player.tires < 40) warn = "TIRES LOOSE — don't carry the sweeper";
@@ -7206,26 +7691,9 @@
     });
   }
 
-  function paintRoster() {
-    if (!hud.roster || !net) return;
-    if (net.speed != null) applyGameSpeed(net.speed);
-    hud.roomCode.textContent = net.room || "-----";
-    hud.lobbyStatus.textContent = net.isHost()
-      ? "You are host · Enter to grid up"
-      : "Waiting for host to grid up";
-    hud.lobbyErr.textContent = net.err || "";
-    if (hud.hostTools) hud.hostTools.classList.toggle("hidden", !net.isHost());
-    if (hud.gridBtn) hud.gridBtn.classList.toggle("hidden", !net.isHost());
-    var bowieIn = (net.players || []).some(function (p) {
-      return p.bot && p.name === "BowieKnife99";
-    });
-    if (hud.bowieBtn) hud.bowieBtn.disabled = !net.isHost() || bowieIn;
-    var still = false;
-    (net.players || []).forEach(function (p) {
-      if (p.id === lobbyPick) still = true;
-    });
-    if (!still) lobbyPick = "";
-    hud.roster.innerHTML = "";
+  function fillRoster(list) {
+    if (!list || !net) return;
+    list.innerHTML = "";
     (net.players || []).forEach(function (p) {
       var li = document.createElement("li");
       var skin = SKINS[p.slot % SKINS.length];
@@ -7246,11 +7714,42 @@
       if (p.ghost || (!p.connected && !p.bot)) li.classList.add("ghost");
       if (p.bot) li.classList.add("bot");
       if (p.id === lobbyPick) li.classList.add("pick");
-      hud.roster.appendChild(li);
+      list.appendChild(li);
       if (p.id !== net.id && !p.bot && remotes[p.id]) {
         paintCar(remotes[p.id].r.mesh, p.body, p.wing);
       }
     });
+  }
+
+  function paintRoster() {
+    if (!net) return;
+    if (net.speed != null) applyGameSpeed(net.speed);
+    if (hud.roomCode) hud.roomCode.textContent = net.room || "-----";
+    if (hud.lobbyStatus) {
+      if (net.phase === "finish") {
+        hud.lobbyStatus.textContent = net.isHost()
+          ? "That race is over — host can grid up again"
+          : "That race is over — wait for the host";
+      } else {
+        hud.lobbyStatus.textContent = net.isHost()
+          ? "You are host · Enter to grid up"
+          : "Waiting for host to grid up";
+      }
+    }
+    if (hud.lobbyErr) hud.lobbyErr.textContent = net.err || "";
+    if (hud.hostTools) hud.hostTools.classList.toggle("hidden", !net.isHost());
+    if (hud.gridBtn) hud.gridBtn.classList.toggle("hidden", !net.isHost());
+    var bowieIn = (net.players || []).some(function (p) {
+      return p.bot && p.name === "BowieKnife99";
+    });
+    if (hud.bowieBtn) hud.bowieBtn.disabled = !net.isHost() || bowieIn;
+    var still = false;
+    (net.players || []).forEach(function (p) {
+      if (p.id === lobbyPick) still = true;
+    });
+    if (!still) lobbyPick = "";
+    fillRoster(hud.roster);
+    if (menuOpen) fillRoster(hud.pauseRoster);
     paintRaceNames();
   }
 
@@ -7270,6 +7769,7 @@
 
   function beginOnlineStart() {
     mpMode = true;
+    closePauseMenu();
     var mine = (net.players || []).filter(function (p) {
       return p.id === net.id;
     })[0];
@@ -7338,6 +7838,8 @@
     setRevSound(false);
     persistMe();
     sendNetState();
+    if (net && net.paused) openPauseMenu();
+    else closePauseMenu();
   }
 
   function handleEnter(msg) {
@@ -7349,6 +7851,7 @@
     if (!msg) return;
     if (msg.speed != null) applyGameSpeed(msg.speed);
     else if (net && net.speed != null) applyGameSpeed(net.speed);
+    if (msg.paused != null && net) net.paused = !!msg.paused;
     if (state === "racing" && mpMode && msg.phase === "racing") {
       if (msg.rejoin || beenRacing(msg.you)) applyYou(msg.you);
       if (msg.raceTime != null && isFinite(+msg.raceTime) && +msg.raceTime > 0) {
@@ -7357,6 +7860,7 @@
       if (msg.late && !msg.rejoin && !beenRacing(msg.you)) lateJoinT = 8;
       ingestSnap(msg.cars || (net && net.snap) || []);
       persistMe();
+      if (net && net.paused) openPauseMenu();
       return;
     }
     if (state === "start" && mpMode && msg.phase === "start") {
@@ -7423,6 +7927,10 @@
     if (state === "title" || state === "lobby") {
       titleCamera(dt);
       setRevSound(false);
+    } else if (worldFrozen() && (state === "start" || state === "racing")) {
+      setRevSound(false);
+      if (mpMode) poseRemotes();
+      chaseCamera(dt);
     } else if (state === "start") {
       tickStart(simDt);
       if (mpMode) {
@@ -7641,7 +8149,8 @@
     }
     document.documentElement.classList.toggle("race-live", drive);
     document.documentElement.classList.toggle("race-portrait", blocked);
-    if (hud.touchLayer) hud.touchLayer.classList.toggle("hidden", !(phone && drive && !blocked));
+    if (hud.menuBtn) hud.menuBtn.classList.toggle("hidden", !drive);
+    if (hud.touchLayer) hud.touchLayer.classList.toggle("hidden", !(phone && drive && !blocked && !menuOpen));
     if (hud.rotateHint) {
       hud.rotateHint.classList.toggle("hidden", !blocked);
     }
@@ -7973,6 +8482,34 @@
       }
     }
     if (down) ensureAudio();
+    if (down && (e.code === "Escape" || e.code === "KeyP")) {
+      if (state === "finished") {
+        leaveRace();
+        e.preventDefault();
+        return;
+      }
+      if (canOpenMenu()) {
+        togglePauseMenu();
+        e.preventDefault();
+        return;
+      }
+    }
+    if (menuOpen) {
+      if (down && (e.code === "Enter" || e.code === "Space")) {
+        resumeFromMenu();
+        e.preventDefault();
+      }
+      if (
+        e.code === "ArrowUp" ||
+        e.code === "ArrowDown" ||
+        e.code === "ArrowLeft" ||
+        e.code === "ArrowRight" ||
+        e.code === "Space"
+      ) {
+        e.preventDefault();
+      }
+      return;
+    }
     if (down && (e.code === "Space" || e.code === "Enter")) {
       if (state === "track") {
         e.preventDefault();
@@ -8035,6 +8572,7 @@
     fitView();
     if (state === "start" || state === "racing") lockLandscape();
     syncMobileUi();
+    if (state === "track") scheduleTrackLayout();
   }
   window.addEventListener("resize", onViewChange);
   window.addEventListener("orientationchange", function () {
@@ -8080,13 +8618,21 @@
     net.on("room", function (msg) {
       if (net.phase === "lobby" || net.phase === "finish") {
         joining = false;
-        if (state === "title" || state === "lobby" || state === "finished") {
+        if (
+          state === "title" ||
+          state === "lobby" ||
+          state === "finished" ||
+          state === "start" ||
+          state === "racing"
+        ) {
           state = "lobby";
           setScreen("lobby");
         }
         if (net.phase === "finish" && hud.lobbyStatus) {
           hud.lobbyStatus.textContent = "That race is over — host can grid up again";
         }
+      } else if (net.phase === "start" && (state === "racing" || state === "finished")) {
+        beginOnlineStart();
       } else if (
         (net.phase === "start" || net.phase === "racing") &&
         (state === "title" || state === "lobby")
@@ -8105,11 +8651,17 @@
       }
       if (msg && msg.track != null) maybeApplyNetTrack(msg.track);
       paintRoster();
+      if (menuOpen) paintPauseMenu();
+      if (net.paused && canOpenMenu() && !menuOpen) openPauseMenu();
     });
     net.on("lights", function () {
       if (state === "lobby" || state === "title") beginOnlineStart();
     });
     net.on("go", goOnline);
+    net.on("pause", function () {
+      if (net.paused && canOpenMenu()) openPauseMenu();
+      paintPauseMenu();
+    });
     net.on("snap", function (msg) {
       if (mpMode && net && net.isHost()) adoptHostBots();
       ingestSnap(msg.cars);
@@ -8165,38 +8717,67 @@
   var btnRemoveBot = document.getElementById("btn-remove-bot");
   var btnKick = document.getElementById("btn-kick");
   var joinCode = document.getElementById("join-code");
-  if (hud.roster) {
-    hud.roster.addEventListener("click", function (e) {
+  function bindRosterList(list) {
+    if (!list) return;
+    list.addEventListener("click", function (e) {
       var t = e.target;
-      while (t && t !== hud.roster && (!t.getAttribute || !t.getAttribute("data-id"))) t = t.parentNode;
-      if (!t || t === hud.roster) return;
+      while (t && t !== list && (!t.getAttribute || !t.getAttribute("data-id"))) t = t.parentNode;
+      if (!t || t === list) return;
       lobbyPick = t.getAttribute("data-id") || "";
       paintRoster();
+      if (menuOpen) paintPauseMenu();
     });
   }
-  if (btnKick) {
-    btnKick.addEventListener("click", function () {
-      if (!net || !net.isHost()) return;
-      var id = lobbyPick;
-      var p;
-      if (id) {
-        for (var i = 0; i < (net.players || []).length; i++) {
-          if (net.players[i].id === id) p = net.players[i];
+  bindRosterList(hud.roster);
+  bindRosterList(hud.pauseRoster);
+
+  function hostKickPick() {
+    if (!net || !net.isHost()) return;
+    var id = lobbyPick;
+    var p;
+    if (id) {
+      for (var i = 0; i < (net.players || []).length; i++) {
+        if (net.players[i].id === id) p = net.players[i];
+      }
+    }
+    if (!p || p.bot || p.id === net.hostId) {
+      p = null;
+      for (var j = 0; j < (net.players || []).length; j++) {
+        var cand = net.players[j];
+        if (!cand.bot && cand.id !== net.hostId) {
+          p = cand;
+          break;
         }
       }
-      if (!p || p.bot || p.id === net.hostId) {
-        p = null;
-        for (var j = 0; j < (net.players || []).length; j++) {
-          var cand = net.players[j];
-          if (!cand.bot && cand.id !== net.hostId) {
-            p = cand;
-            break;
-          }
-        }
-      }
-      if (p) net.kick(p.id);
-    });
+    }
+    if (p) net.kick(p.id);
   }
+
+  function hostRemoveBotPick() {
+    if (!net || !net.isHost()) return;
+    var bot = null;
+    for (var i = 0; i < (net.players || []).length; i++) {
+      if (net.players[i].bot && net.players[i].id === lobbyPick) bot = net.players[i];
+    }
+    if (!bot) {
+      for (var j = (net.players || []).length - 1; j >= 0; j--) {
+        if (net.players[j].bot) {
+          bot = net.players[j];
+          break;
+        }
+      }
+    }
+    if (bot) net.removeBot(bot.id);
+  }
+
+  function hostCycleSpeed() {
+    if (!net || !net.isHost()) return;
+    var i = SPEED_STEPS.indexOf(gameSpeed);
+    if (i < 0) i = 0;
+    net.setSpeed(SPEED_STEPS[(i + 1) % SPEED_STEPS.length]);
+  }
+
+  if (btnKick) btnKick.addEventListener("click", hostKickPick);
   if (btnAddBot) {
     btnAddBot.addEventListener("click", function () {
       if (net && net.isHost()) net.addBot();
@@ -8207,32 +8788,8 @@
       if (net && net.isHost() && !hud.bowieBtn.disabled) net.addBowie();
     });
   }
-  if (btnRemoveBot) {
-    btnRemoveBot.addEventListener("click", function () {
-      if (!net || !net.isHost()) return;
-      var bot = null;
-      for (var i = 0; i < (net.players || []).length; i++) {
-        if (net.players[i].bot && net.players[i].id === lobbyPick) bot = net.players[i];
-      }
-      if (!bot) {
-        for (var j = (net.players || []).length - 1; j >= 0; j--) {
-          if (net.players[j].bot) {
-            bot = net.players[j];
-            break;
-          }
-        }
-      }
-      if (bot) net.removeBot(bot.id);
-    });
-  }
-  if (hud.speedBtn) {
-    hud.speedBtn.addEventListener("click", function () {
-      if (!net || !net.isHost()) return;
-      var i = SPEED_STEPS.indexOf(gameSpeed);
-      if (i < 0) i = 0;
-      net.setSpeed(SPEED_STEPS[(i + 1) % SPEED_STEPS.length]);
-    });
-  }
+  if (btnRemoveBot) btnRemoveBot.addEventListener("click", hostRemoveBotPick);
+  if (hud.speedBtn) hud.speedBtn.addEventListener("click", hostCycleSpeed);
   if (hud.nameInput) {
     try {
       var savedName = sessionStorage.getItem("sk_name") || "";
@@ -8288,22 +8845,68 @@
       if (net && net.isHost()) net.start();
     });
   }
-  if (btnLeave) {
-    btnLeave.addEventListener("click", function () {
-      mpMode = false;
-      joining = false;
-      lateJoinT = 0;
-      clearMe();
-      if (net) net.leave();
-      clearRemotes();
-      clearHostBots();
-      applyGameSpeed(1);
-      restoreLocalTrack();
-      state = "title";
-      setScreen("title");
-      showBoot("");
+  if (btnLeave) btnLeave.addEventListener("click", leaveRace);
+
+  if (hud.menuBtn) {
+    hud.menuBtn.addEventListener("click", function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      togglePauseMenu();
     });
   }
+  var btnResume = document.getElementById("btn-resume");
+  var btnQuit = document.getElementById("btn-quit");
+  var btnPauseAll = document.getElementById("btn-pause-all");
+  var btnEndRace = document.getElementById("btn-end-race");
+  var btnNewRace = document.getElementById("btn-new-race");
+  var btnPauseKick = document.getElementById("btn-pause-kick");
+  var btnPauseAddBot = document.getElementById("btn-pause-add-bot");
+  var btnPauseRemoveBot = document.getElementById("btn-pause-remove-bot");
+  var btnFinishAgain = document.getElementById("btn-finish-again");
+  var btnFinishLeave = document.getElementById("btn-finish-leave");
+  if (btnResume) {
+    btnResume.addEventListener("click", function (e) {
+      e.preventDefault();
+      resumeFromMenu();
+    });
+  }
+  if (btnQuit) btnQuit.addEventListener("click", leaveRace);
+  if (btnPauseAll) {
+    btnPauseAll.addEventListener("click", function () {
+      if (!net || !net.isHost() || !net.pause) return;
+      net.pause(!net.paused);
+    });
+  }
+  if (btnEndRace) {
+    btnEndRace.addEventListener("click", function () {
+      if (net && net.isHost() && net.endRace) net.endRace();
+    });
+  }
+  if (btnNewRace) {
+    btnNewRace.addEventListener("click", function () {
+      if (net && net.isHost()) net.start();
+    });
+  }
+  if (btnPauseKick) btnPauseKick.addEventListener("click", hostKickPick);
+  if (btnPauseAddBot) {
+    btnPauseAddBot.addEventListener("click", function () {
+      if (net && net.isHost()) net.addBot();
+    });
+  }
+  if (btnPauseRemoveBot) btnPauseRemoveBot.addEventListener("click", hostRemoveBotPick);
+  if (hud.pauseSpeedBtn) hud.pauseSpeedBtn.addEventListener("click", hostCycleSpeed);
+  if (btnFinishAgain) {
+    btnFinishAgain.addEventListener("click", function () {
+      if (mpMode) {
+        state = "lobby";
+        setScreen("lobby");
+        paintRoster();
+        return;
+      }
+      startSequence();
+    });
+  }
+  if (btnFinishLeave) btnFinishLeave.addEventListener("click", leaveRace);
 
   var btnTrack = document.getElementById("btn-track");
   var btnTrackUndo = document.getElementById("btn-track-undo");
@@ -8547,6 +9150,8 @@
   }
   bindCircuitRow(hud.circuitPicks);
   bindCircuitRow(hud.circuitPicksEditor);
+  bindCircuitRow(hud.circuitPicksLobby);
+  bindCircuitRow(document.getElementById("pause-circuits"));
   if (btnTrackCopy) {
     btnTrackCopy.addEventListener("click", function () {
       var s = trackCode || "";

@@ -1385,6 +1385,27 @@ var artSrc = src.slice(src.indexOf("function tileIconPts"), src.indexOf("functio
 assert(artSrc.indexOf("pieceSegs(") === -1, "chips are not clipped world-ribbon");
 assert(artSrc.indexOf("createElement(\"canvas\")") === -1, "chips are SVG in the tile, not a canvas data-URL");
 assert(artSrc.indexOf("tileIconSvg") !== -1, "palette injects SVG into the square");
+assert(src.indexOf("function editorBoardBox") !== -1 && src.indexOf("function layoutTrackEditor") !== -1, "editor sizes the 16x12 board to the leftover screen");
+var editorFit = new Function(
+  "clamp",
+  "MAP_W",
+  "MAP_H",
+  sliceFn("editorTilePx") + ";" + sliceFn("editorBoardBox") + "; return { tile: editorTilePx, box: editorBoardBox };"
+)(
+  function (v, a, b) {
+    return Math.max(a, Math.min(b, v));
+  },
+  16,
+  12
+);
+var wideBox = editorFit.box(400, 900);
+assert(wideBox.cell === 25 && wideBox.w === 400 && wideBox.h === 300, "width-limited board is 16 square cells by 12");
+var shortBox = editorFit.box(900, 240);
+assert(shortBox.cell === 20 && shortBox.w === 320 && shortBox.h === 240, "height-limited board shrinks width so cells stay square");
+assert(shortBox.w / 16 === shortBox.h / 12, "short screens do not squash tiles into rectangles");
+assert(editorFit.tile(1280, 800) === 72, "desktop palette chips stay 72px squares");
+assert(editorFit.tile(360, 640) >= 40, "phone palette chips stay wide enough for names");
+assert(editorFit.tile(667, 375) >= 28 && editorFit.tile(667, 375) <= 36, "landscape phone palette tiles scale down as squares");
 
 sim.lockRacePath("");
 assert(src.indexOf("function viewBox") !== -1 && src.indexOf("visualViewport") !== -1, "canvas follows the painted viewport");
@@ -2762,6 +2783,8 @@ assert(fuelAfter(3.2, 844, 390) < 98.2, "landscape still burns idle+throttle");
 assert(src.indexOf("_rotLock") !== -1, "rotate is debounced so one tap is 90 not 180");
 assert(src.indexOf("rotateSelected();") !== -1 && !/tileRot\.addEventListener\("click"[\s\S]{0,80}rotateSelected/.test(src), "Rotate button does not double-fire");
 assert(src.indexOf("title-track") !== -1, "title menu label is live");
+assert(src.indexOf("function openPauseMenu") !== -1 && src.indexOf("function leaveRace") !== -1, "solo pause/leave exist");
+assert(src.indexOf("function worldFrozen") !== -1, "pause freezes the sim");
 assert(/#title-screen[\s\S]{0,180}overflow-y:\s*auto/.test(fs.readFileSync(path.join(__dirname, "..", "css", "style.css"), "utf8")), "title menu scrolls");
 
 var customLen = rectLen;
@@ -2802,6 +2825,52 @@ assertBuiltin("HARBOR", "Harbor Street", { flat: true, menu: "HARBOR STREET" });
 assertBuiltin("PARK", "Royal Park", { flat: true, menu: "ROYAL PARK" });
 assertBuiltin("DESERT", "Desert Dusk", { flat: true, menu: "DESERT DUSK" });
 assertBuiltin("FOREST", "Forest Climb", { flat: false, menu: "FOREST CLIMB" });
+assert(
+  sliceFn("updateLaps").indexOf("PATH.length && TRACK_LEN > 80") !== -1,
+  "built-in ribbons count laps by s-wrap, not only MAP_CLOSED"
+);
+
+function proveRibbonLaps(code, label) {
+  sim.rebuildPath(code);
+  var stripe = sim.projectTrack(0, -80);
+  var startS = stripe.onAsphalt ? stripe.s - 18 : sim.TRACK_LEN - 18;
+  if (startS < 0) startS += sim.TRACK_LEN;
+  var pose = sim.centerlinePoint(startS);
+  var first = blankCar(pose.x, pose.z, pose.h, 0);
+  first.s = startS;
+  first.lastS = startS;
+  first.passedHalf = false;
+  first.lap = 1;
+  var sWalk;
+  for (sWalk = startS; sWalk < startS + 40; sWalk += 4) {
+    var q = sim.centerlinePoint(sWalk);
+    first.x = q.x;
+    first.z = q.z;
+    first.heading = q.h;
+    sim.updateLaps(first);
+  }
+  assert(first.lap === 1, label + " does not gift a lap at lights-out, lap=" + first.lap);
+  var lapper = blankCar(pose.x, pose.z, pose.h, 0);
+  lapper.s = startS;
+  lapper.lastS = startS;
+  lapper.passedHalf = false;
+  lapper.lap = 1;
+  for (sWalk = startS; sWalk < startS + sim.TRACK_LEN + 40; sWalk += 6) {
+    var p = sim.centerlinePoint(sWalk);
+    lapper.x = p.x;
+    lapper.z = p.z;
+    lapper.heading = p.h;
+    sim.updateLaps(lapper);
+  }
+  assert(lapper.lap >= 2, label + " counts a lap on the ribbon, lap=" + lapper.lap);
+  assert(!lapper.finished, label + " one tour is not a race finish");
+}
+
+proveRibbonLaps("", "Campus Loop");
+proveRibbonLaps("HARBOR", "Harbor Street");
+proveRibbonLaps("PARK", "Royal Park");
+proveRibbonLaps("DESERT", "Desert Dusk");
+proveRibbonLaps("FOREST", "Forest Climb");
 sim.rebuildPath("");
 assert(sim.menuTrackName() === "CAMPUS LOOP", "empty code is Campus");
 assert(src.indexOf("harborDressing") !== -1 && src.indexOf("dressHarbor") !== -1, "Harbor dressing group");

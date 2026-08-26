@@ -169,9 +169,21 @@ var code = [
   sliceFn("eachRival"),
   sliceFn("avoidRams"),
   "var _prey = { r: null, d: 999, fwd: 0, lat: 0 };",
-  "var _hunt = { on: false, tx: 0, tz: 0, want: 0, noLift: false, dive: false, catchUp: false, block: false, pass: false, cover: 0 };",
+  "var _hunt = { on: false, tx: 0, tz: 0, want: 0, noLift: false, dive: false, catchUp: false, block: false, pass: false, cover: 0, gap: 0 };",
   sliceFn("gripApex"),
   sliceFn("namedApex"),
+  sliceAssign("RACE"),
+  sliceFn("aiWrap"),
+  sliceFn("raceDeltaS"),
+  sliceFn("raceKey"),
+  sliceFn("ensureRaceBrain"),
+  sliceFn("bakeRaceBrain"),
+  sliceFn("raceAt"),
+  sliceFn("raceWantAhead"),
+  sliceFn("raceProg"),
+  sliceFn("trackGap"),
+  sliceFn("trackLeadGap"),
+  sliceFn("catchBonus"),
   sliceFn("pickPrey"),
   sliceFn("passSide"),
   sliceFn("planHunt"),
@@ -199,6 +211,7 @@ var code = [
   "  runBot: runBot,",
   "  runHunt: runHunt,",
   "  runCatch: runCatch,",
+  "  runLongCatch: runLongCatch,",
   "  runBlock: runBlock,",
   "  runPass: runPass,",
   "  buildWideLoop: buildWideLoop,",
@@ -215,6 +228,12 @@ var code = [
   "  scanAhead: scanAhead,",
   "  namedApex: namedApex,",
   "  gripApex: gripApex,",
+  "  bakeRaceBrain: bakeRaceBrain,",
+  "  raceAt: raceAt,",
+  "  raceWantAhead: raceWantAhead,",
+  "  trackGap: trackGap,",
+  "  catchBonus: catchBonus,",
+  "  RACE: RACE,",
   "  trackLen: trackLen,",
   "  sealCustom: sealCustom,",
   "  restoreCampus: restoreCampus,",
@@ -301,6 +320,26 @@ var code = [
   "  var endD = Math.hypot(player.x - r.x, player.z - r.z);",
   "  player.x = -9999; player.z = -9999; player.mesh.visible = false;",
   "  return { name: name, d0: d0, minD: minD, endD: endD, hitT: hitT };",
+  "}",
+  "function runLongCatch(name, seconds) {",
+  "  player.x = 200; player.z = SF_Z; player.heading = 0; player.speed = 32;",
+  "  player.kind = 'player'; player.finished = false; player.pitServicing = false;",
+  "  player.mesh = { visible: true };",
+  "  var r = blankBot(name, -6, SF_Z + 0.2, 30);",
+  "  var d0 = Math.hypot(player.x - r.x, player.z - r.z);",
+  "  var minD = d0;",
+  "  var dt = 1/30;",
+  "  raceTime = 2;",
+  "  for (var t = 0; t < seconds; t += dt) {",
+  "    player.x += Math.cos(player.heading) * player.speed * dt;",
+  "    player.z += Math.sin(player.heading) * player.speed * dt;",
+  "    updateCpu(r, dt);",
+  "    var d = Math.hypot(player.x - r.x, player.z - r.z);",
+  "    if (d < minD) minD = d;",
+  "  }",
+  "  var endD = Math.hypot(player.x - r.x, player.z - r.z);",
+  "  player.x = -9999; player.z = -9999; player.mesh.visible = false;",
+  "  return { name: name, d0: d0, minD: minD, endD: endD, speed: r.speed };",
   "}",
   "function runCatch(name, seconds) {",
   "  player.x = 52; player.z = SF_Z; player.heading = 0; player.speed = 30;",
@@ -564,6 +603,55 @@ assert(catchB.endD < catchB.d0 - 14, "Bowie reels in a straight lead (" + catchB
 assert(catchT.endD < catchT.d0 - 14, "Hall Monitor reels in a straight lead (" + catchT.endD.toFixed(1) + ")");
 assert(catchB.speed > 40, "Bowie winds the straight while catching up");
 assert(catchT.speed > 40, "Hall Monitor winds the straight while catching up");
+
+var longCatch = sim.runLongCatch("BowieKnife99", 8.0);
+console.log(
+  "longCatch Bowie d0=" +
+    longCatch.d0.toFixed(1) +
+    " end=" +
+    longCatch.endD.toFixed(1) +
+    " min=" +
+    longCatch.minD.toFixed(1) +
+    " v=" +
+    longCatch.speed.toFixed(1)
+);
+assert(longCatch.d0 > 180, "long catch starts from a 200m ribbon lead");
+assert(longCatch.endD < longCatch.d0 - 28, "Bowie reels a 200m lead, not only cars he can see (" + longCatch.endD.toFixed(1) + ")");
+assert(longCatch.speed > 40, "Bowie winds while closing a long gap");
+assert(sim.catchBonus(sim.AI_AGGRO, 180) > sim.catchBonus(sim.AI_SMART, 180), "Bowie's reel is nastier than the field");
+assert(sim.AI_AGGRO.reel === 1, "Bowie is the reeler");
+
+sim.bakeRaceBrain();
+assert(sim.RACE.n > 40, "race brain samples the ribbon");
+var hairS = null;
+var hairI;
+for (hairI = 0; hairI < sim.TRACK_LEN; hairI += 6) {
+  if (sim.centerlinePoint(hairI).name === "hairpin") {
+    hairS = hairI;
+    break;
+  }
+}
+assert(hairS != null, "campus hairpin exists for the brain");
+var lineHair = sim.raceAt(hairS);
+var lineStart = sim.raceAt(40);
+assert(lineStart.v > lineHair.v + 8, "speed profile lifts on the straight and drops for the 180");
+var wantHair = sim.raceWantAhead(hairS, 30, sim.AI_AGGRO);
+var wantStart = sim.raceWantAhead(40, 40, sim.AI_AGGRO);
+assert(wantStart > wantHair + 6, "want-ahead is slower at the hairpin than on the start straight");
+var left90s = null;
+var left90r = 99;
+for (hairI = 0; hairI < sim.TRACK_LEN; hairI += 4) {
+  var cp = sim.centerlinePoint(hairI);
+  if (cp.name === "the90" && cp.left > 0 && cp.r < left90r) {
+    left90s = hairI;
+    left90r = cp.r;
+  }
+}
+assert(left90s != null && left90r < 20, "campus decreasing 90 has a tight apex");
+var apexOff = sim.raceAt(left90s).off;
+var entryOff = sim.raceAt(left90s - 40).off;
+assert(apexOff > 0.2, "tight left 90 apex sits on the inside (" + apexOff.toFixed(2) + ")");
+assert(entryOff < apexOff - 0.2, "left 90 is out-in-out (entry " + entryOff.toFixed(2) + " apex " + apexOff.toFixed(2) + ")");
 
 var blockB = sim.runBlock("BowieKnife99", 1.4);
 var blockT = sim.runBlock("Hall Monitor", 1.4);
