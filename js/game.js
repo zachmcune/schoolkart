@@ -818,10 +818,10 @@
   function buildCampusPitPath() {
     PIT_PATH.length = 0;
     var laneZ = (PIT_LANE.z0 + PIT_LANE.z1) * 0.5;
-    // Start on the LEFT half of the race ribbon so the dark asphalt
-    // actually peels off the straight, then S-bends out to the box.
-    var mouthZ = -76;
-    var st = { x: -4, z: mouthZ, h: 0 };
+    // Meet the LEFT edge of the ribbon, then S-bend out. Starting on
+    // the racing line stacked a second road on the asphalt.
+    var mouthZ = -67.2;
+    var st = { x: 6, z: mouthZ, h: 0 };
     pitSBend(st, laneZ - st.z, "pitin");
     var exitX = 116;
     if (st.x < exitX) pitLine(st, exitX - st.x, "pitlane");
@@ -2098,7 +2098,18 @@
     return Math.abs(seg.a1 - seg.a0) * (seg.r || 0);
   }
 
-  function makeSurfRibbon(segs, half, y, color, onlyNames, uvStep, offset, step) {
+  function pitPaintClear(x, z, half) {
+    half = half || 0;
+    if (!isDriveableLoop() && z - half < SF_Z + ASPHALT + 0.25) return false;
+    var segs = PATH.length ? PATH : MAP_SURF;
+    if (segs && segs.length) {
+      var race = projectOn(x, z, segs);
+      if (race && race.hit && Math.sqrt(race.hit.d2) <= ASPHALT + 0.3) return false;
+    }
+    return true;
+  }
+
+  function makeSurfRibbon(segs, half, y, color, onlyNames, uvStep, offset, step, clipRace) {
     if (!segs || !segs.length) return null;
     var pos = [];
     var idx = [];
@@ -2113,9 +2124,13 @@
       var len = segLen(seg);
       var n = Math.max(2, Math.round(len / (step || 2.8)));
       var u;
-      var strip0 = used;
+      var strip = 0;
       for (u = 0; u <= n; u++) {
         var p = pointOnSeg(seg, u / n);
+        if (clipRace && !pitPaintClear(p.x, p.z, PIT_HALF)) {
+          strip = 0;
+          continue;
+        }
         var nx = -Math.sin(p.h);
         var nz = Math.cos(p.h);
         if (sided) {
@@ -2129,13 +2144,13 @@
           uvs.push(used * uvStep, 1);
           uvs.push(used * uvStep, 0);
         }
-        if (u > 0) {
+        if (strip > 0) {
           var a = (used - 1) * 2;
           idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
         }
         used += 1;
+        strip += 1;
       }
-      if (used === strip0) used = strip0;
     }
     if (used < 2) return null;
     var geo = new THREE.BufferGeometry();
@@ -2527,6 +2542,7 @@
       var a = pointOnPitPath(s);
       var b = pointOnPitPath(Math.min(s + step + 0.55, endS));
       if (!a || !b) continue;
+      if (!pitPaintClear(a.x, a.z, half) || !pitPaintClear(b.x, b.z, half)) continue;
       var dx = b.x - a.x;
       var dz = b.z - a.z;
       var len = Math.hypot(dx, dz);
@@ -2557,12 +2573,12 @@
     });
     stampPitBand(PIT_HALF + 1.55, 0.05, 0.06, runoffMat, endS);
     stampPitBand(PIT_HALF, 0.09, 0.08, asphaltMat, endS);
-    var asphalt = makeSurfRibbon(PIT_PATH, PIT_HALF, 0.14, asphaltMat);
+    var asphalt = makeSurfRibbon(PIT_PATH, PIT_HALF, 0.14, asphaltMat, null, null, 0, null, true);
     if (asphalt) trackRoot.add(asphalt);
-    var line = makeSurfRibbon(PIT_PATH, 0.28, 0.155, 0xd8d2c6);
+    var line = makeSurfRibbon(PIT_PATH, 0.28, 0.155, 0xd8d2c6, null, null, 0, null, true);
     if (line) trackRoot.add(line);
-    var eL = makeSurfRibbon(PIT_PATH, 0.22, 0.135, 0xf4efe6, null, null, PIT_HALF - 0.38);
-    var eR = makeSurfRibbon(PIT_PATH, 0.22, 0.135, 0xf4efe6, null, null, -(PIT_HALF - 0.38));
+    var eL = makeSurfRibbon(PIT_PATH, 0.22, 0.135, 0xf4efe6, null, null, PIT_HALF - 0.38, null, true);
+    var eR = makeSurfRibbon(PIT_PATH, 0.22, 0.135, 0xf4efe6, null, null, -(PIT_HALF - 0.38), null, true);
     if (eL) trackRoot.add(eL);
     if (eR) trackRoot.add(eR);
   }
@@ -2589,7 +2605,7 @@
     // The second road is the same asphalt as the race ribbon, just
     // smaller — it peels LEFT, runs the box, peels back. Not a slab.
     // A hole in the ribbon is a nack. A slide / one-road pit is a nack.
-    addBox(78, 0.04, -67.5, 168, 0.024, 7.0, 0x3f5c32, trackRoot);
+    addBox(74, 0.04, -66.6, 72, 0.024, 8.2, 0x3f5c32, trackRoot);
     addBox(62, 0.92, -51.2, 70, 1.7, 0.7, 0x2a2018, trackRoot);
     addBox(62, 1.82, -51.2, 70, 0.14, 0.78, TEAL, trackRoot);
   }
