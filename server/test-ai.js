@@ -40,7 +40,7 @@ function sliceAssign(name) {
 
 var code = [
   "var LAPS = 5;",
-  "var MAX_SPEED = 48;",
+  "var MAX_SPEED = 200;",
   "var ACCEL = 5;",
   "var BRAKE_DECEL = 6;",
   "var COAST = 2;",

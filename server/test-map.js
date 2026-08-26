@@ -43,7 +43,7 @@ var code = [
   "var GRASS_ROLL = 4;",
   "var GRASS_DUMP = 40;",
   "var TIRE_FLOOR = 22;",
-  "var MAX_SPEED = 48;",
+  "var MAX_SPEED = 200;",
   "var ACCEL = 16;",
   "var BRAKE_DECEL = 20;",
   "var COAST = 5;",
@@ -2114,7 +2114,7 @@ function proveSpeedSteer() {
   var mid = blankCar(start.x, start.z, start.h, 16);
   mid.fuel = 100;
   mid.tires = 100;
-  var top = blankCar(start.x, start.z, start.h, 48);
+  var top = blankCar(start.x, start.z, start.h, 200);
   top.fuel = 100;
   top.tires = 100;
   var dCrawl = yawProbe(crawl, 1);
@@ -2123,13 +2123,13 @@ function proveSpeedSteer() {
   assert(dCrawl > 0.006, "rolling yaw, dH=" + dCrawl.toFixed(4));
   assert(dMid > dCrawl * 1.12, "bite as you roll, crawl=" + dCrawl.toFixed(4) + " mid=" + dMid.toFixed(4));
   assert(dTop < dMid * 0.62, "max W yaws less than mid, mid=" + dMid.toFixed(4) + " top=" + dTop.toFixed(4));
-  var hold = blankCar(start.x, start.z, start.h, 48);
+  var hold = blankCar(start.x, start.z, start.h, 200);
   hold.fuel = 100;
   hold.tires = 100;
   var hHold = hold.heading;
   var tHold;
   for (tHold = 0; tHold < 0.8; tHold += 1 / 60) {
-    hold.speed = 48;
+    hold.speed = 200;
     sim.applyMotion(hold, 1, true, false, false, 1 / 60, true);
   }
   var dHold = Math.abs(angDiff(hold.heading, hHold));

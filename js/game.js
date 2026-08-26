@@ -27,8 +27,8 @@
   var THREE = window.THREE;
 
   var LAPS = 5;
-  var MAX_SPEED = 48;
-  var ACCEL = 5; // ~10s wind-out to max (was 16 / ~3s)
+  var MAX_SPEED = 200;
+  var ACCEL = 5; // ~40s wind-out to max (was 16 / ~3s at 48)
   var BRAKE_DECEL = 6; // squeeze: weaker at wind-out, full bite when slow (hairpin)
   var COAST = 2;
   var REVERSE_ACCEL = 7;
