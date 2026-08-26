@@ -197,7 +197,7 @@ waitHealth()
                   assert(js.indexOf("function paintCampusPitLane") !== -1, "campus paints a visible left pit lane");
                   assert(js.indexOf("function paintPitRibbon") !== -1 && js.indexOf("function buildCampusPitPath") !== -1, "pit lane is a real track that curves in and out");
                   assert(js.indexOf("FORK. TWO ROADS.") !== -1, "pit is a fork of two roads");
-                  assert(js.indexOf("0x5db844") !== -1 && js.indexOf("z0: -61.5") !== -1, "grass median then a second asphalt road");
+                  assert(js.indexOf("Grass median") !== -1 && js.indexOf("z0: -61.5") !== -1, "grass median then a second asphalt road");
                   assert(js.indexOf('pathLine(680, "start")') !== -1, "start road stays asphalt for a W-only stay-right past 10s");
                   assert(js.indexOf("player.heading = slotHeading({ h: gridHeading })") !== -1, "campus GO faces east");
                   assert(js.indexOf("if (!isDriveableLoop()) return 0;") !== -1, "Campus room grid is east, not pre-yawed left");
