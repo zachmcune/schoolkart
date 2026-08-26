@@ -7353,9 +7353,15 @@
     if (net.speed != null) applyGameSpeed(net.speed);
     if (hud.roomCode) hud.roomCode.textContent = net.room || "-----";
     if (hud.lobbyStatus) {
-      hud.lobbyStatus.textContent = net.isHost()
-        ? "You are host · Enter to grid up"
-        : "Waiting for host to grid up";
+      if (net.phase === "finish") {
+        hud.lobbyStatus.textContent = net.isHost()
+          ? "That race is over — host can grid up again"
+          : "That race is over — wait for the host";
+      } else {
+        hud.lobbyStatus.textContent = net.isHost()
+          ? "You are host · Enter to grid up"
+          : "Waiting for host to grid up";
+      }
     }
     if (hud.lobbyErr) hud.lobbyErr.textContent = net.err || "";
     if (hud.hostTools) hud.hostTools.classList.toggle("hidden", !net.isHost());
