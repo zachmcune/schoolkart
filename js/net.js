@@ -44,6 +44,7 @@
     snap: [],
     lastSnapAt: 0,
     speed: 1,
+    paused: false,
     err: "",
     status: "",
     handlers: {},
@@ -113,6 +114,14 @@
     send({ t: "track", code: String(code || "").slice(0, 800) });
   };
 
+  net.pause = function (on) {
+    send({ t: "pause", on: !!on });
+  };
+
+  net.endRace = function () {
+    send({ t: "end" });
+  };
+
   function applyRoom(msg) {
     net.room = msg.code;
     net.hostId = msg.hostId;
@@ -122,6 +131,7 @@
     net.holdDelay = msg.holdDelay || net.holdDelay;
     net.players = msg.players || [];
     net.speed = msg.speed == null ? net.speed : msg.speed;
+    net.paused = !!msg.paused;
     if (msg.track != null) net.track = String(msg.track || "");
     try {
       sessionStorage.setItem("sk_room", net.room);
@@ -200,6 +210,10 @@
         emit("lights", msg);
       }
       if (msg.t === "go") emit("go");
+      if (msg.t === "pause") {
+        net.paused = !!msg.on;
+        emit("pause", net.paused);
+      }
       if (msg.t === "enter") {
         net.active = true;
         net.phase = msg.phase;
@@ -208,6 +222,7 @@
         net.holdDelay = msg.holdDelay || net.holdDelay;
         net.snap = msg.cars || [];
         if (msg.speed != null) net.speed = msg.speed;
+        if (msg.paused != null) net.paused = !!msg.paused;
         emit("enter", msg);
       }
       if (msg.t === "snap") {
@@ -253,6 +268,7 @@
   net.leave = function () {
     net.active = false;
     net.room = null;
+    net.paused = false;
     try {
       sessionStorage.removeItem("sk_room");
     } catch (e) {}

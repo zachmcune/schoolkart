@@ -28,7 +28,7 @@ Local: `npm start`, then open `http://localhost:8787` (or whatever `PORT` is). S
 | Grass | A **crawl** plus extra wear — only if you get past the runoff onto infield patches. Never faster than asphalt, never parked at 0. The 180 and chicane use painted runoff / sand, not a grass beach. Holding W off-course loses. |
 | Pit | Peel **LEFT** off the south straight onto a real side lane (bypass) that **curves in**, runs parallel, then **curves back** to merge. Drive **halfway IN that lane** — then the car is grabbed and serviced (~2.5s, fuel + tires) and you drive out. Clipping the entry ramp does **not** count. One service per visit. |
 
-**Controls:** W / ↑ throttle (also revs on the grid) · **Space = brake** · **S / ↓ reverse** · A D / ← → steer · Enter or Space on the title to grid up.
+**Controls:** W / ↑ throttle (also revs on the grid) · **Space = brake** · **S / ↓ reverse** · A D / ← → steer · **Esc / P** pause menu (phones: **Menu**) · Enter or Space on the title to grid up.
 
 **Phones (landscape):** right half = gas · left half = brake · tilt to steer (held-landscape roll, small deadzone, smoothed — a modest lean is full lock). Hold the phone level to go straight. Tiny **R** is reverse for a pit overshoot. iPhone needs a **Tap for tilt steer** the first time. First phone load shows: `Right gas · Left brake · Tilt to steer`.
 
@@ -64,7 +64,9 @@ Fuel still wants **~2 km / 5 laps / one box**. Only Forest Climb uses elevation 
 
 ## Multiplayer (Chromebook lunch)
 
-Friends open the Railway URL. One **name field**, then **Create** / **Join**. The in-room list shows names with a **★** on the host. Host-only buttons under the list: **Kick** (tap a name first), **+Bot −Bot**, **Add Bowie knife** (seats the hunter once; disables if they’re already in), and **1x · 1.25x** (cycles, 0.75x too). Speed is the same for everyone. Host hits **Grid up** (or Enter). Max 8 cars including CPUs. Same handling / fuel / tires as solo — no extra grip, no rubber-band.
+Friends open the Railway URL. One **name field**, then **Create** / **Join**. The in-room list shows names with a **★** on the host. Host-only buttons under the list: **Kick** (tap a name first), **+Bot −Bot**, **Add Bowie knife** (seats the hunter once; disables if they’re already in), circuit chips, and **1x · 1.25x** (cycles, 0.75x too). Speed is the same for everyone. Host hits **Grid up** (or Enter). Max 8 cars including CPUs. Same handling / fuel / tires as solo — no extra grip, no rubber-band.
+
+**Pause / leave:** Esc, P, or **Menu** during lights or the race. Solo freezes and can **Leave** back to the title. In a room everyone can open the menu and **Leave**. Host extras: **Pause everyone** (freezes the room clock), **End race** (back to the lobby), **New race** (grids up again), pick the next map, kick, and speed. A guest menu does not freeze the others — the race keeps going until the host pauses.
 
 Late join after lights-out drops them into the live race and **says so** (no silent fail). Refresh **rejoins the same room and the same race** — same clock, fuel, tires, lap, and the other cars. It does not spawn a fresh 0:00 / full-tank solo. A dropped car goes **ghost**; they can come back. Tab blur does not wipe the room. If the server is down, **Solo** still works.
 
@@ -103,7 +105,7 @@ Ship from **`main` only**. Railway and GitHub Pages should both track `main`. Do
 
 Repo is also a static site (HTML + CSS + JS + Three.js from CDN). Pages deploys from `main`. Use Railway as the school link.
 
-`index.html` is marked `no-store`. JS/CSS are versioned (`?v=mp96`) so a **normal reload** picks up the lobby.
+`index.html` is marked `no-store`. JS/CSS are versioned (`?v=mp99`) so a **normal reload** picks up the lobby.
 
 **Install (PWA):** on phone Safari / Chrome, Add to Home Screen. Standalone landscape chrome, dark splash (`#1a120e`). Original teal/cream mark (192 + 512 + apple-touch-icon). The service worker is network-first and does **not** cache the race or the websocket — a new Railway deploy is not a trapped old build. Offline play is not required.
 

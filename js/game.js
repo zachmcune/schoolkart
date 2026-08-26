@@ -278,6 +278,7 @@
   var audio = { ctx: null, osc: null, gain: null };
   var gantryReds = [];
   var gantryBlues = [];
+  var menuOpen = false;
   var mpMode = false;
   var remotes = {};
   var hostBots = {};
@@ -411,6 +412,18 @@
     tileRot: document.getElementById("btn-tile-rot"),
     circuitPicks: document.getElementById("circuit-picks"),
     circuitPicksEditor: document.getElementById("circuit-picks-editor"),
+    circuitPicksLobby: document.getElementById("circuit-picks-lobby"),
+    pause: document.getElementById("pause-screen"),
+    pauseEyebrow: document.getElementById("pause-eyebrow"),
+    pauseTitle: document.getElementById("pause-title"),
+    pauseStatus: document.getElementById("pause-status"),
+    pauseRoster: document.getElementById("pause-roster"),
+    pauseHost: document.getElementById("pause-host"),
+    pauseErr: document.getElementById("pause-err"),
+    pauseHint: document.getElementById("pause-hint"),
+    pauseAllBtn: document.getElementById("btn-pause-all"),
+    pauseSpeedBtn: document.getElementById("btn-pause-speed"),
+    menuBtn: document.getElementById("btn-menu"),
     lights: [
       document.getElementById("rl0"),
       document.getElementById("rl1"),
@@ -455,9 +468,9 @@
     if (n !== 0.75 && n !== 1.25) n = 1;
     gameSpeed = n;
     if (net) net.speed = n;
-    if (hud.speedBtn) {
-      hud.speedBtn.textContent = n === 1.25 ? "1.25x" : n === 0.75 ? "0.75x" : "1x";
-    }
+    var label = n === 1.25 ? "1.25x" : n === 0.75 ? "0.75x" : "1x";
+    if (hud.speedBtn) hud.speedBtn.textContent = label;
+    if (hud.pauseSpeedBtn) hud.pauseSpeedBtn.textContent = label;
   }
 
   function inRect(x, z, b) {
@@ -3450,10 +3463,20 @@
     }
     paint(hud.circuitPicks);
     paint(hud.circuitPicksEditor);
+    paint(hud.circuitPicksLobby);
+    paint(document.getElementById("pause-circuits"));
   }
 
   function pickBuiltin(code) {
-    applyTrack(cleanTrack(code || ""), true, true);
+    var next = cleanTrack(code || "");
+    if (mpMode && net && net.active && net.isHost() && (state === "start" || state === "racing")) {
+      if (net.setTrack) net.setTrack(next);
+      net.track = next;
+      paintCircuitPicks();
+      paintPauseMenu();
+      return;
+    }
+    applyTrack(next, true, true);
     if (net && net.active && net.isHost() && net.setTrack) {
       net.setTrack(isDriveableLoop() || isBuiltinCode(trackCode) ? trackCode : "");
     }
@@ -6393,7 +6416,7 @@
   }
 
   function playerInput() {
-    if (portraitRaceBlock()) {
+    if (menuOpen || worldFrozen() || portraitRaceBlock()) {
       return { steer: 0, throttle: false, reverse: false, brake: false };
     }
     var up = !!(drive.up || keys.ArrowUp || keys.KeyW);
@@ -6423,7 +6446,109 @@
     };
   }
 
+  function worldFrozen() {
+    if (mpMode) return !!(net && net.paused);
+    return menuOpen && (state === "start" || state === "racing");
+  }
+
+  function canOpenMenu() {
+    return state === "start" || state === "racing";
+  }
+
+  function closePauseMenu() {
+    menuOpen = false;
+    if (hud.pause) hud.pause.classList.add("hidden");
+  }
+
+  function openPauseMenu() {
+    if (!canOpenMenu()) return;
+    menuOpen = true;
+    keys = Object.create(null);
+    drive.up = drive.down = drive.left = drive.right = drive.space = false;
+    spaceBrakeArmed = true;
+    clearTouchDrive();
+    setRevSound(false);
+    paintPauseMenu();
+    if (hud.pause) hud.pause.classList.remove("hidden");
+  }
+
+  function togglePauseMenu() {
+    if (!canOpenMenu()) return;
+    if (menuOpen) closePauseMenu();
+    else openPauseMenu();
+  }
+
+  function resumeFromMenu() {
+    if (mpMode && net && net.isHost() && net.paused && net.pause) net.pause(false);
+    closePauseMenu();
+  }
+
+  function leaveRace() {
+    closePauseMenu();
+    mpMode = false;
+    joining = false;
+    lateJoinT = 0;
+    clearMe();
+    if (net) net.leave();
+    clearRemotes();
+    clearHostBots();
+    applyGameSpeed(1);
+    restoreLocalTrack();
+    state = "title";
+    setScreen("title");
+    showBoot("");
+  }
+
+  function hostPaused() {
+    return !!(mpMode && net && net.paused);
+  }
+
+  function paintPauseMenu() {
+    if (!hud.pause) return;
+    var frozen = worldFrozen();
+    var host = !!(mpMode && net && net.isHost());
+    var spec = menuTrackLabel();
+    if (hud.pauseEyebrow) {
+      hud.pauseEyebrow.textContent = mpMode ? (net && net.room ? "Room " + net.room : "Room") : "Solo";
+    }
+    if (hud.pauseTitle) hud.pauseTitle.textContent = frozen ? "PAUSED" : "MENU";
+    if (hud.pauseStatus) {
+      if (!mpMode) hud.pauseStatus.textContent = spec + " · 5 laps";
+      else if (frozen) hud.pauseStatus.textContent = "Host paused the race";
+      else if (host) hud.pauseStatus.textContent = spec + " · you are host";
+      else hud.pauseStatus.textContent = spec + " · race still going";
+      if (mpMode && net && cleanTrack(net.track || "") !== trackCode) {
+        hud.pauseStatus.textContent += " · next map queued";
+      }
+    }
+    if (hud.pauseHost) hud.pauseHost.classList.toggle("hidden", !host);
+    if (hud.pauseAllBtn) {
+      hud.pauseAllBtn.textContent = frozen ? "Resume everyone" : "Pause everyone";
+    }
+    var resume = document.getElementById("btn-resume");
+    if (resume) {
+      if (!mpMode) resume.textContent = "Resume";
+      else if (host && frozen) resume.textContent = "Resume everyone";
+      else resume.textContent = "Back to race";
+    }
+    if (hud.pauseHint) {
+      hud.pauseHint.textContent = mpMode && !host && frozen
+        ? "Wait for the host, or Leave"
+        : "Esc or P · menu";
+    }
+    if (hud.pauseErr) hud.pauseErr.textContent = (net && net.err) || "";
+    if (hud.pauseRoster) hud.pauseRoster.classList.toggle("hidden", !mpMode);
+    var liveRace = state === "start" || state === "racing";
+    var addBotBtn = document.getElementById("btn-pause-add-bot");
+    var removeBotBtn = document.getElementById("btn-pause-remove-bot");
+    if (addBotBtn) addBotBtn.disabled = liveRace;
+    if (removeBotBtn) removeBotBtn.disabled = liveRace;
+    paintCircuitPicks();
+    paintRoster();
+  }
+
   function setScreen(which) {
+    if (which !== "start" && which !== "racing") closePauseMenu();
     hud.title.classList.toggle("hidden", which !== "title");
     if (hud.lobby) hud.lobby.classList.toggle("hidden", which !== "lobby");
     if (hud.trackScreen) hud.trackScreen.classList.toggle("hidden", which !== "track");
@@ -6722,6 +6847,7 @@
 
     var warn = "";
     if (lateJoinT > 0) warn = "RACE ALREADY GOING — you dropped in mid-race";
+    else if (hostPaused()) warn = "PAUSED — host stopped the race";
     else if (launchCallT > 0) warn = launchCall;
     else if (state === "racing" && player.fuel <= 0) warn = "EMPTY — LIMP HOME";
     else if (state === "racing" && player.tires < 40) warn = "TIRES LOOSE — don't carry the sweeper";
@@ -7204,26 +7330,9 @@
     });
   }
 
-  function paintRoster() {
-    if (!hud.roster || !net) return;
-    if (net.speed != null) applyGameSpeed(net.speed);
-    hud.roomCode.textContent = net.room || "-----";
-    hud.lobbyStatus.textContent = net.isHost()
-      ? "You are host · Enter to grid up"
-      : "Waiting for host to grid up";
-    hud.lobbyErr.textContent = net.err || "";
-    if (hud.hostTools) hud.hostTools.classList.toggle("hidden", !net.isHost());
-    if (hud.gridBtn) hud.gridBtn.classList.toggle("hidden", !net.isHost());
-    var bowieIn = (net.players || []).some(function (p) {
-      return p.bot && p.name === "BowieKnife99";
-    });
-    if (hud.bowieBtn) hud.bowieBtn.disabled = !net.isHost() || bowieIn;
-    var still = false;
-    (net.players || []).forEach(function (p) {
-      if (p.id === lobbyPick) still = true;
-    });
-    if (!still) lobbyPick = "";
-    hud.roster.innerHTML = "";
+  function fillRoster(list) {
+    if (!list || !net) return;
+    list.innerHTML = "";
     (net.players || []).forEach(function (p) {
       var li = document.createElement("li");
       var skin = SKINS[p.slot % SKINS.length];
@@ -7244,11 +7353,42 @@
       if (p.ghost || (!p.connected && !p.bot)) li.classList.add("ghost");
       if (p.bot) li.classList.add("bot");
       if (p.id === lobbyPick) li.classList.add("pick");
-      hud.roster.appendChild(li);
+      list.appendChild(li);
       if (p.id !== net.id && !p.bot && remotes[p.id]) {
         paintCar(remotes[p.id].r.mesh, p.body, p.wing);
       }
     });
+  }
+
+  function paintRoster() {
+    if (!net) return;
+    if (net.speed != null) applyGameSpeed(net.speed);
+    if (hud.roomCode) hud.roomCode.textContent = net.room || "-----";
+    if (hud.lobbyStatus) {
+      if (net.phase === "finish") {
+        hud.lobbyStatus.textContent = net.isHost()
+          ? "That race is over — host can grid up again"
+          : "That race is over — wait for the host";
+      } else {
+        hud.lobbyStatus.textContent = net.isHost()
+          ? "You are host · Enter to grid up"
+          : "Waiting for host to grid up";
+      }
+    }
+    if (hud.lobbyErr) hud.lobbyErr.textContent = net.err || "";
+    if (hud.hostTools) hud.hostTools.classList.toggle("hidden", !net.isHost());
+    if (hud.gridBtn) hud.gridBtn.classList.toggle("hidden", !net.isHost());
+    var bowieIn = (net.players || []).some(function (p) {
+      return p.bot && p.name === "BowieKnife99";
+    });
+    if (hud.bowieBtn) hud.bowieBtn.disabled = !net.isHost() || bowieIn;
+    var still = false;
+    (net.players || []).forEach(function (p) {
+      if (p.id === lobbyPick) still = true;
+    });
+    if (!still) lobbyPick = "";
+    fillRoster(hud.roster);
+    if (menuOpen) fillRoster(hud.pauseRoster);
     paintRaceNames();
   }
 
@@ -7268,6 +7408,7 @@
 
   function beginOnlineStart() {
     mpMode = true;
+    closePauseMenu();
     var mine = (net.players || []).filter(function (p) {
       return p.id === net.id;
     })[0];
@@ -7336,6 +7477,8 @@
     setRevSound(false);
     persistMe();
     sendNetState();
+    if (net && net.paused) openPauseMenu();
+    else closePauseMenu();
   }
 
   function handleEnter(msg) {
@@ -7347,6 +7490,7 @@
     if (!msg) return;
     if (msg.speed != null) applyGameSpeed(msg.speed);
     else if (net && net.speed != null) applyGameSpeed(net.speed);
+    if (msg.paused != null && net) net.paused = !!msg.paused;
     if (state === "racing" && mpMode && msg.phase === "racing") {
       if (msg.rejoin || beenRacing(msg.you)) applyYou(msg.you);
       if (msg.raceTime != null && isFinite(+msg.raceTime) && +msg.raceTime > 0) {
@@ -7355,6 +7499,7 @@
       if (msg.late && !msg.rejoin && !beenRacing(msg.you)) lateJoinT = 8;
       ingestSnap(msg.cars || (net && net.snap) || []);
       persistMe();
+      if (net && net.paused) openPauseMenu();
       return;
     }
     if (state === "start" && mpMode && msg.phase === "start") {
@@ -7421,6 +7566,10 @@
     if (state === "title" || state === "lobby") {
       titleCamera(dt);
       setRevSound(false);
+    } else if (worldFrozen() && (state === "start" || state === "racing")) {
+      setRevSound(false);
+      if (mpMode) poseRemotes();
+      chaseCamera(dt);
     } else if (state === "start") {
       tickStart(simDt);
       if (mpMode) {
@@ -7639,7 +7788,8 @@
     }
     document.documentElement.classList.toggle("race-live", drive);
     document.documentElement.classList.toggle("race-portrait", blocked);
-    if (hud.touchLayer) hud.touchLayer.classList.toggle("hidden", !(phone && drive && !blocked));
+    if (hud.menuBtn) hud.menuBtn.classList.toggle("hidden", !drive);
+    if (hud.touchLayer) hud.touchLayer.classList.toggle("hidden", !(phone && drive && !blocked && !menuOpen));
     if (hud.rotateHint) {
       hud.rotateHint.classList.toggle("hidden", !blocked);
     }
@@ -7971,6 +8121,34 @@
       }
     }
     if (down) ensureAudio();
+    if (down && (e.code === "Escape" || e.code === "KeyP")) {
+      if (state === "finished") {
+        leaveRace();
+        e.preventDefault();
+        return;
+      }
+      if (canOpenMenu()) {
+        togglePauseMenu();
+        e.preventDefault();
+        return;
+      }
+    }
+    if (menuOpen) {
+      if (down && (e.code === "Enter" || e.code === "Space")) {
+        resumeFromMenu();
+        e.preventDefault();
+      }
+      if (
+        e.code === "ArrowUp" ||
+        e.code === "ArrowDown" ||
+        e.code === "ArrowLeft" ||
+        e.code === "ArrowRight" ||
+        e.code === "Space"
+      ) {
+        e.preventDefault();
+      }
+      return;
+    }
     if (down && (e.code === "Space" || e.code === "Enter")) {
       if (state === "track") {
         e.preventDefault();
@@ -8078,13 +8256,21 @@
     net.on("room", function (msg) {
       if (net.phase === "lobby" || net.phase === "finish") {
         joining = false;
-        if (state === "title" || state === "lobby" || state === "finished") {
+        if (
+          state === "title" ||
+          state === "lobby" ||
+          state === "finished" ||
+          state === "start" ||
+          state === "racing"
+        ) {
           state = "lobby";
           setScreen("lobby");
         }
         if (net.phase === "finish" && hud.lobbyStatus) {
           hud.lobbyStatus.textContent = "That race is over — host can grid up again";
         }
+      } else if (net.phase === "start" && (state === "racing" || state === "finished")) {
+        beginOnlineStart();
       } else if (
         (net.phase === "start" || net.phase === "racing") &&
         (state === "title" || state === "lobby")
@@ -8103,11 +8289,17 @@
       }
       if (msg && msg.track != null) maybeApplyNetTrack(msg.track);
       paintRoster();
+      if (menuOpen) paintPauseMenu();
+      if (net.paused && canOpenMenu() && !menuOpen) openPauseMenu();
     });
     net.on("lights", function () {
       if (state === "lobby" || state === "title") beginOnlineStart();
     });
     net.on("go", goOnline);
+    net.on("pause", function () {
+      if (net.paused && canOpenMenu()) openPauseMenu();
+      paintPauseMenu();
+    });
     net.on("snap", function (msg) {
       if (mpMode && net && net.isHost()) adoptHostBots();
       ingestSnap(msg.cars);
@@ -8163,38 +8355,67 @@
   var btnRemoveBot = document.getElementById("btn-remove-bot");
   var btnKick = document.getElementById("btn-kick");
   var joinCode = document.getElementById("join-code");
-  if (hud.roster) {
-    hud.roster.addEventListener("click", function (e) {
+  function bindRosterList(list) {
+    if (!list) return;
+    list.addEventListener("click", function (e) {
       var t = e.target;
-      while (t && t !== hud.roster && (!t.getAttribute || !t.getAttribute("data-id"))) t = t.parentNode;
-      if (!t || t === hud.roster) return;
+      while (t && t !== list && (!t.getAttribute || !t.getAttribute("data-id"))) t = t.parentNode;
+      if (!t || t === list) return;
       lobbyPick = t.getAttribute("data-id") || "";
       paintRoster();
+      if (menuOpen) paintPauseMenu();
     });
   }
-  if (btnKick) {
-    btnKick.addEventListener("click", function () {
-      if (!net || !net.isHost()) return;
-      var id = lobbyPick;
-      var p;
-      if (id) {
-        for (var i = 0; i < (net.players || []).length; i++) {
-          if (net.players[i].id === id) p = net.players[i];
+  bindRosterList(hud.roster);
+  bindRosterList(hud.pauseRoster);
+
+  function hostKickPick() {
+    if (!net || !net.isHost()) return;
+    var id = lobbyPick;
+    var p;
+    if (id) {
+      for (var i = 0; i < (net.players || []).length; i++) {
+        if (net.players[i].id === id) p = net.players[i];
+      }
+    }
+    if (!p || p.bot || p.id === net.hostId) {
+      p = null;
+      for (var j = 0; j < (net.players || []).length; j++) {
+        var cand = net.players[j];
+        if (!cand.bot && cand.id !== net.hostId) {
+          p = cand;
+          break;
         }
       }
-      if (!p || p.bot || p.id === net.hostId) {
-        p = null;
-        for (var j = 0; j < (net.players || []).length; j++) {
-          var cand = net.players[j];
-          if (!cand.bot && cand.id !== net.hostId) {
-            p = cand;
-            break;
-          }
-        }
-      }
-      if (p) net.kick(p.id);
-    });
+    }
+    if (p) net.kick(p.id);
   }
+
+  function hostRemoveBotPick() {
+    if (!net || !net.isHost()) return;
+    var bot = null;
+    for (var i = 0; i < (net.players || []).length; i++) {
+      if (net.players[i].bot && net.players[i].id === lobbyPick) bot = net.players[i];
+    }
+    if (!bot) {
+      for (var j = (net.players || []).length - 1; j >= 0; j--) {
+        if (net.players[j].bot) {
+          bot = net.players[j];
+          break;
+        }
+      }
+    }
+    if (bot) net.removeBot(bot.id);
+  }
+
+  function hostCycleSpeed() {
+    if (!net || !net.isHost()) return;
+    var i = SPEED_STEPS.indexOf(gameSpeed);
+    if (i < 0) i = 0;
+    net.setSpeed(SPEED_STEPS[(i + 1) % SPEED_STEPS.length]);
+  }
+
+  if (btnKick) btnKick.addEventListener("click", hostKickPick);
   if (btnAddBot) {
     btnAddBot.addEventListener("click", function () {
       if (net && net.isHost()) net.addBot();
@@ -8205,32 +8426,8 @@
       if (net && net.isHost() && !hud.bowieBtn.disabled) net.addBowie();
     });
   }
-  if (btnRemoveBot) {
-    btnRemoveBot.addEventListener("click", function () {
-      if (!net || !net.isHost()) return;
-      var bot = null;
-      for (var i = 0; i < (net.players || []).length; i++) {
-        if (net.players[i].bot && net.players[i].id === lobbyPick) bot = net.players[i];
-      }
-      if (!bot) {
-        for (var j = (net.players || []).length - 1; j >= 0; j--) {
-          if (net.players[j].bot) {
-            bot = net.players[j];
-            break;
-          }
-        }
-      }
-      if (bot) net.removeBot(bot.id);
-    });
-  }
-  if (hud.speedBtn) {
-    hud.speedBtn.addEventListener("click", function () {
-      if (!net || !net.isHost()) return;
-      var i = SPEED_STEPS.indexOf(gameSpeed);
-      if (i < 0) i = 0;
-      net.setSpeed(SPEED_STEPS[(i + 1) % SPEED_STEPS.length]);
-    });
-  }
+  if (btnRemoveBot) btnRemoveBot.addEventListener("click", hostRemoveBotPick);
+  if (hud.speedBtn) hud.speedBtn.addEventListener("click", hostCycleSpeed);
   if (hud.nameInput) {
     try {
       var savedName = sessionStorage.getItem("sk_name") || "";
@@ -8286,22 +8483,68 @@
       if (net && net.isHost()) net.start();
     });
   }
-  if (btnLeave) {
-    btnLeave.addEventListener("click", function () {
-      mpMode = false;
-      joining = false;
-      lateJoinT = 0;
-      clearMe();
-      if (net) net.leave();
-      clearRemotes();
-      clearHostBots();
-      applyGameSpeed(1);
-      restoreLocalTrack();
-      state = "title";
-      setScreen("title");
-      showBoot("");
+  if (btnLeave) btnLeave.addEventListener("click", leaveRace);
+
+  if (hud.menuBtn) {
+    hud.menuBtn.addEventListener("click", function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      togglePauseMenu();
     });
   }
+  var btnResume = document.getElementById("btn-resume");
+  var btnQuit = document.getElementById("btn-quit");
+  var btnPauseAll = document.getElementById("btn-pause-all");
+  var btnEndRace = document.getElementById("btn-end-race");
+  var btnNewRace = document.getElementById("btn-new-race");
+  var btnPauseKick = document.getElementById("btn-pause-kick");
+  var btnPauseAddBot = document.getElementById("btn-pause-add-bot");
+  var btnPauseRemoveBot = document.getElementById("btn-pause-remove-bot");
+  var btnFinishAgain = document.getElementById("btn-finish-again");
+  var btnFinishLeave = document.getElementById("btn-finish-leave");
+  if (btnResume) {
+    btnResume.addEventListener("click", function (e) {
+      e.preventDefault();
+      resumeFromMenu();
+    });
+  }
+  if (btnQuit) btnQuit.addEventListener("click", leaveRace);
+  if (btnPauseAll) {
+    btnPauseAll.addEventListener("click", function () {
+      if (!net || !net.isHost() || !net.pause) return;
+      net.pause(!net.paused);
+    });
+  }
+  if (btnEndRace) {
+    btnEndRace.addEventListener("click", function () {
+      if (net && net.isHost() && net.endRace) net.endRace();
+    });
+  }
+  if (btnNewRace) {
+    btnNewRace.addEventListener("click", function () {
+      if (net && net.isHost()) net.start();
+    });
+  }
+  if (btnPauseKick) btnPauseKick.addEventListener("click", hostKickPick);
+  if (btnPauseAddBot) {
+    btnPauseAddBot.addEventListener("click", function () {
+      if (net && net.isHost()) net.addBot();
+    });
+  }
+  if (btnPauseRemoveBot) btnPauseRemoveBot.addEventListener("click", hostRemoveBotPick);
+  if (hud.pauseSpeedBtn) hud.pauseSpeedBtn.addEventListener("click", hostCycleSpeed);
+  if (btnFinishAgain) {
+    btnFinishAgain.addEventListener("click", function () {
+      if (mpMode) {
+        state = "lobby";
+        setScreen("lobby");
+        paintRoster();
+        return;
+      }
+      startSequence();
+    });
+  }
+  if (btnFinishLeave) btnFinishLeave.addEventListener("click", leaveRace);
 
   var btnTrack = document.getElementById("btn-track");
   var btnTrackUndo = document.getElementById("btn-track-undo");
@@ -8545,6 +8788,8 @@
   }
   bindCircuitRow(hud.circuitPicks);
   bindCircuitRow(hud.circuitPicksEditor);
+  bindCircuitRow(hud.circuitPicksLobby);
+  bindCircuitRow(document.getElementById("pause-circuits"));
   if (btnTrackCopy) {
     btnTrackCopy.addEventListener("click", function () {
       var s = trackCode || "";

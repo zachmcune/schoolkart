@@ -115,7 +115,14 @@ waitHealth()
         assert(html.indexOf('rel="manifest"') !== -1, "web app manifest link");
         assert(html.indexOf("apple-mobile-web-app-capable") !== -1, "iOS home screen capable");
         assert(html.indexOf('apple-mobile-web-app-title" content="SchoolKart"') !== -1, "iOS title");
-        assert(html.indexOf('SK_BUILD = "mp96"') !== -1, "cache bump mp96");
+        assert(html.indexOf('SK_BUILD = "mp99"') !== -1, "cache bump mp99");
+        assert(html.indexOf("pause-screen") !== -1, "pause overlay");
+        assert(html.indexOf("btn-menu") !== -1, "in-race menu button");
+        assert(html.indexOf("btn-pause-all") !== -1, "host pause everyone");
+        assert(html.indexOf("btn-end-race") !== -1, "host end race");
+        assert(html.indexOf("btn-new-race") !== -1, "host new race");
+        assert(html.indexOf("btn-quit") !== -1, "leave from pause");
+        assert(html.indexOf("circuit-picks-lobby") !== -1, "host can pick a map in the lobby");
         assert(html.indexOf("viewport-fit=cover") !== -1, "phone paints under the notch");
         assert(html.indexOf('maxlength="800"') !== -1, "share-string fits a full 16x12 board");
         assert(html.indexOf('id="title-track"') !== -1, "title label matches Solo load");
@@ -150,7 +157,7 @@ waitHealth()
           .then(function (sr) {
             return sr.text().then(function (sw) {
               assert(sr.status === 200, "sw 200");
-              assert(sw.indexOf('BUILD = "mp96"') !== -1, "SW build matches cache");
+              assert(sw.indexOf('BUILD = "mp99"') !== -1, "SW build matches cache");
               assert(/cache:\s*"no-store"/.test(sw), "network-first no-store");
               assert(sw.indexOf("websocket") !== -1, "SW leaves websocket alone");
             });
@@ -173,6 +180,10 @@ waitHealth()
                   assert(js.indexOf("function syncShareField") !== -1, "Solo/Done read the share field before lights-out");
                   assert(js.indexOf("function releaseTypeFocus") !== -1, "Solo blurs share/name so W drives after GO");
                   assert(/function startSequence\([\s\S]{0,900}releaseTypeFocus\(\)/.test(js), "lights/GO Solo from a share string blurs the box");
+                  assert(js.indexOf("function openPauseMenu") !== -1 && js.indexOf("function leaveRace") !== -1, "solo can pause and leave");
+                  assert(js.indexOf("function worldFrozen") !== -1 && js.indexOf("function resumeFromMenu") !== -1, "pause freezes solo / host room");
+                  assert(js.indexOf("net.endRace") !== -1 && js.indexOf("net.pause") !== -1, "host pause and end race are wired");
+                  assert(/net\.phase === "finish"[\s\S]{0,500}state === "racing"/.test(js), "host end race from a live race returns to the lobby");
                   assert(js.indexOf("function recoverIfVoid") === -1, "DUMP does not teleport back onto the ribbon");
                   assert(js.indexOf("groundSkirt") !== -1 && js.indexOf("0x3f5c32") !== -1, "green skirt past the dirt so DUMP is not a black void");
                   assert(js.indexOf("along < 0.42") !== -1, "custom 90 graze slides; A/D stay live");
@@ -414,7 +425,7 @@ waitHealth()
                     console.log("OK rooms", room.code, "late+rejoin");
                     c.close();
                     a2.close();
-                    return lobbyExtras();
+                    return lobbyExtras().then(hostRaceControls);
                   });
               });
           });
@@ -543,6 +554,135 @@ function lobbyExtras() {
       })
       .then(function () {
         console.log("OK lobby names/kick/bot/speed/bowie", code);
+        h.close();
+        g.close();
+      });
+  });
+}
+
+function hostRaceControls() {
+  return Promise.all([client("hostP"), client("joinP")]).then(function (pair) {
+    var h = pair[0];
+    var g = pair[1];
+    var code;
+    var pausedAt = 0;
+    h.send({ t: "create", name: "Host" });
+    return h
+      .waitFor(function (m) {
+        return m.t === "room";
+      })
+      .then(function (roomMsg) {
+        code = roomMsg.code;
+        assert(roomMsg.paused === false, "new room is not paused");
+        g.send({ t: "join", code: code, name: "Guest" });
+        return g.waitFor(function (m) {
+          return m.t === "room" && m.players && m.players.length === 2;
+        });
+      })
+      .then(function () {
+        var n = g.inbox.length;
+        g.send({ t: "pause", on: true });
+        return g.waitFor(function (m) {
+          return g.inbox.indexOf(m) >= n && m.t === "err";
+        });
+      })
+      .then(function (err) {
+        assert(/host/i.test(err.msg), "guest cannot pause");
+        var n = g.inbox.length;
+        g.send({ t: "end" });
+        return g.waitFor(function (m) {
+          return g.inbox.indexOf(m) >= n && m.t === "err" && /host/i.test(m.msg);
+        });
+      })
+      .then(function () {
+        h.send({ t: "start" });
+        return h.waitFor(function (m) {
+          return m.t === "go";
+        }, 16000);
+      })
+      .then(function () {
+        var hn = h.inbox.length;
+        var gn = g.inbox.length;
+        h.send({ t: "pause", on: true });
+        return Promise.all([
+          h.waitFor(function (m) {
+            return h.inbox.indexOf(m) >= hn && m.t === "pause" && m.on === true;
+          }),
+          g.waitFor(function (m) {
+            return g.inbox.indexOf(m) >= gn && m.t === "pause" && m.on === true;
+          }),
+        ]);
+      })
+      .then(function () {
+        return new Promise(function (res) {
+          setTimeout(res, 80);
+        });
+      })
+      .then(function () {
+        var snaps = h.inbox.filter(function (m) {
+          return m.t === "snap";
+        });
+        assert(snaps.length > 0, "paused room still snaps");
+        pausedAt = snaps[snaps.length - 1].raceTime;
+        return new Promise(function (res) {
+          setTimeout(res, 240);
+        });
+      })
+      .then(function () {
+        var snaps = h.inbox.filter(function (m) {
+          return m.t === "snap";
+        });
+        var last = snaps[snaps.length - 1];
+        assert(Math.abs(last.raceTime - pausedAt) < 0.02, "paused room clock is frozen");
+        var n = g.inbox.length;
+        g.send({ t: "pause", on: false });
+        return g.waitFor(function (m) {
+          return g.inbox.indexOf(m) >= n && m.t === "err";
+        });
+      })
+      .then(function (err) {
+        assert(/host/i.test(err.msg), "guest cannot unpause");
+        h.send({ t: "track", code: "HARBOR" });
+        return h.waitFor(function (m) {
+          return m.t === "room" && m.track === "HARBOR";
+        });
+      })
+      .then(function () {
+        return g.waitFor(function (m) {
+          return m.t === "room" && m.track === "HARBOR";
+        });
+      })
+      .then(function () {
+        h.send({ t: "end" });
+        return Promise.all([
+          h.waitFor(function (m) {
+            return m.t === "room" && m.phase === "finish" && m.paused === false;
+          }),
+          g.waitFor(function (m) {
+            return m.t === "room" && m.phase === "finish";
+          }),
+        ]);
+      })
+      .then(function () {
+        h.send({ t: "start" });
+        return h.waitFor(function (m) {
+          return m.t === "lights" && m.phase === "prestart";
+        });
+      })
+      .then(function () {
+        h.send({ t: "start" });
+        return g.waitFor(function (m) {
+          return m.t === "lights" && m.phase === "prestart";
+        });
+      })
+      .then(function () {
+        h.send({ t: "kick", id: "joinP" });
+        return g.waitFor(function (m) {
+          return m.t === "kicked";
+        });
+      })
+      .then(function () {
+        console.log("OK host pause/end/map/new-race/kick", code);
         h.close();
         g.close();
       });

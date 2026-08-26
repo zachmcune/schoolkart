@@ -2761,6 +2761,8 @@ assert(fuelAfter(3.2, 844, 390) < 98.2, "landscape still burns idle+throttle");
 assert(src.indexOf("_rotLock") !== -1, "rotate is debounced so one tap is 90 not 180");
 assert(src.indexOf("rotateSelected();") !== -1 && !/tileRot\.addEventListener\("click"[\s\S]{0,80}rotateSelected/.test(src), "Rotate button does not double-fire");
 assert(src.indexOf("title-track") !== -1, "title menu label is live");
+assert(src.indexOf("function openPauseMenu") !== -1 && src.indexOf("function leaveRace") !== -1, "solo pause/leave exist");
+assert(src.indexOf("function worldFrozen") !== -1, "pause freezes the sim");
 assert(/#title-screen[\s\S]{0,180}overflow-y:\s*auto/.test(fs.readFileSync(path.join(__dirname, "..", "css", "style.css"), "utf8")), "title menu scrolls");
 
 var customLen = rectLen;
