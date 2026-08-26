@@ -922,7 +922,7 @@ html.race-portrait #tilt-btn {
   width: var(--tile);
   height: var(--tile);
   aspect-ratio: 1 / 1;
-  flex: 0 0 var(--tile);
+  flex: none;
   border-radius: 0;
   box-shadow: 0 2px 0 #3d3932, 0 5px 10px rgba(0, 0, 0, 0.4);
   background-color: #6a655c;
@@ -942,15 +942,16 @@ html.race-portrait #tilt-btn {
 .palette-tile.wide {
   width: calc(var(--tile) * 2);
   height: var(--tile);
+  max-height: var(--tile);
   aspect-ratio: 2 / 1;
-  flex: 0 0 calc(var(--tile) * 2);
+  flex: none;
 }
 
 .palette-tile.block {
   width: calc(var(--tile) * 2);
   height: calc(var(--tile) * 2);
   aspect-ratio: 1 / 1;
-  flex: 0 0 calc(var(--tile) * 2);
+  flex: none;
 }
 
 .palette-tile.picked,

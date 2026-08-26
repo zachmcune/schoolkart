@@ -271,6 +271,7 @@ waitHealth()
                   assert(css.indexOf("repeat(16, 1fr)") !== -1 && css.indexOf("repeat(12, 1fr)") !== -1, "editor grid is 16x12");
                   assert(css.indexOf("aspect-ratio: 16 / 12") !== -1, "board keeps a 16x12 box");
                   assert(css.indexOf("aspect-ratio: 1 / 1") !== -1, "palette chips stay square");
+                  assert(/\.palette-tile\.wide\s*\{[^}]*aspect-ratio:\s*2\s*\/\s*1/.test(css), "long and hairpin chips stay 2x1");
                   assert(css.indexOf("--tile") !== -1, "palette tiles scale from one square size");
                   assert(css.indexOf("tile-map-host") !== -1, "board host is the leftover flex slot");
                   assert(/\.palette-name\s*\{[^}]*overflow:\s*visible/.test(css), "tile names are not clipped");
