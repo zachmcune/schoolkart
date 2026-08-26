@@ -818,8 +818,10 @@
   function buildCampusPitPath() {
     PIT_PATH.length = 0;
     var laneZ = (PIT_LANE.z0 + PIT_LANE.z1) * 0.5;
-    var mouthZ = -70.8;
-    var st = { x: 6, z: mouthZ, h: 0 };
+    // Start on the LEFT half of the race ribbon so the dark asphalt
+    // actually peels off the straight, then S-bends out to the box.
+    var mouthZ = -76;
+    var st = { x: -4, z: mouthZ, h: 0 };
     pitSBend(st, laneZ - st.z, "pitin");
     var exitX = 116;
     if (st.x < exitX) pitLine(st, exitX - st.x, "pitlane");
@@ -2558,7 +2560,6 @@
     // The second road is the same asphalt as the race ribbon, just
     // smaller — it peels LEFT, runs the box, peels back. Not a slab.
     // A hole in the ribbon is a nack. A slide / one-road pit is a nack.
-    paintPitStalls();
     addBox(62, 0.92, -51.2, 70, 1.7, 0.7, 0x2a2018, trackRoot);
     addBox(62, 1.82, -51.2, 70, 0.14, 0.78, TEAL, trackRoot);
   }
