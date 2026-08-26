@@ -2520,23 +2520,16 @@
 
   function paintPitRibbon() {
     if (!PIT_PATH.length || !trackRoot) return;
-    // Same recipe as the race ribbon — runoff, asphalt, center, white
-    // edges — just a smaller half-width. Slightly raised so the peel
-    // sits on the main asphalt at the mouths instead of z-fighting.
-    var runoffMat = new THREE.MeshLambertMaterial({
-      color: 0x8d97a6,
-      emissive: 0x2a3038,
-      side: THREE.DoubleSide,
-    });
+    // Same asphalt, center, and white edges as the race ribbon — just
+    // smaller. No painted runoff: that read as a light-grey slab instead
+    // of a lane. Slightly raised so the peel sits on the main asphalt.
     var asphaltMat = new THREE.MeshLambertMaterial({
       color: 0x3a3e46,
       emissive: 0x101214,
       side: THREE.DoubleSide,
     });
-    var runoff = makeSurfRibbon(PIT_PATH, PIT_HALF + 2.4, 0.036, runoffMat);
     var asphalt = makeSurfRibbon(PIT_PATH, PIT_HALF, 0.062, asphaltMat);
     var line = makeSurfRibbon(PIT_PATH, 0.28, 0.087, 0xd8d2c6);
-    if (runoff) trackRoot.add(runoff);
     if (asphalt) trackRoot.add(asphalt);
     if (line) trackRoot.add(line);
     var eL = makeSurfRibbon(PIT_PATH, 0.22, 0.079, 0xf4efe6, null, null, PIT_HALF - 0.38);
