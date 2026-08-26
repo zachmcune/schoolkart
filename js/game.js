@@ -408,6 +408,7 @@
     trackPaste: document.getElementById("track-paste"),
     tilePalette: document.getElementById("tile-palette"),
     tileBoard: document.getElementById("tile-board"),
+    tileBoardHost: document.querySelector(".tile-map-host"),
     tileTrash: document.getElementById("tile-trash"),
     tileRot: document.getElementById("btn-tile-rot"),
     circuitPicks: document.getElementById("circuit-picks"),
@@ -3958,6 +3959,43 @@
     return _tileArt[key];
   }
 
+  function editorTilePx(vw, vh) {
+    var floor = vh < 430 ? 28 : 40;
+    var short = vh < 520 ? vh * 0.08 : 72;
+    return Math.round(clamp(Math.min(vw * 0.09, short), floor, 72));
+  }
+
+  function editorBoardBox(maxW, maxH) {
+    var cell = Math.floor(Math.min(maxW / MAP_W, maxH / MAP_H));
+    if (!(cell > 3)) return { w: 0, h: 0, cell: 0 };
+    return { w: cell * MAP_W, h: cell * MAP_H, cell: cell };
+  }
+
+  function layoutTrackEditor() {
+    var screen = hud.trackScreen;
+    var board = hud.tileBoard;
+    var host = hud.tileBoardHost;
+    if (!screen || !board || screen.classList.contains("hidden")) return;
+    var vw = window.innerWidth || 800;
+    var vh = window.innerHeight || 600;
+    if (window.visualViewport) {
+      vw = window.visualViewport.width || vw;
+      vh = window.visualViewport.height || vh;
+    }
+    screen.style.setProperty("--tile", editorTilePx(vw, vh) + "px");
+    var box = host || board.parentNode;
+    if (!box || box.clientWidth < 8 || box.clientHeight < 8) return;
+    var fit = editorBoardBox(box.clientWidth, box.clientHeight);
+    if (!fit.w) return;
+    board.style.width = fit.w + "px";
+    board.style.height = fit.h + "px";
+  }
+
+  function scheduleTrackLayout() {
+    layoutTrackEditor();
+    requestAnimationFrame(layoutTrackEditor);
+  }
+
   function paintTrackEditor() {
     if (!hud.trackView) return;
     if (!trackCode || isBuiltinCode(trackCode)) {
@@ -4063,6 +4101,7 @@
     }
     hud.tileBoard.innerHTML = html;
     if (hud.tileRot) hud.tileRot.disabled = !tileSel;
+    scheduleTrackLayout();
   }
 
   function pushTrackUndo() {
@@ -6557,6 +6596,7 @@
     hud.root.classList.toggle("hidden", which === "title" || which === "lobby" || which === "track");
     hud.revWrap.classList.toggle("hidden", which !== "start");
     if (which === "title" || which === "track") refreshMenuTrackLabel();
+    if (which === "track") scheduleTrackLayout();
     if (which === "start" || which === "racing") {
       releaseTypeFocus();
       lockLandscape();
@@ -8211,6 +8251,7 @@
     fitView();
     if (state === "start" || state === "racing") lockLandscape();
     syncMobileUi();
+    if (state === "track") scheduleTrackLayout();
   }
   window.addEventListener("resize", onViewChange);
   window.addEventListener("orientationchange", function () {

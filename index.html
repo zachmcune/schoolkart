@@ -6,7 +6,7 @@
   <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <!-- sk-build mp99: pause / leave + host race controls -->
+  <!-- sk-build mp99: square track tiles + pause / leave + host race controls -->
   <meta name="theme-color" content="#1a120e" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -219,7 +219,9 @@
           <span class="palette-name">tree</span>
         </div>
       </div>
-      <div id="tile-board" class="tile-map" aria-label="Tile map"></div>
+      <div class="tile-map-host">
+        <div id="tile-board" class="tile-map" aria-label="Tile map"></div>
+      </div>
       <div class="editor-dock">
         <button type="button" class="tile-rot" id="btn-tile-rot" aria-label="Rotate selected piece 90 degrees">↻ Rotate</button>
         <button type="button" class="tile-trash" id="tile-trash">Trash</button>

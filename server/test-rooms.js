@@ -137,6 +137,7 @@ waitHealth()
         assert(html.indexOf('data-tile="F"') !== -1, "start/finish piece");
         assert(html.indexOf("Default · Campus Loop") !== -1, "Campus Loop default control");
         assert(html.indexOf("tile-board") !== -1, "drag tile board");
+        assert(html.indexOf("tile-map-host") !== -1, "board host keeps leftover space for square cells");
         assert(html.indexOf("tile-palette") !== -1, "tile palette");
         assert(html.indexOf("tile-trash") !== -1, "tile trash");
         assert(html.indexOf("Past the mark is sluggish") !== -1, "rev hint is timing not park");
@@ -255,6 +256,8 @@ waitHealth()
                   assert(js.indexOf("env *= env") !== -1, "chicane S is flat at the ports so ribbons meet on the edge");
                   assert(js.indexOf("var amp = MAP_CELL * 0.1") !== -1, "chicane S is shrunk so the ribbon stays in-cell");
                   assert(js.indexOf("function tileArt") !== -1, "editor still paints chips");
+                  assert(js.indexOf("function editorBoardBox") !== -1 && js.indexOf("function layoutTrackEditor") !== -1, "editor layout keeps 16x12 squares");
+                  assert(js.indexOf("scheduleTrackLayout") !== -1, "editor relayouts on resize");
                   assert(js.indexOf("function steerWheelYaw") !== -1 && js.indexOf("return -steer * 0.42") !== -1, "A points fronts left, D points right");
                   assert(js.indexOf("function attachNameTag") !== -1 && js.indexOf("function layoutNameTags") !== -1, "halo nametags");
                   assert(!/function attachNameTag\([\s\S]{0,500}new THREE\.Sprite/.test(js), "nametags are mesh billboards, not X-flip-killed sprites");
@@ -277,6 +280,13 @@ waitHealth()
                   assert(css.indexOf("env(safe-area-inset-top") !== -1, "HUD clears the notch");
                   assert(css.indexOf("#game") !== -1 && css.indexOf("position: fixed") !== -1, "game shell is fixed to the screen");
                   assert(css.indexOf("repeat(16, 1fr)") !== -1 && css.indexOf("repeat(12, 1fr)") !== -1, "editor grid is 16x12");
+                  assert(css.indexOf("aspect-ratio: 16 / 12") !== -1, "board keeps a 16x12 box");
+                  assert(css.indexOf("aspect-ratio: 1 / 1") !== -1, "palette chips stay square");
+                  assert(/\.palette-tile\.wide\s*\{[^}]*aspect-ratio:\s*2\s*\/\s*1/.test(css), "long and hairpin chips stay 2x1");
+                  assert(css.indexOf("--tile") !== -1, "palette tiles scale from one square size");
+                  assert(css.indexOf("tile-map-host") !== -1, "board host is the leftover flex slot");
+                  assert(/\.palette-name\s*\{[^}]*overflow:\s*visible/.test(css), "tile names are not clipped");
+                  assert(/\.palette-name\s*\{[^}]*white-space:\s*nowrap/.test(css), "tile names stay on one line");
                   assert(/\.tile-cell\s*\{[^}]*overflow:\s*hidden/.test(css), "editor cells clip art so pieces cannot paint onto neighbors");
                   assert(/\.palette-tile[\s\S]{0,400}overflow:\s*hidden/.test(css), "palette chips clip to the square");
                   assert(css.indexOf(".palette-tile svg") !== -1, "palette SVG fills the square");

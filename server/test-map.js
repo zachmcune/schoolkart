@@ -1385,6 +1385,27 @@ var artSrc = src.slice(src.indexOf("function tileIconPts"), src.indexOf("functio
 assert(artSrc.indexOf("pieceSegs(") === -1, "chips are not clipped world-ribbon");
 assert(artSrc.indexOf("createElement(\"canvas\")") === -1, "chips are SVG in the tile, not a canvas data-URL");
 assert(artSrc.indexOf("tileIconSvg") !== -1, "palette injects SVG into the square");
+assert(src.indexOf("function editorBoardBox") !== -1 && src.indexOf("function layoutTrackEditor") !== -1, "editor sizes the 16x12 board to the leftover screen");
+var editorFit = new Function(
+  "clamp",
+  "MAP_W",
+  "MAP_H",
+  sliceFn("editorTilePx") + ";" + sliceFn("editorBoardBox") + "; return { tile: editorTilePx, box: editorBoardBox };"
+)(
+  function (v, a, b) {
+    return Math.max(a, Math.min(b, v));
+  },
+  16,
+  12
+);
+var wideBox = editorFit.box(400, 900);
+assert(wideBox.cell === 25 && wideBox.w === 400 && wideBox.h === 300, "width-limited board is 16 square cells by 12");
+var shortBox = editorFit.box(900, 240);
+assert(shortBox.cell === 20 && shortBox.w === 320 && shortBox.h === 240, "height-limited board shrinks width so cells stay square");
+assert(shortBox.w / 16 === shortBox.h / 12, "short screens do not squash tiles into rectangles");
+assert(editorFit.tile(1280, 800) === 72, "desktop palette chips stay 72px squares");
+assert(editorFit.tile(360, 640) >= 40, "phone palette chips stay wide enough for names");
+assert(editorFit.tile(667, 375) >= 28 && editorFit.tile(667, 375) <= 36, "landscape phone palette tiles scale down as squares");
 
 sim.lockRacePath("");
 assert(src.indexOf("function viewBox") !== -1 && src.indexOf("visualViewport") !== -1, "canvas follows the painted viewport");
