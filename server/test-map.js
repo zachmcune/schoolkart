@@ -1405,7 +1405,7 @@ assert(shortBox.cell === 20 && shortBox.w === 320 && shortBox.h === 240, "height
 assert(shortBox.w / 16 === shortBox.h / 12, "short screens do not squash tiles into rectangles");
 assert(editorFit.tile(1280, 800) === 72, "desktop palette chips stay 72px squares");
 assert(editorFit.tile(360, 640) >= 40, "phone palette chips stay wide enough for names");
-assert(editorFit.tile(667, 375) >= 40 && editorFit.tile(667, 375) <= 48, "landscape phone palette tiles scale down as squares");
+assert(editorFit.tile(667, 375) >= 28 && editorFit.tile(667, 375) <= 36, "landscape phone palette tiles scale down as squares");
 
 sim.lockRacePath("");
 assert(src.indexOf("function viewBox") !== -1 && src.indexOf("visualViewport") !== -1, "canvas follows the painted viewport");

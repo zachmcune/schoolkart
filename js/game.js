@@ -3937,7 +3937,9 @@
   }
 
   function editorTilePx(vw, vh) {
-    return Math.round(clamp(Math.min(vw * 0.088, vh * 0.11), 40, 72));
+    var floor = vh < 430 ? 28 : 40;
+    var short = vh < 520 ? vh * 0.08 : 72;
+    return Math.round(clamp(Math.min(vw * 0.09, short), floor, 72));
   }
 
   function editorBoardBox(maxW, maxH) {

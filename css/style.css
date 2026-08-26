@@ -845,9 +845,11 @@ html.race-portrait #tilt-btn {
 #track-screen {
   --tile: 72px;
   justify-content: flex-start;
-  overflow: hidden;
-  touch-action: none;
-  overscroll-behavior: none;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+  overscroll-behavior: contain;
   padding: 8px 10px 10px;
   gap: 4px;
   z-index: 8;
@@ -870,7 +872,7 @@ html.race-portrait #tilt-btn {
   width: min(960px, 96vw);
   overflow-x: auto;
   overflow-y: hidden;
-  padding: 10px 12px 8px;
+  padding: 10px 12px 16px;
   margin: 0;
   touch-action: none;
   -webkit-overflow-scrolling: touch;
@@ -959,13 +961,14 @@ html.race-portrait #tilt-btn {
 
 .tile-map-host {
   flex: 1 1 auto;
-  min-height: 0;
+  min-height: min(240px, 42vh);
   min-width: 0;
   width: min(960px, 96vw);
   display: flex;
   align-items: center;
   justify-content: center;
   container-type: size;
+  touch-action: none;
 }
 
 .tile-map {
@@ -1167,7 +1170,7 @@ html.race-portrait #tilt-btn {
   }
 
   .tile-palette {
-    padding: 6px 8px 6px;
+    padding: 6px 8px 14px;
     gap: 8px;
   }
 
@@ -1195,10 +1198,16 @@ html.race-portrait #tilt-btn {
 @media (max-width: 700px) {
   .tile-palette {
     gap: 8px;
-    padding: 8px 8px 6px;
+    padding: 8px 8px 14px;
   }
 
   .palette-name {
     letter-spacing: 0.03em;
+  }
+
+  .tile-rot,
+  .tile-trash {
+    min-width: 0;
+    flex: 1 1 96px;
   }
 }
