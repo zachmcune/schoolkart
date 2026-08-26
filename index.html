@@ -6,7 +6,7 @@
   <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <!-- sk-build mp99: track editor keeps square tiles on every screen -->
+  <!-- sk-build mp99: square track tiles + pause / leave + host race controls -->
   <meta name="theme-color" content="#1a120e" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -78,6 +78,7 @@
     </div>
     <div id="mobile-hint" class="hidden">Right gas · Left brake · Tilt to steer</div>
     <button type="button" id="tilt-btn" class="hidden">Tap for tilt steer</button>
+    <button type="button" id="btn-menu" class="menu-btn hidden">Menu</button>
     <div id="rotate-hint" class="hidden">Turn phone sideways</div>
 
     <div id="callouts">
@@ -94,6 +95,7 @@
         <li><strong>Fuel is the clock.</strong> Ticks even if you coast. One box in 5 laps — skip it and limp home.</li>
         <li><strong>Peel LEFT</strong> off the straight — follow the curve into the side pit lane. Halfway <em>in that lane</em> the crew grabs you, services, then you drive the curve back out and merge.</li>
         <li><strong>Lights start:</strong> locked until GO. <strong>Hold W</strong> climbs the needle through the green — lift to catch it. Below or past the mark = SLUGGISH getaway on asphalt (~1.5s), not a spin onto grass. After GO: SLUGGISH / GOOD / GREAT.</li>
+        <li><strong>Esc</strong> or <strong>P</strong> opens the menu — pause and leave in solo. Phones: tap <strong>Menu</strong>. Room host can pause everyone, end the race, pick a map, grid a new race, and kick.</li>
       </ul>
       <div class="lobby-row">
         <input id="display-name" class="lobby-input name-input" maxlength="14" placeholder="YOUR NAME" autocomplete="nickname" spellcheck="false" autocapitalize="words" />
@@ -139,6 +141,13 @@
           </span>
           <button type="button" class="lobby-btn" id="btn-speed">1x</button>
           <button type="button" class="lobby-btn bowie" id="btn-add-bowie">Add Bowie knife</button>
+        </div>
+        <div class="circuit-row" id="circuit-picks-lobby" aria-label="Host circuit picks">
+          <button type="button" class="lobby-btn circuit" data-circuit="">Campus</button>
+          <button type="button" class="lobby-btn circuit" data-circuit="HARBOR">Harbor</button>
+          <button type="button" class="lobby-btn circuit" data-circuit="PARK">Park</button>
+          <button type="button" class="lobby-btn circuit" data-circuit="DESERT">Desert</button>
+          <button type="button" class="lobby-btn circuit" data-circuit="FOREST">Forest</button>
         </div>
       </div>
       <p id="lobby-err"></p>
@@ -232,12 +241,51 @@
       <p class="result-time" id="finish-time">0:00.00</p>
       <p class="result-line" id="finish-pit">Pit stop: no</p>
       <p class="result-line" id="finish-place"></p>
-      <p class="go">Press <kbd>Enter</kbd> to race again</p>
+      <div class="lobby-row">
+        <button type="button" class="lobby-btn solo" id="btn-finish-again">Race again</button>
+        <button type="button" class="lobby-btn" id="btn-finish-leave">Leave</button>
+      </div>
+      <p class="go">Press <kbd>Enter</kbd> to race again · Esc leaves</p>
+    </div>
+
+    <div id="pause-screen" class="screen hidden">
+      <p class="eyebrow" id="pause-eyebrow">Paused</p>
+      <h1 id="pause-title">PAUSED</h1>
+      <p class="sub" id="pause-status">Solo</p>
+      <ul id="pause-roster"></ul>
+      <div id="pause-host" class="host-tools hidden">
+        <div class="lobby-row host-row">
+          <button type="button" class="lobby-btn" id="btn-pause-all">Pause everyone</button>
+          <button type="button" class="lobby-btn" id="btn-end-race">End race</button>
+          <button type="button" class="lobby-btn" id="btn-new-race">New race</button>
+        </div>
+        <div class="circuit-row" id="pause-circuits" aria-label="Host circuit picks">
+          <button type="button" class="lobby-btn circuit" data-circuit="">Campus</button>
+          <button type="button" class="lobby-btn circuit" data-circuit="HARBOR">Harbor</button>
+          <button type="button" class="lobby-btn circuit" data-circuit="PARK">Park</button>
+          <button type="button" class="lobby-btn circuit" data-circuit="DESERT">Desert</button>
+          <button type="button" class="lobby-btn circuit" data-circuit="FOREST">Forest</button>
+        </div>
+        <div class="lobby-row host-row">
+          <button type="button" class="lobby-btn" id="btn-pause-kick">Kick</button>
+          <span class="bot-pair">
+            <button type="button" class="lobby-btn" id="btn-pause-add-bot">+Bot</button>
+            <button type="button" class="lobby-btn" id="btn-pause-remove-bot">−Bot</button>
+          </span>
+          <button type="button" class="lobby-btn" id="btn-pause-speed">1x</button>
+        </div>
+      </div>
+      <p id="pause-err"></p>
+      <div class="lobby-row">
+        <button type="button" class="lobby-btn solo" id="btn-resume">Resume</button>
+        <button type="button" class="lobby-btn" id="btn-quit">Leave</button>
+      </div>
+      <p class="go" id="pause-hint">Esc or P · menu</p>
     </div>
   </div>
 
   <script>
-    window.SK_BUILD = "mp96";
+    window.SK_BUILD = "mp99";
     try {
       if (window.caches) {
         caches.keys().then(function (keys) {

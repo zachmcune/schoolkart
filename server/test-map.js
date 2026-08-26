@@ -2782,6 +2782,8 @@ assert(fuelAfter(3.2, 844, 390) < 98.2, "landscape still burns idle+throttle");
 assert(src.indexOf("_rotLock") !== -1, "rotate is debounced so one tap is 90 not 180");
 assert(src.indexOf("rotateSelected();") !== -1 && !/tileRot\.addEventListener\("click"[\s\S]{0,80}rotateSelected/.test(src), "Rotate button does not double-fire");
 assert(src.indexOf("title-track") !== -1, "title menu label is live");
+assert(src.indexOf("function openPauseMenu") !== -1 && src.indexOf("function leaveRace") !== -1, "solo pause/leave exist");
+assert(src.indexOf("function worldFrozen") !== -1, "pause freezes the sim");
 assert(/#title-screen[\s\S]{0,180}overflow-y:\s*auto/.test(fs.readFileSync(path.join(__dirname, "..", "css", "style.css"), "utf8")), "title menu scrolls");
 
 var customLen = rectLen;
@@ -2822,6 +2824,52 @@ assertBuiltin("HARBOR", "Harbor Street", { flat: true, menu: "HARBOR STREET" });
 assertBuiltin("PARK", "Royal Park", { flat: true, menu: "ROYAL PARK" });
 assertBuiltin("DESERT", "Desert Dusk", { flat: true, menu: "DESERT DUSK" });
 assertBuiltin("FOREST", "Forest Climb", { flat: false, menu: "FOREST CLIMB" });
+assert(
+  sliceFn("updateLaps").indexOf("PATH.length && TRACK_LEN > 80") !== -1,
+  "built-in ribbons count laps by s-wrap, not only MAP_CLOSED"
+);
+
+function proveRibbonLaps(code, label) {
+  sim.rebuildPath(code);
+  var stripe = sim.projectTrack(0, -80);
+  var startS = stripe.onAsphalt ? stripe.s - 18 : sim.TRACK_LEN - 18;
+  if (startS < 0) startS += sim.TRACK_LEN;
+  var pose = sim.centerlinePoint(startS);
+  var first = blankCar(pose.x, pose.z, pose.h, 0);
+  first.s = startS;
+  first.lastS = startS;
+  first.passedHalf = false;
+  first.lap = 1;
+  var sWalk;
+  for (sWalk = startS; sWalk < startS + 40; sWalk += 4) {
+    var q = sim.centerlinePoint(sWalk);
+    first.x = q.x;
+    first.z = q.z;
+    first.heading = q.h;
+    sim.updateLaps(first);
+  }
+  assert(first.lap === 1, label + " does not gift a lap at lights-out, lap=" + first.lap);
+  var lapper = blankCar(pose.x, pose.z, pose.h, 0);
+  lapper.s = startS;
+  lapper.lastS = startS;
+  lapper.passedHalf = false;
+  lapper.lap = 1;
+  for (sWalk = startS; sWalk < startS + sim.TRACK_LEN + 40; sWalk += 6) {
+    var p = sim.centerlinePoint(sWalk);
+    lapper.x = p.x;
+    lapper.z = p.z;
+    lapper.heading = p.h;
+    sim.updateLaps(lapper);
+  }
+  assert(lapper.lap >= 2, label + " counts a lap on the ribbon, lap=" + lapper.lap);
+  assert(!lapper.finished, label + " one tour is not a race finish");
+}
+
+proveRibbonLaps("", "Campus Loop");
+proveRibbonLaps("HARBOR", "Harbor Street");
+proveRibbonLaps("PARK", "Royal Park");
+proveRibbonLaps("DESERT", "Desert Dusk");
+proveRibbonLaps("FOREST", "Forest Climb");
 sim.rebuildPath("");
 assert(sim.menuTrackName() === "CAMPUS LOOP", "empty code is Campus");
 assert(src.indexOf("harborDressing") !== -1 && src.indexOf("dressHarbor") !== -1, "Harbor dressing group");
