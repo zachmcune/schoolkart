@@ -832,7 +832,9 @@
   function buildCampusPitPath() {
     PIT_PATH.length = 0;
     var laneZ = (PIT_LANE.z0 + PIT_LANE.z1) * 0.5;
-    var mouthZ = -70.8;
+    // Meet the LEFT edge of the ribbon, then S-bend out. Starting on
+    // the racing line stacked a second road on the asphalt.
+    var mouthZ = -67.2;
     var st = { x: 6, z: mouthZ, h: 0 };
     pitSBend(st, laneZ - st.z, "pitin");
     var exitX = 116;
@@ -2110,7 +2112,18 @@
     return Math.abs(seg.a1 - seg.a0) * (seg.r || 0);
   }
 
-  function makeSurfRibbon(segs, half, y, color, onlyNames, uvStep, offset) {
+  function pitPaintClear(x, z, half) {
+    half = half || 0;
+    if (!isDriveableLoop() && z - half < SF_Z + ASPHALT + 0.45) return false;
+    var segs = PATH.length ? PATH : MAP_SURF;
+    if (segs && segs.length) {
+      var race = projectOn(x, z, segs);
+      if (race && race.hit && Math.sqrt(race.hit.d2) <= ASPHALT + 0.3) return false;
+    }
+    return true;
+  }
+
+  function makeSurfRibbon(segs, half, y, color, onlyNames, uvStep, offset, step, clipRace) {
     if (!segs || !segs.length) return null;
     var pos = [];
     var idx = [];
@@ -2123,11 +2136,18 @@
       var seg = segs[i];
       if (onlyNames && onlyNames.indexOf(seg.name) === -1) continue;
       var len = segLen(seg);
-      var n = Math.max(2, Math.round(len / 6));
+      var n = Math.max(2, Math.round(len / (step || 2.8)));
       var u;
-      var strip0 = used;
+      var strip = 0;
       for (u = 0; u <= n; u++) {
         var p = pointOnSeg(seg, u / n);
+        // Clip the path *center* off the racing line, not the half-width.
+        // Using PIT_HALF here opened a hole at the fork; the ribbon
+        // should kiss the left edge so the peel is one surface.
+        if (clipRace && !pitPaintClear(p.x, p.z, 0)) {
+          strip = 0;
+          continue;
+        }
         var nx = -Math.sin(p.h);
         var nz = Math.cos(p.h);
         if (sided) {
@@ -2141,13 +2161,13 @@
           uvs.push(used * uvStep, 1);
           uvs.push(used * uvStep, 0);
         }
-        if (u > 0) {
+        if (strip > 0) {
           var a = (used - 1) * 2;
           idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
         }
         used += 1;
+        strip += 1;
       }
-      if (used === strip0) used = strip0;
     }
     if (used < 2) return null;
     var geo = new THREE.BufferGeometry();
@@ -2532,58 +2552,135 @@
     return mesh;
   }
 
-  function paintPitRibbon() {
-    if (!PIT_PATH.length || !trackRoot) return;
+  function stampPitBand(half, y, hgt, mat, endS) {
+    var step = 1.15;
+    var s;
+    for (s = 0; s < endS; s += step) {
+      var a = pointOnPitPath(s);
+      var b = pointOnPitPath(Math.min(s + step + 0.55, endS));
+      if (!a || !b) continue;
+      // Box stamps on the S-bends poke corners into the racing line.
+      // The ribbon covers in/out; stamps are the parallel only.
+      if (a.name === "pitin" || a.name === "pitout" || b.name === "pitin" || b.name === "pitout") continue;
+      if (!pitPaintClear(a.x, a.z, half) || !pitPaintClear(b.x, b.z, half)) continue;
+      var dx = b.x - a.x;
+      var dz = b.z - a.z;
+      var len = Math.hypot(dx, dz);
+      if (len < 0.25) continue;
+      var mx = (a.x + b.x) * 0.5;
+      var mz = (a.z + b.z) * 0.5;
+      var yaw = -Math.atan2(dz, dx);
+      var fx = Math.cos(-yaw);
+      var fz = Math.sin(-yaw);
+      var lx = -fz;
+      var lz = fx;
+      var hl = (len + 0.7) * 0.5;
+      var corners = [
+        [mx + fx * hl + lx * half, mz + fz * hl + lz * half],
+        [mx + fx * hl - lx * half, mz + fz * hl - lz * half],
+        [mx - fx * hl + lx * half, mz - fz * hl + lz * half],
+        [mx - fx * hl - lx * half, mz - fz * hl - lz * half],
+      ];
+      var ci;
+      var blocked = false;
+      for (ci = 0; ci < 4; ci++) {
+        if (!pitPaintClear(corners[ci][0], corners[ci][1], 0)) blocked = true;
+      }
+      if (blocked) continue;
+      var mesh = new THREE.Mesh(new THREE.BoxGeometry(len + 0.7, hgt, half * 2), mat);
+      mesh.position.set(mx, y, mz);
+      mesh.rotation.y = yaw;
+      trackRoot.add(mesh);
+    }
+  }
+
+  function fillPitGore() {
+    // Pave the whole Y: from the racing ribbon's left edge out to the
+    // pit's outer edge. Raised boxes so the fill reads on the dark
+    // infield. They kiss the left edge and do not sit on the racing
+    // line. Grass median owns the parallel stretch.
+    if (isDriveableLoop() || !PIT_PATH.length || !trackRoot) return;
+    var trackEdge = SF_Z + ASPHALT;
+    var last = PIT_PATH[PIT_PATH.length - 1];
+    var endS = (last.startS || 0) + (last.len || 0);
     var asphaltMat = new THREE.MeshLambertMaterial({
       color: 0x3a3e46,
       emissive: 0x101214,
       side: THREE.DoubleSide,
     });
-    var asphalt = makeSurfRibbon(PIT_PATH, PIT_HALF, 0.12, asphaltMat);
-    var line = makeSurfRibbon(PIT_PATH, 0.28, 0.155, 0xd8d2c6);
+    var s;
+    for (s = 0; s < endS; s += 0.85) {
+      var p = pointOnPitPath(s);
+      if (!p || (p.name !== "pitin" && p.name !== "pitout")) continue;
+      if (p.x > 37 && p.x < 111) continue;
+      var outerZ = p.z + Math.abs(Math.cos(p.h)) * PIT_HALF;
+      if (outerZ <= trackEdge + 0.35) continue;
+      var depth = outerZ - trackEdge;
+      var mesh = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.1, depth), asphaltMat);
+      mesh.position.set(p.x, 0.1, trackEdge + depth * 0.5);
+      trackRoot.add(mesh);
+    }
+  }
+
+  function paintPitRibbon() {
+    if (!PIT_PATH.length || !trackRoot) return;
+    // Same asphalt + runoff as the race ribbon, stamped along the
+    // S-curve so the fill stays visible (a flat ribbon vanished on
+    // the dark infield — only the white edges read).
+    var last = PIT_PATH[PIT_PATH.length - 1];
+    var endS = (last.startS || 0) + (last.len || 0);
+    var runoffMat = new THREE.MeshLambertMaterial({
+      color: 0x8d97a6,
+      emissive: 0x2a3038,
+      side: THREE.DoubleSide,
+    });
+    var asphaltMat = new THREE.MeshLambertMaterial({
+      color: 0x3a3e46,
+      emissive: 0x101214,
+      side: THREE.DoubleSide,
+    });
+    stampPitBand(PIT_HALF + 1.55, 0.05, 0.06, runoffMat, endS);
+    stampPitBand(PIT_HALF, 0.09, 0.08, asphaltMat, endS);
+    fillPitGore();
+    var asphalt = makeSurfRibbon(PIT_PATH, PIT_HALF, 0.068, asphaltMat, null, null, 0, null, true);
     if (asphalt) trackRoot.add(asphalt);
+    // Lane markings start once it is its own road. An inner white edge
+    // on the S-bend drew a second line in the crotch and made the Y
+    // read as two roads with a hole.
+    var line = makeSurfRibbon(PIT_PATH, 0.28, 0.09, 0xd8d2c6, ["pitlane"], null, 0, null, true);
     if (line) trackRoot.add(line);
-    var eL = makeSurfRibbon(PIT_PATH, 0.2, 0.16, 0xf4efe6, null, null, PIT_HALF - 0.2);
-    var eR = makeSurfRibbon(PIT_PATH, 0.2, 0.16, 0xf4efe6, null, null, -(PIT_HALF - 0.2));
+    var eL = makeSurfRibbon(PIT_PATH, 0.22, 0.082, 0xf4efe6, null, null, PIT_HALF - 0.38, null, true);
+    var eR = makeSurfRibbon(PIT_PATH, 0.22, 0.082, 0xf4efe6, ["pitlane"], null, -(PIT_HALF - 0.38), null, true);
     if (eL) trackRoot.add(eL);
     if (eR) trackRoot.add(eR);
   }
 
+  function paintPitStalls() {
+    if (!PIT_PATH.length || !trackRoot || !PIT_META.on) return;
+    var gx = (PIT_GRAB.x0 + PIT_GRAB.x1) * 0.5;
+    var gz = (PIT_GRAB.z0 + PIT_GRAB.z1) * 0.5;
+    var pr = projectOn(gx, gz, PIT_PATH);
+    if (!pr) return;
+    var i;
+    for (i = -2; i <= 2; i++) {
+      var p = pointOnPitPath(pr.s + i * 3.6);
+      if (!p) continue;
+      addBoxYaw(p.x, 0.09, p.z, 0.85, 0.02, PIT_HALF * 1.55, 0xffffff, trackRoot, -p.h);
+    }
+  }
+
   function paintCampusPitLane() {
-    // FORK. TWO ROADS. The racing ribbon stays whole. Grass median,
-    // then a second raised asphalt road to the LEFT. A hole in the
-    // ribbon is a nack. A slide / one-road pit is a nack.
-    var laneX = (PIT_LANE.x0 + PIT_LANE.x1) * 0.5;
-    var laneW = PIT_LANE.x1 - PIT_LANE.x0;
-    var laneZ = (PIT_LANE.z0 + PIT_LANE.z1) * 0.5;
-    addBox(80, 0.07, -66.45, 92, 0.1, 9.4, 0x5db844, trackRoot);
-    addBox(laneX, 0.14, laneZ, laneW, 0.16, PIT_LANE.z1 - PIT_LANE.z0, 0x3a3e46, trackRoot);
-    addBox(laneX, 0.23, laneZ, laneW, 0.03, 0.46, 0xd8d2c6, trackRoot);
-    addBox(laneX, 0.24, PIT_LANE.z0, laneW, 0.06, 0.5, 0xf4efe6, trackRoot);
-    addBox(laneX, 0.24, PIT_LANE.z1, laneW, 0.06, 0.5, 0xf4efe6, trackRoot);
-    paintPitRibbon();
-    addBox(12, 1.15, -67.4, 0.45, 2.3, 0.45, 0x2a2018, trackRoot);
-    addBox(26, 1.15, -67.4, 0.45, 2.3, 0.45, 0x2a2018, trackRoot);
+    // FORK. TWO ROADS. The racing ribbon stays whole. Asphalt gore
+    // fills the Y so the peel is a clean transition. Grass median
+    // (the existing ground) sits between ribbon and pit lane.
+    // Cover the start-straight LEFT runoff so the pit reads as a dark
+    // lane peeling over grass, not white edges on a grey apron.
+    // The second road is the same asphalt as the race ribbon, just
+    // smaller — it peels LEFT, runs the box, peels back. Not a slab.
+    // A hole in the ribbon is a nack. A slide / one-road pit is a nack.
+    addBox(74, 0.04, -66.6, 72, 0.024, 8.2, 0x3f5c32, trackRoot);
     addBox(62, 0.92, -51.2, 70, 1.7, 0.7, 0x2a2018, trackRoot);
     addBox(62, 1.82, -51.2, 70, 0.14, 0.78, TEAL, trackRoot);
-    var pitDecal = labelPlane("PIT", 7.6, 3.0, "#0a2a28", "#2ec8c3");
-    pitDecal.rotation.x = -Math.PI * 0.5;
-    pitDecal.position.set(81, 0.28, -57.1);
-    trackRoot.add(pitDecal);
-    var inPt = pointOnPitPath(18) || { x: 20, z: -64 };
-    var outPt = pointOnPitPath(PIT_PATH.length ? PIT_PATH[PIT_PATH.length - 1].startS + 12 : 0) || { x: 148, z: -64 };
-    var inDecal = labelPlane("IN", 5.8, 2.4, "#102018", "#ffe566");
-    inDecal.rotation.x = -Math.PI * 0.5;
-    inDecal.position.set(inPt.x, 0.26, inPt.z);
-    trackRoot.add(inDecal);
-    var outDecal = labelPlane("OUT", 6.0, 2.4, "#102018", "#7cffd4");
-    outDecal.rotation.x = -Math.PI * 0.5;
-    outDecal.position.set(outPt.x, 0.26, outPt.z);
-    trackRoot.add(outDecal);
-    var hsh;
-    for (hsh = 0; hsh < 5; hsh++) {
-      addBox(70 + hsh * 3.6, 0.26, -57.1, 1.15, 0.03, 7.4, 0xffffff, trackRoot);
-    }
   }
 
   function paveRect(b, y, color) {
@@ -2658,28 +2755,18 @@
       if (kR) trackRoot.add(kR);
     }
 
-    var p;
-    var pitCol = isDriveableLoop() ? 0x3d4a5c : 0x3a3e46;
-    for (p = 0; p < PIT_PAVE.length; p++) {
-      var pvBox = PIT_PAVE[p];
-      if (PIT_PATH.length && (pvBox === PIT_ENTRY || pvBox === PIT_EXIT)) continue;
-      var pv = paveRect(pvBox, 0.09, pitCol);
-      trackRoot.add(pv);
-    }
-    if (PIT_PATH.length && isDriveableLoop()) paintPitRibbon();
-    if (PIT_META.on) {
-      var grab = paveRect(PIT_GRAB, 0.13, TEAL);
-      trackRoot.add(grab);
-      addBox((PIT_LANE.x0 + PIT_LANE.x1) * 0.5, 0.125, PIT_LANE.z0, PIT_LANE.x1 - PIT_LANE.x0, 0.04, 0.38, 0xffe566, trackRoot);
-      addBox((PIT_LANE.x0 + PIT_LANE.x1) * 0.5, 0.125, PIT_LANE.z1, PIT_LANE.x1 - PIT_LANE.x0, 0.04, 0.38, 0x7cffd4, trackRoot);
+    if (PIT_PATH.length) {
+      paintPitRibbon();
+    } else {
+      var p;
+      for (p = 0; p < PIT_PAVE.length; p++) {
+        trackRoot.add(paveRect(PIT_PAVE[p], 0.09, 0x3a3e46));
+      }
     }
     if (!isDriveableLoop()) {
       paintCampusPitLane();
     } else if (PIT_META.on) {
-      var pitDecal2 = labelPlane("PIT", 7.2, 2.8, "#0a2a28", "#2ec8c3");
-      pitDecal2.rotation.x = -Math.PI * 0.5;
-      pitDecal2.position.set((PIT_GRAB.x0 + PIT_GRAB.x1) * 0.5, 0.16, (PIT_GRAB.z0 + PIT_GRAB.z1) * 0.5);
-      trackRoot.add(pitDecal2);
+      paintPitStalls();
     }
 
     var start = centerlinePoint(0);
@@ -7328,8 +7415,8 @@
       ctx.lineWidth = 3.4;
       ctx.stroke();
     }
-    ctx.strokeStyle = "#e8b86d";
-    ctx.lineWidth = 2;
+    ctx.strokeStyle = "#2ec8c3";
+    ctx.lineWidth = 1.8;
     if (PIT_PATH.length) {
       ctx.beginPath();
       var ps;

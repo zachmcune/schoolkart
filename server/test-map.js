@@ -930,14 +930,15 @@ assert(src.indexOf("z0: -71.6") === -1, "campus pit pave does not clip the aspha
 assert(src.indexOf("z0: -69.0") === -1, "campus pit is not a same-color strip beside the ribbon");
 assert(src.indexOf("function paintCampusPitLane") !== -1, "campus paints a visible left pit lane");
 assert(src.indexOf("function paintPitRibbon") !== -1, "pit path paints as a real asphalt ribbon");
+assert(src.indexOf("function fillPitGore") !== -1, "asphalt gore fills the fork so the peel is a clean Y");
 assert(src.indexOf("function buildCampusPitPath") !== -1 && src.indexOf("pitSBend") !== -1, "pit entry and exit are S-bends, not a slab");
 assert(src.indexOf("Actual track curves IN") !== -1, "pit has a track curving in and out");
 assert(src.indexOf("FORK. TWO ROADS.") !== -1, "pit is a fork of two roads, not a slide");
-assert(src.indexOf("0x5db844") !== -1, "grass median sits between ribbon and pit lane");
+assert(src.indexOf("Grass median") !== -1, "grass median sits between ribbon and pit lane");
 assert(src.indexOf('pathLine(680, "start")') !== -1, "start road is long enough for W-only stay-right past 10s");
 assert(src.indexOf("The racing ribbon stays whole") !== -1, "second road is added beside the ribbon, not a hole");
 assert(src.indexOf("z0: -61.5") !== -1, "second asphalt road starts past the grass median");
-assert(src.indexOf("addBox(laneX, 0.14, laneZ, laneW, 0.16, PIT_LANE.z1 - PIT_LANE.z0, 0x3a3e46") !== -1, "second road is raised asphalt, not a grey strip");
+assert(src.indexOf("function stampPitBand") !== -1 && src.indexOf("stampPitBand(PIT_HALF, 0.09, 0.08, asphaltMat, endS)") !== -1, "pit lane is the same asphalt as the race track, just smaller");
 assert(src.indexOf("r.z <= SF_Z + ASPHALT + 8") !== -1, "grab requires the visible left lane, not the median");
 assert(src.indexOf("inRect(wx, wz, PIT_ENTRY) || inRect(wx, wz, PIT_EXIT)") !== -1, "left wall opens only at IN/OUT mouths");
 assert(src.indexOf("player.heading = slotHeading({ h: gridHeading })") !== -1, "campus GO snaps heading east");
