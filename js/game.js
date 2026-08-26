@@ -5775,7 +5775,9 @@
       if (scan.dBend < 900) {
         want = Math.min(want, approachWant(want, scan.dBend, brakeWindow(planSpeed(r, want), bendV, bMul), bendV, pow));
       }
-      var hairV = scan.bendR < 20 ? hpApex : apexFromRadius(Math.max(scan.bendR, 40), p.tight * 0.86);
+      // Named hairpins dump above ~17 at any radius. Don't take a 44m 180 at
+      // the swept 90 speed — that is a slide onto the grass.
+      var hairV = hpApex;
       want = Math.min(want, approachWant(want, scan.dHair, brakeWindow(planSpeed(r, want), hairV, bMul), hairV, pow));
       if (scan.tightR < 28) {
         var cap = apexFromRadius(scan.tightR, p.tight);
