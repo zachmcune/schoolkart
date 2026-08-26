@@ -5775,9 +5775,13 @@
       if (scan.dBend < 900) {
         want = Math.min(want, approachWant(want, scan.dBend, brakeWindow(planSpeed(r, want), bendV, bMul), bendV, pow));
       }
-      // Named hairpins dump above ~17 at any radius. Don't take a 44m 180 at
-      // the swept 90 speed — that is a slide onto the grass.
-      var hairV = hpApex;
+      // Campus 180s dump above ~17. Fat custom tiles reuse the name on
+      // ~44m arcs — carry grip pace, but not the swept-90 speed a 200
+      // cap would invent (that beaches a 5-lap fight).
+      var hairPt = scan.dHair < 900 ? centerlinePoint(r.s + scan.dHair) : null;
+      var hairR = hairPt && hairPt.r > 0 ? hairPt.r : 0;
+      var hairV = namedApex(scan.dHair, hpApex, hairR, p.tight);
+      if (hairR >= 42) hairV = Math.min(hairV, 28);
       want = Math.min(want, approachWant(want, scan.dHair, brakeWindow(planSpeed(r, want), hairV, bMul), hairV, pow));
       if (scan.tightR < 28) {
         var cap = apexFromRadius(scan.tightR, p.tight);
