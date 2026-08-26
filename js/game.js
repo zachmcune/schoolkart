@@ -2127,7 +2127,10 @@
       var strip = 0;
       for (u = 0; u <= n; u++) {
         var p = pointOnSeg(seg, u / n);
-        if (clipRace && !pitPaintClear(p.x, p.z, PIT_HALF)) {
+        // Clip the path *center* off the racing line, not the half-width.
+        // Using PIT_HALF here opened a hole at the fork; the ribbon
+        // should kiss the left edge so the peel is one surface.
+        if (clipRace && !pitPaintClear(p.x, p.z, 0)) {
           strip = 0;
           continue;
         }
@@ -2577,6 +2580,65 @@
     }
   }
 
+  function fillPitGore() {
+    // Asphalt in the Y crotch so the peel is a clean transition,
+    // not two roads with a hole of infield between them. Stamps stay
+    // off the S-bends (those cut the racing line). The racing ribbon
+    // stays whole — this only fills from its left edge out to the pit.
+    if (isDriveableLoop() || !PIT_PATH.length || !trackRoot) return;
+    var trackEdge = SF_Z + ASPHALT;
+    var last = PIT_PATH[PIT_PATH.length - 1];
+    var endS = (last.startS || 0) + (last.len || 0);
+    var asphaltMat = new THREE.MeshLambertMaterial({
+      color: 0x3a3e46,
+      emissive: 0x101214,
+      side: THREE.DoubleSide,
+    });
+    var pos = [];
+    var idx = [];
+    var used = 0;
+    var strip = 0;
+    var step = 1.05;
+    var s;
+    for (s = 0; s <= endS + 0.001; s += step) {
+      var p = pointOnPitPath(Math.min(s, endS));
+      if (!p) {
+        strip = 0;
+        continue;
+      }
+      // Grass median owns the parallel stretch. Gore is the fork only.
+      if (p.x > 37 && p.x < 111) {
+        strip = 0;
+        continue;
+      }
+      var nx = -Math.sin(p.h);
+      var nz = Math.cos(p.h);
+      var innerX = p.x - nx * PIT_HALF;
+      var innerZ = p.z - nz * PIT_HALF;
+      if (innerZ <= trackEdge + 0.05) {
+        strip = 0;
+        continue;
+      }
+      pos.push(innerX, 0.058, trackEdge - 0.06);
+      pos.push(innerX, 0.058, innerZ + 0.16);
+      if (strip > 0) {
+        var a = (used - 1) * 2;
+        idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
+      }
+      used += 1;
+      strip += 1;
+    }
+    if (used < 2) return;
+    var geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+    geo.setIndex(idx);
+    var nrm = [];
+    var ni;
+    for (ni = 0; ni < pos.length; ni += 3) nrm.push(0, 1, 0);
+    geo.setAttribute("normal", new THREE.Float32BufferAttribute(nrm, 3));
+    trackRoot.add(new THREE.Mesh(geo, asphaltMat));
+  }
+
   function paintPitRibbon() {
     if (!PIT_PATH.length || !trackRoot) return;
     // Same asphalt + runoff as the race ribbon, stamped along the
@@ -2596,6 +2658,7 @@
     });
     stampPitBand(PIT_HALF + 1.55, 0.05, 0.06, runoffMat, endS);
     stampPitBand(PIT_HALF, 0.09, 0.08, asphaltMat, endS);
+    fillPitGore();
     var asphalt = makeSurfRibbon(PIT_PATH, PIT_HALF, 0.068, asphaltMat, null, null, 0, null, true);
     if (asphalt) trackRoot.add(asphalt);
     var line = makeSurfRibbon(PIT_PATH, 0.28, 0.09, 0xd8d2c6, null, null, 0, null, true);
@@ -2621,7 +2684,8 @@
   }
 
   function paintCampusPitLane() {
-    // FORK. TWO ROADS. The racing ribbon stays whole. Grass median
+    // FORK. TWO ROADS. The racing ribbon stays whole. Asphalt gore
+    // fills the Y so the peel is a clean transition. Grass median
     // (the existing ground) sits between ribbon and pit lane.
     // Cover the start-straight LEFT runoff so the pit reads as a dark
     // lane peeling over grass, not white edges on a grey apron.

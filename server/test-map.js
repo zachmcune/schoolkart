@@ -930,6 +930,7 @@ assert(src.indexOf("z0: -71.6") === -1, "campus pit pave does not clip the aspha
 assert(src.indexOf("z0: -69.0") === -1, "campus pit is not a same-color strip beside the ribbon");
 assert(src.indexOf("function paintCampusPitLane") !== -1, "campus paints a visible left pit lane");
 assert(src.indexOf("function paintPitRibbon") !== -1, "pit path paints as a real asphalt ribbon");
+assert(src.indexOf("function fillPitGore") !== -1, "asphalt gore fills the fork so the peel is a clean Y");
 assert(src.indexOf("function buildCampusPitPath") !== -1 && src.indexOf("pitSBend") !== -1, "pit entry and exit are S-bends, not a slab");
 assert(src.indexOf("Actual track curves IN") !== -1, "pit has a track curving in and out");
 assert(src.indexOf("FORK. TWO ROADS.") !== -1, "pit is a fork of two roads, not a slide");
