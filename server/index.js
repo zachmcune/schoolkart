@@ -124,6 +124,7 @@ function roomMsg(room) {
     raceTime: room.raceTime || 0,
     speed: room.speed || 1,
     track: room.track || "",
+    paused: !!room.paused,
     players: roster(room),
   };
 }
@@ -221,6 +222,7 @@ function makeRoom() {
     raceTime: 0,
     speed: 1,
     track: "",
+    paused: false,
   };
   rooms.set(code, room);
   return room;
@@ -346,6 +348,7 @@ function sendEnter(ws, room, p, flags) {
     late: !!flags.late,
     rejoin: !!flags.rejoin,
     speed: room.speed || 1,
+    paused: !!room.paused,
   });
   if (room.phase === "start") {
     send(ws, {
@@ -363,6 +366,7 @@ function startLights(room) {
   room.redsOn = 0;
   room.startT = 2;
   room.raceTime = 0;
+  room.paused = false;
   room.holdDelay = 0.2 + Math.random() * 2.8;
   room.players.forEach(function (p) {
     var g = slotPose(p.slot);
@@ -610,8 +614,39 @@ wss.on("connection", function (ws) {
         send(ws, { t: "err", msg: "Only the host can set the track" });
         return;
       }
-      if (room.phase !== "lobby" && room.phase !== "finish") return;
       room.track = cleanTrack(msg.code);
+      broadcast(room, roomMsg(room));
+      return;
+    }
+
+    if (msg.t === "pause") {
+      if (self.id !== room.hostId) {
+        send(ws, { t: "err", msg: "Only the host can pause" });
+        return;
+      }
+      if (room.phase !== "start" && room.phase !== "racing") {
+        send(ws, { t: "err", msg: "Pause during the race" });
+        return;
+      }
+      room.paused = !!msg.on;
+      broadcast(room, { t: "pause", on: room.paused });
+      broadcast(room, roomMsg(room));
+      return;
+    }
+
+    if (msg.t === "end") {
+      if (self.id !== room.hostId) {
+        send(ws, { t: "err", msg: "Only the host can end the race" });
+        return;
+      }
+      if (room.phase !== "start" && room.phase !== "racing") {
+        send(ws, { t: "err", msg: "No race to end" });
+        return;
+      }
+      room.paused = false;
+      room.phase = "finish";
+      room.startPhase = "prestart";
+      room.redsOn = 0;
       broadcast(room, roomMsg(room));
       return;
     }
@@ -639,15 +674,12 @@ wss.on("connection", function (ws) {
         send(ws, { t: "err", msg: "Only the host can grid up" });
         return;
       }
-      if (room.phase !== "lobby" && room.phase !== "finish") {
-        send(ws, { t: "err", msg: "Race already rolling" });
-        return;
-      }
+      room.paused = false;
       startLights(room);
       return;
     }
 
-    if (msg.t === "state" && (room.phase === "start" || room.phase === "racing")) {
+    if (msg.t === "state" && !room.paused && (room.phase === "start" || room.phase === "racing")) {
       var p = playerById(room, self.id);
       if (!p) return;
       p.x = +msg.x || 0;
@@ -686,8 +718,10 @@ setInterval(function () {
   rooms.forEach(function (room) {
     pruneGhosts(room);
     var pace = clampSpeed(room.speed);
-    tickLights(room, dt * pace);
-    if (room.phase === "racing") room.raceTime += dt * pace;
+    if (!room.paused) {
+      tickLights(room, dt * pace);
+      if (room.phase === "racing") room.raceTime += dt * pace;
+    }
     if (room.phase === "start" || room.phase === "racing") {
       var cars = carList(room);
       unstack(cars);
