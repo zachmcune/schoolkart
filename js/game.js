@@ -8238,7 +8238,13 @@
     net.on("room", function (msg) {
       if (net.phase === "lobby" || net.phase === "finish") {
         joining = false;
-        if (state === "title" || state === "lobby" || state === "finished") {
+        if (
+          state === "title" ||
+          state === "lobby" ||
+          state === "finished" ||
+          state === "start" ||
+          state === "racing"
+        ) {
           state = "lobby";
           setScreen("lobby");
         }

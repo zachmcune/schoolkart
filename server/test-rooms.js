@@ -183,6 +183,7 @@ waitHealth()
                   assert(js.indexOf("function openPauseMenu") !== -1 && js.indexOf("function leaveRace") !== -1, "solo can pause and leave");
                   assert(js.indexOf("function worldFrozen") !== -1 && js.indexOf("function resumeFromMenu") !== -1, "pause freezes solo / host room");
                   assert(js.indexOf("net.endRace") !== -1 && js.indexOf("net.pause") !== -1, "host pause and end race are wired");
+                  assert(/net\.phase === "finish"[\s\S]{0,500}state === "racing"/.test(js), "host end race from a live race returns to the lobby");
                   assert(js.indexOf("function recoverIfVoid") === -1, "DUMP does not teleport back onto the ribbon");
                   assert(js.indexOf("groundSkirt") !== -1 && js.indexOf("0x3f5c32") !== -1, "green skirt past the dirt so DUMP is not a black void");
                   assert(js.indexOf("along < 0.42") !== -1, "custom 90 graze slides; A/D stay live");
