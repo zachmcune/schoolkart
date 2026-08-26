@@ -4664,6 +4664,7 @@
       passedHalf: false,
       lastX: 0,
       s: 0,
+      lastS: 0,
       brakeHold: 0,
       finished: false,
       finishTime: 0,
@@ -4929,11 +4930,9 @@
       r.passedHalf = false;
     }
     pinS(player);
-    if (pose) {
-      eachCpu(function (r) {
-        pinS(r);
-      });
-    }
+    eachCpu(function (r) {
+      pinS(r);
+    });
     eachCpu(function (r) {
       r.mesh.visible = !mpMode;
     });
@@ -5002,10 +5001,23 @@
     if (r.finished) return;
     var prog = projectTrack(r.x, r.z);
     r.s = prog.s;
-    if (isDriveableLoop()) {
-      var prev = r.lastS != null ? r.lastS : r.s;
-      if (prev < TRACK_LEN * 0.5 && r.s >= TRACK_LEN * 0.5) r.passedHalf = true;
-      if (r.passedHalf && prev > TRACK_LEN * 0.72 && r.s < TRACK_LEN * 0.28 && prog.onAsphalt) {
+    // Any long ribbon — custom closed boards AND the built-in circuits.
+    // Harbor / Park / Desert / Forest never trip the old Campus x=8 / z>8
+    // gate, so they stayed on lap 1 until the clock ran out.
+    if (PATH.length && TRACK_LEN > 80) {
+      var origin = 0;
+      if (!isDriveableLoop()) {
+        // Built-in painted S/F is world (0, SF_Z), not path s=0 at x=-200.
+        var stripe = projectTrack(0, SF_Z);
+        if (stripe && stripe.onAsphalt) origin = stripe.s;
+      }
+      var prevRaw = r.lastS != null ? r.lastS : r.s;
+      var prev = prevRaw - origin;
+      var cur = r.s - origin;
+      if (prev < 0) prev += TRACK_LEN;
+      if (cur < 0) cur += TRACK_LEN;
+      if (prev < TRACK_LEN * 0.5 && cur >= TRACK_LEN * 0.5) r.passedHalf = true;
+      if (r.passedHalf && prev > TRACK_LEN * 0.72 && cur < TRACK_LEN * 0.28 && prog.onAsphalt) {
         r.passedHalf = false;
         r.lap += 1;
         if (r.lap > LAPS) {
