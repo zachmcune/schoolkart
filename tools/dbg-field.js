@@ -12,10 +12,11 @@ var car = process.argv[3] || "BowieKnife99";
 var from = Number(process.argv[4] || 0);
 var to = Number(process.argv[5] || 1e9);
 
+var seed = Number(process.env.SEED || 1);
 probe.buildTrack(track);
-sim.setSeed(1);
+sim.setSeed(seed);
 sim.setTraceCar(car);
-var field = sim.runField(probe.FIELD, 620, { s: sim.trackLen() - 6 });
+var field = sim.runField(seed > 1 ? probe.gridFor(seed) : probe.FIELD, 620, { s: sim.trackLen() - 6 });
 sim.setTraceCar("");
 
 console.log(track, car, "len", sim.trackLen().toFixed(0));

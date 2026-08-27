@@ -148,6 +148,7 @@ var code = [
   sliceFn("turnWrap"),
   sliceFn("joinPlan"),
   sliceFn("emitJoin"),
+  src.match(/var JOIN_APART = [0-9.]+;/)[0],
   sliceFn("joinClearance"),
   sliceFn("autoClosePath"),
   sliceFn("cornerKind"),
@@ -247,6 +248,12 @@ var code = [
   "  cellsInBoard: cellsInBoard,",
   "  customGridPose: customGridPose,",
   "  centerlinePoint: centerlinePoint,",
+  "  pathLine: pathLine,",
+  "  pathArc: pathArc,",
+  "  autoClosePath: autoClosePath,",
+  "  resetPathCursor: function () { PATH.length = 0; TRACK_LEN = 0; _x = -200; _z = SF_Z; _h = 0; _y = 0; },",
+  "  sealCustom: function () { MAP_CLOSED = true; MAP_SURF = PATH.slice(); setTrackKerbs('campus'); },",
+  "  clearPit: function () { PIT_META.on = false; PIT_PATH.length = 0; },",
   "  slotOnPath: slotOnPath,",
   "  gridSlot: gridSlot,",
   "  slotHeading: slotHeading,",
@@ -2908,6 +2915,76 @@ proveRibbonLaps("HARBOR", "Harbor Street");
 proveRibbonLaps("PARK", "Royal Park");
 proveRibbonLaps("DESERT", "Desert Dusk");
 proveRibbonLaps("FOREST", "Forest Climb");
+// A loop the editor can draw but that does not come home on its own, so
+// autoClosePath has to route the whole way back. It must not lay the new
+// road over road the lap has already used: where two legs share tarmac
+// the barriers get dropped to keep both clear, leaving a hole cars fall
+// through, and a shove at the crossing puts a car on the wrong leg.
+function selfClearance() {
+  var pts = [];
+  var s;
+  for (s = 0; s < sim.TRACK_LEN; s += 4) {
+    var p = sim.centerlinePoint(s);
+    pts.push(p);
+  }
+  var worst = 1e9;
+  var i;
+  var j;
+  for (i = 0; i < pts.length; i++) {
+    for (j = i + 1; j < pts.length; j++) {
+      var along = Math.min((j - i) * 4, sim.TRACK_LEN - (j - i) * 4);
+      if (along < 60) continue;
+      var d = Math.hypot(pts[i].x - pts[j].x, pts[i].z - pts[j].z);
+      if (d < worst) worst = d;
+    }
+  }
+  return worst;
+}
+
+function assertCloses(label, lay) {
+  sim.resetPathCursor();
+  sim.clearPit();
+  lay();
+  sim.autoClosePath();
+  sim.sealCustom();
+  var a = sim.centerlinePoint(0);
+  var b = sim.centerlinePoint(sim.TRACK_LEN - 0.2);
+  assert(Math.hypot(a.x - b.x, a.z - b.z) < 3, label + " ribbon has no hole at the S/F");
+  assert(Math.abs(Math.atan2(Math.sin(a.h - b.h), Math.cos(a.h - b.h))) < 0.1, label + " ribbon has no kink at the S/F");
+  var clear = selfClearance();
+  assert(clear > 14, label + " does not lay new road over old (closest " + clear.toFixed(1) + "m)");
+}
+
+assertCloses("tight twisty loop", function () {
+  sim.pathLine(120, "start");
+  sim.pathArc(14, -95, "the90");
+  sim.pathLine(70, "short");
+  sim.pathArc(18, -70, "the90");
+  sim.pathLine(50, "short");
+  sim.pathArc(16, 78, "the90");
+  sim.pathLine(90, "short");
+  sim.pathArc(11, 176, "hairpin");
+  sim.pathLine(70, "short");
+  sim.pathArc(20, -60, "kink");
+  sim.pathLine(40, "short");
+});
+assertCloses("one long straight", function () {
+  sim.pathLine(300, "start");
+});
+assertCloses("chicane mix", function () {
+  sim.pathLine(300, "start");
+  sim.pathArc(12, 88, "chicane");
+  sim.pathLine(40, "chicane");
+  sim.pathArc(9, -100, "chicane");
+  sim.pathLine(12, "chicane");
+  sim.pathArc(13, 60, "chicane");
+  sim.pathLine(200, "short");
+  sim.pathArc(16, -90, "kink");
+  sim.pathLine(120, "short");
+  sim.pathArc(22, -90, "the90");
+  sim.pathLine(60, "short");
+});
+
 sim.rebuildPath("");
 assert(sim.menuTrackName() === "CAMPUS LOOP", "empty code is Campus");
 assert(src.indexOf("harborDressing") !== -1 && src.indexOf("dressHarbor") !== -1, "Harbor dressing group");

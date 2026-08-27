@@ -14,10 +14,11 @@ var sim = probe.sim;
 var track = process.argv[2] || "harbor";
 var car = process.argv[3] || "Band Kid";
 
+var seed = Number(process.env.SEED || 1);
 probe.buildTrack(track);
-sim.setSeed(Number(process.env.SEED || 1));
+sim.setSeed(seed);
 sim.setTraceCar(car);
-var field = sim.runField(probe.FIELD, 620, { s: sim.trackLen() - 6 });
+var field = sim.runField(seed > 1 ? probe.gridFor(seed) : probe.FIELD, 620, { s: sim.trackLen() - 6 });
 sim.setTraceCar("");
 
 var len = sim.trackLen();

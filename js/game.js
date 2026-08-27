@@ -1051,21 +1051,41 @@
     if (pl.a2 > 0.004) pathArc(pl.R, (pl.d2 * pl.a2 * 180) / Math.PI, name);
   }
 
-  // Every metre of ribbon the join adds, against every metre that was
-  // already there. The bit of road the join leaves and the bit it rejoins
-  // are meant to be close; anything else means two parts of the lap share
-  // the same tarmac, and then one leg's barriers stand across the other
-  // leg's road and cars collide with rivals half a lap away.
+  // Every metre of ribbon the join adds, against every other metre of the
+  // lap — the road that was already there AND the rest of the join, since
+  // a join long enough to get home can cross its own path. Points close
+  // together along the lap are meant to be close in the world, so only
+  // pairs a good way apart count. Two parts of one lap sharing tarmac
+  // means barriers get dropped to keep the road clear, leaving a hole
+  // cars fall through, and rivals half a lap away to collide with.
+  var JOIN_APART = 46;
+
   function joinClearance(pts, len0) {
-    var worst = 1e9;
+    var mine = [];
     var s;
+    for (s = len0 + 4; s < TRACK_LEN - 2; s += 5) {
+      var sp = centerlinePoint(s);
+      mine.push({ x: sp.x, z: sp.z, s: s });
+    }
+    function apart(a, b) {
+      var d = Math.abs(a - b);
+      if (d > TRACK_LEN * 0.5) d = TRACK_LEN - d;
+      return d >= JOIN_APART;
+    }
+    var worst = 1e9;
     var i;
-    for (s = len0 + 5; s < TRACK_LEN - 5; s += 5) {
-      var p = centerlinePoint(s);
-      for (i = 0; i < pts.length; i++) {
-        if (pts[i].s > len0 - 46 || pts[i].s < 46) continue;
-        var d = Math.hypot(p.x - pts[i].x, p.z - pts[i].z);
+    var j;
+    for (i = 0; i < mine.length; i++) {
+      var p = mine[i];
+      for (j = 0; j < pts.length; j++) {
+        if (!apart(p.s, pts[j].s)) continue;
+        var d = Math.hypot(p.x - pts[j].x, p.z - pts[j].z);
         if (d < worst) worst = d;
+      }
+      for (j = i + 1; j < mine.length; j++) {
+        if (!apart(p.s, mine[j].s)) continue;
+        var dm = Math.hypot(p.x - mine[j].x, p.z - mine[j].z);
+        if (dm < worst) worst = dm;
       }
     }
     return worst;
@@ -1094,6 +1114,7 @@
     }
     var clean = null;
     var any = null;
+    var anyClear = -1;
     var i;
     var d1;
     var d2;
@@ -1115,8 +1136,20 @@
             _z = save.z;
             _h = save.h;
             if (gap > 0.6 || kink > 0.02) continue;
-            if (!any || plan.cost < any.cost) any = plan;
-            if (clear > ASPHALT * 2 + 3 && (!clean || plan.cost < clean.cost)) clean = plan;
+            if (clear > ASPHALT * 2 + 3) {
+              if (!clean || plan.cost < clean.cost) clean = plan;
+            } else if (clear > anyClear + 0.5 || (!any && clear > anyClear)) {
+              // Nothing clean yet. Room matters far more than length here:
+              // the shortest join was picking a line that ran a metre from
+              // road half a lap away, which puts one leg's barriers across
+              // the other leg's tarmac and has cars hitting rivals they
+              // cannot see. Only two equally tight plans are split on cost.
+              any = plan;
+              anyClear = clear;
+            } else if (clear > anyClear - 0.5 && plan.cost < any.cost) {
+              any = plan;
+              anyClear = Math.max(anyClear, clear);
+            }
           }
         }
       }

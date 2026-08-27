@@ -147,13 +147,30 @@ function padL(s, n) {
   return s;
 }
 
+// Reseeding the sim's RNG proves nothing: the bots only consult it when
+// the tires are shot. What actually rolls the dice on a race is who
+// starts where, so a seed shuffles the grid instead.
+function gridFor(seed) {
+  var order = FIELD.slice();
+  var s = (seed >>> 0) || 1;
+  var i;
+  for (i = order.length - 1; i > 0; i--) {
+    s = (s * 1103515245 + 12345) & 0x7fffffff;
+    var j = s % (i + 1);
+    var swap = order[i];
+    order[i] = order[j];
+    order[j] = swap;
+  }
+  return order;
+}
+
 function runTrack(name, seconds, seed, quiet) {
   buildTrack(name);
   sim.setSeed(seed || 1);
   var len = sim.trackLen();
   var prof = profileReport();
   var spawn = { s: len - 6 };
-  var field = sim.runField(FIELD, seconds || 620, spawn);
+  var field = sim.runField(seed > 1 ? gridFor(seed) : FIELD, seconds || 620, spawn);
   if (quiet) return summarise(name, len, field, seed);
   console.log(
     "\n" +
@@ -372,7 +389,7 @@ function lapsTrack(name, driver) {
   );
 }
 
-module.exports = { sim: sim, FIELD: FIELD, CUSTOM: CUSTOM, buildTrack: buildTrack, trackNames: trackNames };
+module.exports = { sim: sim, FIELD: FIELD, CUSTOM: CUSTOM, buildTrack: buildTrack, trackNames: trackNames, gridFor: gridFor };
 
 if (require.main !== module) return;
 

@@ -148,6 +148,7 @@ var code = [
   sliceFn("turnWrap"),
   sliceFn("joinPlan"),
   sliceFn("emitJoin"),
+  src.match(/var JOIN_APART = [0-9.]+;/)[0],
   sliceFn("joinClearance"),
   sliceFn("autoClosePath"),
   sliceFn("cornerKind"),
@@ -269,7 +270,10 @@ var code = [
   "function poseCar(r) { if (r.mesh) { r.mesh.position.x = r.x; r.mesh.position.z = r.z; } }",
   "function trackLen() { return TRACK_LEN; }",
   "function pathDump() { return PATH.map(function (s) { return { type: s.type, name: s.name, startS: s.startS, len: s.len, r: s.r, deg: s.type === 'arc' ? ((s.a1 - s.a0) * 180) / Math.PI : 0 }; }); }",
-  "function sealCustom() { MAP_CLOSED = true; MAP_SURF = PATH.slice(); }",
+  // rebuildPath() re-points the kerb list on every rebuild. Skip that here
+  // and a custom loop inherits the last circuit's kerb naming, so the same
+  // seed on the same board grips differently depending on what ran before.
+  "function sealCustom() { MAP_CLOSED = true; MAP_SURF = PATH.slice(); setTrackKerbs('campus'); }",
   "function restoreCampus() {",
   "  MAP_CLOSED = false;",
   "  MAP_SURF = [];",
