@@ -203,7 +203,7 @@ waitHealth()
                   assert(js.indexOf("hostBots[p.id].mesh.visible = true") !== -1, "room Bowie mesh is forced visible");
                   assert(js.indexOf("function roomBotLook") !== -1, "room Bowie is gold #12");
                   assert(js.indexOf("if (launchCall === \"DUMP\") launchCall = \"SLUGGISH\"") !== -1, "start DUMP is sluggish on asphalt");
-                  assert(js.indexOf("function onRaceRibbon") !== -1, "ribbon lock is shared");
+                  assert(js.indexOf("function pitClaims") !== -1, "nearer-road pit lock is shared");
                   assert(js.indexOf("var inBox = inPitGrab(player)") !== -1, "PIT LANE banner is the halfway box only");
                   assert(js.indexOf("z0: -74.0") === -1 && js.indexOf("z0: -71.6") === -1, "pit pave is not a strip on the racing line");
                   assert(js.indexOf("function paintCampusPitLane") !== -1, "campus paints a visible left pit lane");

@@ -28,6 +28,12 @@
 
   var LAPS = 5;
   var MAX_SPEED = 200;
+  // MAX_SPEED is the handling reference (yaw washout, brake bite, hit
+  // mass). SPEED_LIMIT is the ceiling the cars actually run into, set so
+  // the needle stops at exactly TOP_KPH instead of sailing past 280.
+  var KPH_PER_UNIT = 3.15;
+  var TOP_KPH = 200;
+  var SPEED_LIMIT = TOP_KPH / KPH_PER_UNIT;
   var ACCEL = 5; // ~40s wind-out to max (was 16 / ~3s at 48)
   var BRAKE_DECEL = 6; // squeeze: weaker at wind-out, full bite when slow (hairpin)
   var COAST = 2;
@@ -583,14 +589,15 @@
     var ang = Math.atan2(pz - cz, px - cx);
     var lo = Math.min(a0, a1);
     var hi = Math.max(a0, a1);
+    // Fold into [lo, lo + 2PI) so the sweep test is unambiguous. Folding
+    // into [lo - PI, hi + PI] only works while the sweep is under 180:
+    // past that the window is wider than a full turn and points in the
+    // middle of the arc were answered with an end point, which reads as
+    // a 15m hole in the ribbon wherever a turn doubles back.
     var a = ang;
-    while (a < lo - Math.PI) a += Math.PI * 2;
-    while (a > hi + Math.PI) a -= Math.PI * 2;
-    if (a < lo || a > hi) {
-      var d0 = Math.abs(Math.atan2(Math.sin(ang - a0), Math.cos(ang - a0)));
-      var d1 = Math.abs(Math.atan2(Math.sin(ang - a1), Math.cos(ang - a1)));
-      a = d0 < d1 ? a0 : a1;
-    }
+    while (a < lo) a += Math.PI * 2;
+    while (a >= lo + Math.PI * 2) a -= Math.PI * 2;
+    if (a > hi) a = a - hi <= lo + Math.PI * 2 - a ? hi : lo;
     var qx = cx + Math.cos(a) * r;
     var qz = cz + Math.sin(a) * r;
     var ex = px - qx;
@@ -996,10 +1003,86 @@
     rebuildPitPath();
   }
 
+  function turnWrap(a) {
+    while (a < 0) a += Math.PI * 2;
+    while (a >= Math.PI * 2) a -= Math.PI * 2;
+    return a;
+  }
+
+  // Arc, straight, arc back to the start pose. Same-direction turns ride
+  // the outer tangent of the two turn circles, opposite-direction turns
+  // the inner one, so between them there is always a join.
+  function joinPlan(R, d1, d2, branch) {
+    var c1x = _x + Math.cos(_h + d1 * Math.PI * 0.5) * R;
+    var c1z = _z + Math.sin(_h + d1 * Math.PI * 0.5) * R;
+    var c2x = -200 + Math.cos(d2 * Math.PI * 0.5) * R;
+    var c2z = SF_Z + Math.sin(d2 * Math.PI * 0.5) * R;
+    var D = Math.hypot(c2x - c1x, c2z - c1z);
+    var th = Math.atan2(c2z - c1z, c2x - c1x);
+    var t;
+    var run;
+    if (d1 === d2) {
+      if (branch || D < 0.5) return null;
+      t = th;
+      run = D;
+    } else {
+      if (D < 2 * R + 0.05) return null;
+      var phi = Math.acos((2 * R) / D);
+      t = th + (branch ? phi : -phi);
+      run = Math.sqrt(D * D - 4 * R * R);
+    }
+    var a1 = turnWrap(d1 > 0 ? t - _h : _h - t);
+    var a2 = turnWrap(d2 > 0 ? -t : t);
+    return { R: R, d1: d1, d2: d2, a1: a1, a2: a2, run: run, cost: R * (a1 + a2) + run };
+  }
+
+  function emitJoin(pl, name) {
+    if (pl.a1 > 0.004) pathArc(pl.R, (pl.d1 * pl.a1 * 180) / Math.PI, name);
+    if (pl.run > 0.5) pathLine(pl.run, name);
+    if (pl.a2 > 0.004) pathArc(pl.R, (pl.d2 * pl.a2 * 180) / Math.PI, name);
+  }
+
   function autoClosePath() {
     var dx = -200 - _x;
     var dz = SF_Z - _z;
     if (Math.hypot(dx, dz) < 8 && Math.abs(Math.atan2(Math.sin(-_h), Math.cos(-_h))) < 0.12) return;
+    // Turning moves the cursor, so "aim at home, drive to it, straighten
+    // up" always finished tens of metres wide of the start and left a
+    // hole in the ribbon across the S/F line. A loop with a hole is
+    // unraceable: every car drives off the end of the road once a lap.
+    // Every candidate is driven into a scratch path and checked against
+    // the start pose, so a sign slip cannot ship a broken ribbon.
+    var radii = [22, 30, 44, 64, 90];
+    var best = null;
+    var save = { x: _x, z: _z, h: _h, n: PATH.length, len: TRACK_LEN };
+    var i;
+    var d1;
+    var d2;
+    var br;
+    for (i = 0; i < radii.length; i++) {
+      for (d1 = -1; d1 <= 1; d1 += 2) {
+        for (d2 = -1; d2 <= 1; d2 += 2) {
+          for (br = 0; br < 2; br++) {
+            var plan = joinPlan(radii[i], d1, d2, !!br);
+            if (!plan) continue;
+            if (best && plan.cost >= best.cost) continue;
+            emitJoin(plan, "close");
+            var gap = Math.hypot(-200 - _x, SF_Z - _z);
+            var kink = Math.abs(Math.atan2(Math.sin(-_h), Math.cos(-_h)));
+            PATH.length = save.n;
+            TRACK_LEN = save.len;
+            _x = save.x;
+            _z = save.z;
+            _h = save.h;
+            if (gap < 0.6 && kink < 0.02) best = plan;
+          }
+        }
+      }
+    }
+    if (best) {
+      emitJoin(best, "close");
+      return;
+    }
     var want = (Math.atan2(dz, dx) * 180) / Math.PI;
     pathSnap(want, 20, "close");
     var left = Math.hypot(-200 - _x, SF_Z - _z);
@@ -1956,6 +2039,38 @@
     return { hit: best, s: bestS };
   }
 
+  // Same answer as projectTrack, but the caller says roughly where the
+  // car was. On a twisty board two bits of ribbon can run within a car's
+  // width of each other, and plain nearest-segment flips between them:
+  // the car then reads as pointing the wrong way, 700m further round the
+  // lap, and braking for a corner that is somewhere else entirely. A car
+  // cannot travel 70m in a frame, so the hint settles it.
+  function projectTrackNear(px, pz, sHint) {
+    var segs = PATH.length ? PATH : MAP_SURF;
+    if (sHint == null || !isFinite(sHint) || !segs.length || !(TRACK_LEN > 8)) return projectTrack(px, pz);
+    var best = null;
+    var bestS = 0;
+    var i;
+    for (i = 0; i < segs.length; i++) {
+      var seg = segs[i];
+      var hit =
+        seg.type === "line"
+          ? closestOnSeg(px, pz, seg.ax, seg.az, seg.bx, seg.bz)
+          : closestOnArc(px, pz, seg.cx, seg.cz, seg.r, seg.a0, seg.a1);
+      var s = (seg.startS || 0) + hit.t * (seg.len != null ? seg.len : 0);
+      if (Math.abs(raceDeltaS(s, sHint)) > 70) continue;
+      if (!best || hit.d2 < best.d2) {
+        best = hit;
+        bestS = s;
+        best.name = seg.name;
+      }
+    }
+    // Nothing near the hint, or the car has clearly been moved (reset,
+    // rejoin, grid pin): the hint is stale, so answer without it.
+    if (!best || best.d2 > (ASPHALT + RUNOFF + 26) * (ASPHALT + RUNOFF + 26)) return projectTrack(px, pz);
+    return trackInfoAt(px, pz, best, bestS);
+  }
+
   function projectTrack(px, pz) {
     var segs = PATH.length ? PATH : MAP_SURF;
     var surf = projectOn(px, pz, segs);
@@ -1978,6 +2093,11 @@
         grass: true,
       };
     }
+    return trackInfoAt(px, pz, best, bestS);
+  }
+
+  function trackInfoAt(px, pz, best, bestS) {
+    var segs = PATH.length ? PATH : MAP_SURF;
     var dist = Math.sqrt(best.d2);
     var inPit = inRect(px, pz, PIT_GRAB);
     var onPit = onPitPavement(px, pz);
@@ -5111,46 +5231,51 @@
     sky.planeLap = 0;
   }
 
-  function onRaceRibbon(x, z) {
-    var pr = projectTrack(x, z);
-    return !!(pr && pr.dist <= ASPHALT);
+  function pitRoadDist(x, z) {
+    if (!PIT_PATH.length) return Infinity;
+    var pr = projectOn(x, z, PIT_PATH);
+    return pr && pr.hit ? Math.sqrt(pr.hit.d2) : Infinity;
+  }
+
+  function raceRoadDist(x, z) {
+    var segs = PATH.length ? PATH : MAP_SURF;
+    if (!segs || !segs.length) return Infinity;
+    var pr = projectOn(x, z, segs);
+    return pr && pr.hit ? Math.sqrt(pr.hit.d2) : Infinity;
+  }
+
+  function pitClaims(x, z) {
+    // The pit only owns a spot when its own ribbon is the nearer road.
+    // Rectangles alone are a trap on the built-in circuits: they all
+    // inherit the Campus pit box, and Harbor threads its flat-out
+    // harbour straight straight past it, so a car a metre off the kerb
+    // there was being read as pit-lane traffic and told to crawl.
+    if (!PIT_META.on) return false;
+    var pd = pitRoadDist(x, z);
+    if (pd > PIT_HALF) return false;
+    // Racing asphalt is never the pit, however close the lane runs.
+    var rd = raceRoadDist(x, z);
+    return rd > ASPHALT && pd < rd;
   }
 
   function inPitLane(r) {
-    // Center / right of the ribbon is never the pit. Banner and grab
-    // both go through here — mp79 only locked inPitGrab and still
-    // painted PIT LANE on the racing line.
-    if (onRaceRibbon(r.x, r.z)) return false;
-    if (!isDriveableLoop() && r.z <= SF_Z + ASPHALT) return false;
-    if (isDriveableLoop()) return PIT_META.on && (inRect(r.x, r.z, PIT_LANE) || onPitPavement(r.x, r.z));
-    return (
-      inRect(r.x, r.z, PIT_LANE) ||
-      inRect(r.x, r.z, PIT_GRAB) ||
-      inRect(r.x, r.z, PIT_ENTRY) ||
-      inRect(r.x, r.z, PIT_EXIT)
-    );
+    return pitClaims(r.x, r.z);
   }
 
   function inPitGrab(r) {
-    if (onRaceRibbon(r.x, r.z)) return false;
-    if (isDriveableLoop()) {
-      if (!PIT_META.on) return false;
-      if (!onPitPavement(r.x, r.z) && !inRect(r.x, r.z, PIT_GRAB)) return false;
-      var dx = PIT_META.bx - PIT_META.ax;
-      var dz = PIT_META.bz - PIT_META.az;
-      var len2 = dx * dx + dz * dz || 1;
-      var t = ((r.x - PIT_META.ax) * dx + (r.z - PIT_META.az) * dz) / len2;
-      return t >= 0.5 && t <= 1.15;
-    }
-    // Campus: halfway into the VISIBLE left lane, past the grass median.
-    // The ribbon and the 8m gap beside it never grab.
-    if (r.z <= SF_Z + ASPHALT + 8) return false;
-    return inRect(r.x, r.z, PIT_GRAB);
+    if (!pitClaims(r.x, r.z)) return false;
+    // The box is the back half of the lane, so a car still peeling in
+    // is not grabbed before it has straightened up.
+    var dx = PIT_META.bx - PIT_META.ax;
+    var dz = PIT_META.bz - PIT_META.az;
+    var len2 = dx * dx + dz * dz || 1;
+    var t = ((r.x - PIT_META.ax) * dx + (r.z - PIT_META.az) * dz) / len2;
+    return t >= 0.42 && t <= 0.98;
   }
 
   function updateLaps(r) {
     if (r.finished) return;
-    var prog = projectTrack(r.x, r.z);
+    var prog = projectTrackNear(r.x, r.z, r.s);
     r.s = prog.s;
     // Any long ribbon — custom closed boards AND the built-in circuits.
     // Harbor / Park / Desert / Forest never trip the old Campus x=8 / z>8
@@ -5167,6 +5292,18 @@
       var cur = r.s - origin;
       if (prev < 0) prev += TRACK_LEN;
       if (cur < 0) cur += TRACK_LEN;
+      // A frame can only move a car a few metres. Anything bigger is the
+      // projection hopping to a neighbouring bit of ribbon — normal on a
+      // twisty board when you run wide — and scoring it hands out free
+      // laps. Tight custom loops were finishing in a third of the time.
+      var step = cur - prev;
+      if (step > TRACK_LEN * 0.5) step -= TRACK_LEN;
+      else if (step < -TRACK_LEN * 0.5) step += TRACK_LEN;
+      if (Math.abs(step) > 40) {
+        r.lastS = r.s;
+        r.lastX = r.x;
+        return;
+      }
       if (prev < TRACK_LEN * 0.5 && cur >= TRACK_LEN * 0.5) r.passedHalf = true;
       if (r.passedHalf && prev > TRACK_LEN * 0.72 && cur < TRACK_LEN * 0.28 && prog.onAsphalt) {
         r.passedHalf = false;
@@ -5260,7 +5397,7 @@
   function applyMotion(r, steer, throttle, brake, reverse, dt, isPlayer) {
     if (!isFinite(r.speed)) r.speed = 0;
     if (!isFinite(r.slide)) r.slide = 0;
-    var info = projectTrack(r.x, r.z);
+    var info = projectTrackNear(r.x, r.z, r.s);
     var wheelKerb = sampleWheelKerbs(r);
     var onKerb = info.kerb || wheelKerb.count > 0;
     var kerbDepth = wheelKerb.depth;
@@ -5271,7 +5408,7 @@
     // enough steer to crawl back to the pit even when the rears are gone.
     var tireFeel = info.grass ? 0.85 : 0.38 + 0.62 * tire;
     var empty = r.fuel <= 0;
-    var maxV = empty ? LIMP_SPEED : MAX_SPEED;
+    var maxV = empty ? LIMP_SPEED : SPEED_LIMIT;
     var accel = empty ? LIMP_ACCEL : ACCEL;
     if (isPlayer && state === "racing" && raceTime > GETAWAY_T) {
       launchT = 0;
@@ -5338,9 +5475,9 @@
         if (r.speed < GRASS_MAX) r.speed = GRASS_MAX;
       }
       if (r.speed < -GRASS_MAX) r.speed = -GRASS_MAX;
-      // Crawl-forward lock must not eat reverse — that's how bots
-      // pin a barrier and never find the ribbon again.
-      if (!reverse && r.speed > 0 && r.speed < GRASS_ROLL) r.speed = GRASS_ROLL;
+      // Crawl-forward lock must not eat reverse or a brake — that's how
+      // bots pin a barrier and never find the ribbon again.
+      if (!reverse && !brake && r.speed > 0 && r.speed < GRASS_ROLL) r.speed = GRASS_ROLL;
       if (r.speed > 0) r.tires -= 6.2 * dt;
     } else if (r.speed >= 0) {
       r.speed = clamp(r.speed, 0, maxV);
@@ -5422,288 +5559,318 @@
     return -steer * 0.42;
   }
 
+  // ------------------------------------------------------------------
+  //  Bot brain
+  //
+  //  Every number a bot uses is derived from ribbon geometry, so Campus,
+  //  the five built-in circuits and any editor track get identical
+  //  racecraft with no per-map scripts.
+  //
+  //    bakeRaceBrain   min-curvature line + forward/backward speed
+  //                    profile, baked twice (fresh and worn tires)
+  //    raceWantAhead   the one speed authority
+  //    updateCpu       pursuit steer, committed brake zones, racecraft,
+  //                    and a progress watchdog that cannot deadlock
+  // ------------------------------------------------------------------
+
+  // Fraction of the yaw limit a flawless bot runs at an apex.
+  var AI_GRIP = 0.9;
+  // How far off the centerline the racing line may swing. Measured: wider
+  // than this and the entry transition becomes the tightest part of the
+  // corner, which costs more apex speed than the extra radius buys.
+  var RACE_MAX_OFF = 2.8;
+  // applyMotion's tireFeel once the rears are down at TIRE_FLOOR.
+  var WORN_FEEL = 0.38 + 0.62 * (TIRE_FLOOR / 100);
+
+  // Personalities. No named-corner tables: apex speeds come out of the
+  // ribbon geometry, so these are all *how* a driver races, which works
+  // the same on Campus, a built-in circuit or an editor track.
+  //
+  //   pace    fraction of SPEED_LIMIT wound out on a straight
+  //   grip    fraction of the yaw limit carried through an apex
+  //   brake   brake bravery — above 1 leaves it later than the maths
+  //   look    pursuit lookahead multiplier
+  //   lineOff extra bias toward the inside kerb
+  //   aggro   willingness to be in someone's mirrors
+  //   defend  willingness to cover the lane
+  //   draft   how much of a tow the driver takes
+  //   wobble  mistake amplitude
   var AI_AGGRO = {
-    // Heavy car + washout. Hit the apex, hold the inside. Same cap as you.
+    // BowieKnife99. Fastest, bravest on the brakes, wants you gone.
     pace: 1,
-    look: 1.08,
-    brake: 0.94,
-    hairpin: 16.3,
-    chicane: 21,
-    the90: 23,
-    sweeper: 37,
-    tight: 0.92,
+    grip: 1,
+    brake: 1.06,
+    look: 1,
     lineOff: 0.58,
-    pitLap: 3,
-    pitFuel: 21,
-    pitTires: 26,
-    launch: 0.88,
+    aggro: 1,
+    defend: 1,
+    draft: 1,
+    pitLap: 4,
+    pitFuel: 30,
+    pitTires: 25,
+    launch: 0.92,
     wobble: 0,
     overshoot: 1,
     craft: 1,
     hunter: 1,
     reel: 1,
   };
-  // Everyone else: Bowie's racecraft, no divebomb / ram.
+  // Everyone else: real racecraft, no divebomb / ram.
   var AI_SMART = {
-    pace: 1,
-    look: 1.08,
-    brake: 0.94,
-    hairpin: 16.3,
-    chicane: 21,
-    the90: 23,
-    sweeper: 37,
-    tight: 0.92,
-    lineOff: 0.58,
-    pitLap: 3,
-    pitFuel: 21,
+    // Library Kid — the best of the kids, quietly quick.
+    pace: 0.985,
+    grip: 0.98,
+    brake: 1,
+    look: 1.02,
+    lineOff: 0.5,
+    aggro: 0.5,
+    defend: 0.7,
+    draft: 0.9,
+    pitLap: 4,
+    pitFuel: 32,
     pitTires: 26,
     launch: 0.88,
-    wobble: 0,
+    wobble: 0.02,
     overshoot: 1,
     craft: 1,
   };
   var AI_TIDY = {
-    pace: 1,
-    look: 1.08,
-    brake: 0.94,
-    hairpin: 16.3,
-    chicane: 21,
-    the90: 23,
-    sweeper: 37,
-    tight: 0.92,
-    lineOff: 0.58,
-    pitLap: 3,
-    pitFuel: 21,
-    pitTires: 26,
-    launch: 0.88,
-    wobble: 0,
+    // Hall Monitor — clean, early on the brakes, hard to pass legally.
+    pace: 0.978,
+    grip: 0.97,
+    brake: 0.97,
+    look: 1.06,
+    lineOff: 0.44,
+    aggro: 0.25,
+    defend: 0.85,
+    draft: 0.7,
+    pitLap: 4,
+    pitFuel: 34,
+    pitTires: 28,
+    launch: 0.9,
+    wobble: 0.01,
     overshoot: 1,
     craft: 1,
   };
   var AI_MESSY = {
-    pace: 1,
-    look: 1.08,
-    brake: 0.94,
-    hairpin: 16.3,
-    chicane: 21,
-    the90: 23,
-    sweeper: 37,
-    tight: 0.92,
-    lineOff: 0.58,
-    pitLap: 3,
-    pitFuel: 21,
-    pitTires: 26,
-    launch: 0.88,
-    wobble: 0,
+    // Yearbook — quick hands, inconsistent lap to lap.
+    pace: 0.962,
+    grip: 0.94,
+    brake: 0.99,
+    look: 0.96,
+    lineOff: 0.46,
+    aggro: 0.6,
+    defend: 0.5,
+    draft: 0.7,
+    pitLap: 4,
+    pitFuel: 30,
+    pitTires: 24,
+    launch: 0.8,
+    wobble: 0.07,
     overshoot: 1,
     craft: 1,
   };
   var AI_SHY = {
-    pace: 1,
-    look: 1.08,
-    brake: 0.94,
-    hairpin: 16.3,
-    chicane: 21,
-    the90: 23,
-    sweeper: 37,
-    tight: 0.92,
-    lineOff: 0.58,
-    pitLap: 3,
-    pitFuel: 21,
-    pitTires: 26,
-    launch: 0.88,
-    wobble: 0,
+    // Sub Teacher — lifts early, leaves the door open.
+    pace: 0.945,
+    grip: 0.92,
+    brake: 0.9,
+    look: 1.12,
+    lineOff: 0.34,
+    aggro: 0.1,
+    defend: 0.3,
+    draft: 0.5,
+    pitLap: 4,
+    pitFuel: 36,
+    pitTires: 32,
+    launch: 0.78,
+    wobble: 0.03,
     overshoot: 1,
     craft: 1,
   };
   var AI_BEAT = {
-    pace: 1,
-    look: 1.08,
-    brake: 0.94,
-    hairpin: 16.3,
-    chicane: 21,
-    the90: 23,
-    sweeper: 37,
-    tight: 0.92,
-    lineOff: 0.58,
-    pitLap: 3,
-    pitFuel: 21,
+    // Band Kid — brave into the corner, scruffy on the way out.
+    pace: 0.97,
+    grip: 0.95,
+    brake: 1.01,
+    look: 0.98,
+    lineOff: 0.4,
+    aggro: 0.55,
+    defend: 0.6,
+    draft: 0.8,
+    pitLap: 4,
+    pitFuel: 31,
     pitTires: 26,
-    launch: 0.88,
-    wobble: 0,
+    launch: 0.84,
+    wobble: 0.05,
     overshoot: 1,
     craft: 1,
   };
   var AI_LAB = {
-    pace: 1,
-    look: 1.08,
-    brake: 0.94,
-    hairpin: 16.3,
-    chicane: 21,
-    the90: 23,
-    sweeper: 37,
-    tight: 0.92,
-    lineOff: 0.58,
-    pitLap: 3,
-    pitFuel: 21,
-    pitTires: 26,
-    launch: 0.88,
+    // Lab Partner — surgical line, timid with the throttle.
+    pace: 0.974,
+    grip: 0.99,
+    brake: 0.95,
+    look: 1.1,
+    lineOff: 0.52,
+    aggro: 0.3,
+    defend: 0.5,
+    draft: 0.6,
+    pitLap: 4,
+    pitFuel: 33,
+    pitTires: 27,
+    launch: 0.86,
     wobble: 0,
     overshoot: 1,
     craft: 1,
   };
   var AI_WILD = {
-    pace: 1,
-    look: 1.08,
-    brake: 0.94,
-    hairpin: 16.3,
-    chicane: 21,
-    the90: 23,
-    sweeper: 37,
-    tight: 0.92,
-    lineOff: 0.58,
-    pitLap: 3,
-    pitFuel: 21,
-    pitTires: 26,
-    launch: 0.88,
-    wobble: 0,
+    // Detention — fast and unhinged. Will have it off eventually.
+    pace: 0.99,
+    grip: 0.93,
+    brake: 1.05,
+    look: 0.94,
+    lineOff: 0.62,
+    aggro: 0.9,
+    defend: 0.9,
+    draft: 1,
+    pitLap: 4,
+    pitFuel: 28,
+    pitTires: 23,
+    launch: 0.94,
+    wobble: 0.08,
     overshoot: 1,
     craft: 1,
   };
   var AI_WIDE = {
-    pace: 1,
-    look: 1.08,
+    // Fallback for lobby / remote bot names. Runs a wide, safe line.
+    pace: 0.955,
+    grip: 0.95,
     brake: 0.94,
-    hairpin: 16.3,
-    chicane: 21,
-    the90: 23,
-    sweeper: 37,
-    tight: 0.92,
-    lineOff: 0.58,
-    pitLap: 3,
-    pitFuel: 21,
-    pitTires: 26,
-    launch: 0.88,
-    wobble: 0,
+    look: 1.08,
+    lineOff: 0.38,
+    aggro: 0.35,
+    defend: 0.55,
+    draft: 0.6,
+    pitLap: 4,
+    pitFuel: 34,
+    pitTires: 27,
+    launch: 0.82,
+    wobble: 0.04,
     overshoot: 1,
     craft: 1,
   };
   var _scan = {
     dHair: 999,
     dChi: 999,
-    dSweep: 999,
-    d90: 999,
-    dKink: 999,
     dTight: 999,
     tightR: 99,
-    hairLeft: 0,
-    chiLeft: 0,
-    sweepLeft: 0,
-    d90Left: 0,
     dBend: 999,
     bendR: 99,
     inside: 1,
   };
 
   function aiOf(r) {
-    if (r && r.name === "BowieKnife99") return AI_AGGRO;
-    return AI_SMART;
+    var name = (r && r.name) || "";
+    if (name === "BowieKnife99") return AI_AGGRO;
+    if (name === "Hall Monitor") return AI_TIDY;
+    if (name === "Sub Teacher") return AI_SHY;
+    if (name === "Library Kid") return AI_SMART;
+    if (name === "Band Kid") return AI_BEAT;
+    if (name === "Lab Partner") return AI_LAB;
+    if (name === "Detention") return AI_WILD;
+    if (name === "Yearbook") return AI_MESSY;
+    // Lobby / remote bot names still get a driver, deterministically.
+    var pool = [AI_SMART, AI_TIDY, AI_LAB, AI_BEAT, AI_WILD, AI_MESSY, AI_SHY, AI_WIDE];
+    var h = 7;
+    var i;
+    for (i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) % 9973;
+    return pool[h % pool.length];
   }
 
+  // What is coming up. Read off the baked samples rather than walking
+  // PATH 40 times a frame per bot, and used only for lookahead length,
+  // which way the corner goes, and which side a pass belongs on — never
+  // as a speed source.
   function scanAhead(s, meters) {
+    ensureRaceBrain();
     _scan.dHair = 999;
     _scan.dChi = 999;
-    _scan.dSweep = 999;
-    _scan.d90 = 999;
-    _scan.dKink = 999;
     _scan.dTight = 999;
     _scan.tightR = 99;
-    _scan.hairLeft = 0;
-    _scan.chiLeft = 0;
-    _scan.sweepLeft = 0;
-    _scan.d90Left = 0;
     _scan.dBend = 999;
     _scan.bendR = 99;
     _scan.inside = 0;
-    var d;
-    for (d = 0; d <= meters; d += 6) {
-      var p = centerlinePoint(s + d);
-      var ck = cornerKind(p.name);
-      if (ck === "hairpin") {
-        if (d < _scan.dHair) _scan.dHair = d;
-        if (d <= _scan.dHair + _scan.hairLeft + 10) _scan.hairLeft = d - _scan.dHair;
-      } else if (ck === "chicane") {
-        if (d < _scan.dChi) _scan.dChi = d;
-        if (d <= _scan.dChi + _scan.chiLeft + 10) _scan.chiLeft = d - _scan.dChi;
-      } else if (ck === "sweeper") {
-        if (d < _scan.dSweep) _scan.dSweep = d;
-        if (d <= _scan.dSweep + _scan.sweepLeft + 10) _scan.sweepLeft = d - _scan.dSweep;
-      } else if (ck === "the90") {
-        if (d < _scan.d90) _scan.d90 = d;
-        if (d <= _scan.d90 + _scan.d90Left + 10) _scan.d90Left = d - _scan.d90;
-      } else if (ck === "kink" && d < _scan.dKink) _scan.dKink = d;
-      if (p.r < 160) {
-        if (!_scan.inside && p.left) _scan.inside = p.left;
+    if (RACE.n < 4 || !(TRACK_LEN > 8)) {
+      _scan.inside = 1;
+      return _scan;
+    }
+    var ds = RACE.ds;
+    var base = Math.floor((((s % TRACK_LEN) + TRACK_LEN) % TRACK_LEN) / ds);
+    var steps = Math.min(RACE.n - 1, Math.ceil(meters / ds));
+    var k;
+    for (k = 0; k <= steps; k++) {
+      var i = (base + k) % RACE.n;
+      var d = k * ds;
+      var rad = RACE.r[i];
+      var ck = cornerKind(RACE.name[i]);
+      if (ck === "hairpin" && d < _scan.dHair) _scan.dHair = d;
+      else if (ck === "chicane" && d < _scan.dChi) _scan.dChi = d;
+      if (rad < 160) {
+        if (!_scan.inside) _scan.inside = RACE.kap[i] >= 0 ? 1 : -1;
         if (d < _scan.dBend) {
           _scan.dBend = d;
-          _scan.bendR = p.r;
+          _scan.bendR = rad;
         }
       }
-      if (p.r < 28 && d < _scan.dTight) {
+      if (rad < 28 && d < _scan.dTight) {
         _scan.dTight = d;
-        _scan.tightR = p.r;
+        _scan.tightR = rad;
       }
     }
     if (!_scan.inside) _scan.inside = 1;
     return _scan;
   }
 
-  function approachWant(base, dist, window, apex, pow) {
-    if (dist >= window) return base;
-    var t = dist / window;
-    if (!(pow > 0)) pow = 2;
-    var k = pow === 2 ? t * t : Math.pow(t, pow);
-    return apex + (base - apex) * k;
+  function tireFeelOf(tire01) {
+    // Mirror of applyMotion's tireFeel on asphalt.
+    return 0.38 + 0.62 * clamp(tire01, 0, 1);
   }
 
-  function unwindWant(want, dist, left, apex, half) {
-    if (dist > 7 || left <= 0) return want;
-    if (left >= half) return want;
-    var u = 1 - left / half;
-    return Math.max(want, apex + (MAX_SPEED - apex) * u * u);
+  function brakeDecelAt(v) {
+    // What applyMotion really delivers with the brake pinned. The old
+    // brain assumed BRAKE_DECEL * 0.62 and so lifted half a straight
+    // early for every corner on every map.
+    var v01 = clamp(Math.abs(v) / MAX_SPEED, 0, 1);
+    return BRAKE_DECEL * (1.16 - 0.5 * v01);
   }
 
-  function brakeWindow(vNow, vApex, mul) {
-    // Heavy brakes bite ~0.6 of BRAKE_DECEL at speed. Window is the
-    // real stop, not a leftover from the old 20-decel kart.
-    if (!(mul > 0)) mul = 1;
-    var a = Math.max(2.6, BRAKE_DECEL * 0.62);
-    var v0 = Math.max(vApex + 0.5, vNow);
-    var d = (v0 * v0 - vApex * vApex) / (2 * a);
-    if (d < 12) d = 12;
-    return (d + 14) * mul;
+  function apexFromRadius(radius, tireFeel, margin) {
+    // Solve v = radius * yaw(v) against applyMotion's own yaw model,
+    //   yaw = STEER_RATE * (1 - 0.7 * v / MAX_SPEED) * tireFeel
+    // so a corner speed is a fact about the car and the arc, not a
+    // hand-tuned number that only fits one circuit.
+    if (!(radius > 0)) return SPEED_LIMIT;
+    if (!(tireFeel > 0)) tireFeel = 1;
+    if (!(margin > 0)) margin = AI_GRIP;
+    var k = STEER_RATE * tireFeel * margin;
+    var v = (radius * k) / (1 + (0.7 * radius * k) / MAX_SPEED);
+    if (v > SPEED_LIMIT) v = SPEED_LIMIT;
+    if (v < 11) v = 11;
+    return v;
   }
 
-  function planSpeed(r, want) {
-    // Brake marks from the speed we can actually be carrying, not the
-    // 200 cap. A 200-to-apex stop is kilometers and crawls the lap.
-    var now = Math.abs(r && r.speed) || 0;
-    return Math.min(want, Math.max(now, 18) + 16);
-  }
-
-  function apexFromRadius(r, mul) {
-    // Speed the washed-out car can actually yaw around this radius.
-    // Custom 90s are ~44m; Campus's decreasing 90 is ~12m. Same brain.
-    if (!(r > 0) || r > 400) return MAX_SPEED * 0.96;
-    if (!(mul > 0)) mul = 1;
-    var v = Math.min(MAX_SPEED * 0.98, r * 0.72 + 8);
-    var wash = 1 - 0.7 * (v / MAX_SPEED);
-    var yaw = STEER_RATE * wash * 0.9;
-    if (yaw < 0.38) yaw = 0.38;
-    v = r * yaw;
-    if (v < 13) v = 13;
-    if (v > MAX_SPEED * 0.96) v = MAX_SPEED * 0.96;
-    return v * 0.9 * mul;
+  function apexLimit(lineR, centerR, name, tireFeel) {
+    var v = apexFromRadius(lineR, tireFeel, AI_GRIP);
+    // applyMotion injects slide on hairpin-named arcs above 17, so a
+    // tight 180 has to be slower than pure yaw allows. Scaled by radius
+    // so a fat editor-tile hairpin still gets carried.
+    if (cornerKind(name) === "hairpin") {
+      var rad = centerR > 0 && centerR < 400 ? centerR : lineR;
+      var hp = 17 + Math.max(0, rad - 12) * 0.35;
+      if (v > hp) v = hp;
+    }
+    return v;
   }
 
   function eachRival(self, fn) {
@@ -5726,15 +5893,25 @@
   }
 
   function avoidRams(r, steer) {
+    // Two jobs: do not steer into the back of a car we are closing on,
+    // and leave a car alongside some room. The old version did neither
+    // properly — a flat 0.72 shove on anything within 11m, nothing at
+    // all for a car level with the door.
     var fx = Math.cos(r.heading);
     var fz = Math.sin(r.heading);
     eachRival(r, function (o) {
+      if (o.pitServicing) return;
       var rx = o.x - r.x;
       var rz = o.z - r.z;
       var fwd = rx * fx + rz * fz;
       var lat = -rx * fz + rz * fx;
-      if (fwd > 0.2 && fwd < 11 && Math.abs(lat) < 3.6) {
-        steer += lat >= 0 ? -0.72 : 0.72;
+      var away = lat >= 0 ? -1 : 1;
+      if (Math.abs(lat) < 3.4 && fwd > 0.2 && fwd < 12 && (o.speed || 0) <= (r.speed || 0) + 1.5) {
+        var urgency = clamp(1 - fwd / 12, 0.2, 1) * clamp(1 - Math.abs(lat) / 3.4, 0.25, 1);
+        steer += away * 0.85 * urgency;
+      } else if (Math.abs(lat) < 3.2 && fwd > -5 && fwd < 5) {
+        // Door to door: hold your own half of the road.
+        steer += away * 0.3 * clamp(1 - Math.abs(lat) / 3.2, 0, 1);
       }
     });
     return clamp(steer, -1, 1);
@@ -5753,30 +5930,15 @@
     pass: false,
     cover: 0,
     gap: 0,
+    draft: false,
   };
 
-  function gripApex(radius, tight) {
-    var cap = Math.sqrt(MAX_LAT * Math.max(radius, 8)) * (tight || 1);
-    if (cap < 12) cap = 12;
-    if (cap > MAX_SPEED) cap = MAX_SPEED;
-    return cap;
-  }
-
-  function namedApex(dist, namedCap, radius, tight) {
-    if (dist >= 900) return namedCap;
-    var grip = gripApex(radius, tight);
-    // Campus names are tuned for tight radii. Custom tiles reuse
-    // those names on ~44m arcs — don't crawl a fat 90 like a campus 180.
-    if (radius >= 42) return Math.max(namedCap, grip);
-    return namedCap;
-  }
-
-  // Track-agnostic race brain (Heilmeier min-curvature line + FB speed
-  // profile + Pure Pursuit). Works on Campus names, built-in circuits,
-  // and any custom ribbon — geometry only, no per-map scripts.
+  // Track-agnostic race brain (min-curvature line + forward/backward
+  // speed profile + Pure Pursuit). Geometry only, no per-map scripts,
+  // so Campus, the built-ins and editor tracks all bake the same way.
   var RACE = {
     n: 0,
-    ds: 5,
+    ds: 3,
     stamp: -1,
     pathN: -1,
     s: [],
@@ -5792,7 +5954,9 @@
     geo: [],
     lkap: [],
     v: [],
+    vLo: [],
     pitch: [],
+    lapT: 0,
   };
 
   function aiWrap(a) {
@@ -5834,8 +5998,8 @@
     RACE.pathN = PATH.length;
     RACE.n = 0;
     if (!PATH.length || !(TRACK_LEN > 16)) return;
-    var n = Math.max(32, Math.round(TRACK_LEN / 5));
-    if (n > 720) n = 720;
+    var n = Math.max(32, Math.round(TRACK_LEN / 3));
+    if (n > 900) n = 900;
     var ds = TRACK_LEN / n;
     RACE.ds = ds;
     RACE.n = n;
@@ -5861,7 +6025,8 @@
       RACE.off[i] = 0;
       RACE.geo[i] = 0;
       RACE.lkap[i] = kap;
-      RACE.v[i] = MAX_SPEED;
+      RACE.v[i] = SPEED_LIMIT;
+      RACE.vLo[i] = SPEED_LIMIT;
     }
 
     var corners = [];
@@ -5896,7 +6061,7 @@
       }
     }
 
-    var maxOff = 2.8;
+    var maxOff = RACE_MAX_OFF;
     var wgt = [];
     for (i = 0; i < n; i++) wgt[i] = 0;
     var c;
@@ -5904,7 +6069,7 @@
       var cr = corners[c];
       var apexW = 1.0 + 0.04 * cr.r;
       if (apexW < 1.2) apexW = 1.2;
-      if (apexW > 2.8) apexW = 2.8;
+      if (apexW > maxOff) apexW = maxOff;
       var entry = 28 + 0.55 * cr.r;
       if (entry < 32) entry = 32;
       if (entry > 70) entry = 70;
@@ -5971,48 +6136,66 @@
       RACE.lkap[i] = aiWrap(RACE.h[ip3] - RACE.h[im2]) / (2 * ds);
     }
 
-    var aBrk = Math.max(2.6, BRAKE_DECEL * 0.62);
-    var aAcc = ACCEL;
+    // Apex seeds from the curvature of the RACING LINE, not the
+    // centerline — out-in-out has already widened every corner.
     for (i = 0; i < n; i++) {
-      var rAbs = Math.abs(RACE.lkap[i]) > 1e-4 ? 1 / Math.abs(RACE.lkap[i]) : 999;
-      var vLim = apexFromRadius(rAbs, 0.96);
-      var gLim = gripApex(rAbs, 0.95);
-      if (gLim < vLim) vLim = gLim;
-      if (vLim > MAX_SPEED) vLim = MAX_SPEED;
-      var ck = cornerKind(RACE.name[i]);
-      var cr0 = RACE.r[i];
-      if (ck === "hairpin" && cr0 < 22) vLim = Math.min(vLim, 16.4);
-      else if (ck === "chicane" && cr0 < 28) vLim = Math.min(vLim, 21);
-      else if (ck === "the90" && cr0 < 20) vLim = Math.min(vLim, 21.2);
-      else if (ck === "kink" && cr0 < 24) vLim = Math.min(vLim, 24);
-      RACE.v[i] = vLim;
+      var rAbs = Math.abs(RACE.lkap[i]) > 1e-4 ? 1 / Math.abs(RACE.lkap[i]) : 9999;
+      RACE.v[i] = apexLimit(rAbs, RACE.r[i], RACE.name[i], 1);
+      RACE.vLo[i] = apexLimit(rAbs, RACE.r[i], RACE.name[i], WORN_FEEL);
     }
+    profilePasses(RACE.v, n, ds);
+    profilePasses(RACE.vLo, n, ds);
+
+    var lapT = 0;
+    for (i = 0; i < n; i++) lapT += ds / Math.max(4, RACE.v[i]);
+    RACE.lapT = lapT;
+  }
+
+  // What a lap of THIS track costs in fuel. Burn is per second, so it is
+  // the profile lap time plus a margin for a driver who is not the
+  // profile. Never derive it from the speed right now: read at a hairpin
+  // that says the tank cannot reach the flag, and the car boxes every lap.
+  function lapFuel() {
+    ensureRaceBrain();
+    var t = RACE.lapT > 1 ? RACE.lapT : Math.max(8, TRACK_LEN / 30);
+    return (IDLE_FUEL + THROTTLE_FUEL) * t * 1.12;
+  }
+
+  // Forward/backward feasibility, run to convergence. Two fixed passes
+  // at 5m samples could not carry a hairpin brake zone the 300m back up
+  // the straight where it actually starts.
+  function profilePasses(v, n, ds) {
     var pass;
-    for (pass = 0; pass < 2; pass++) {
+    var i;
+    for (pass = 0; pass < 12; pass++) {
+      var moved = false;
       for (i = n - 1; i >= 0; i--) {
         var nxtI = (i + 1) % n;
-        var hill = RACE.pitch[i] * 12;
-        var aB = aBrk + hill;
+        var aB = brakeDecelAt(v[i]) + RACE.pitch[i] * 12;
         if (aB < 2.2) aB = 2.2;
-        var back = Math.sqrt(RACE.v[nxtI] * RACE.v[nxtI] + 2 * aB * ds);
-        if (RACE.v[i] > back) RACE.v[i] = back;
+        var back = Math.sqrt(v[nxtI] * v[nxtI] + 2 * aB * ds);
+        if (v[i] > back + 0.01) {
+          v[i] = back;
+          moved = true;
+        }
       }
-    }
-    for (pass = 0; pass < 2; pass++) {
       for (i = 0; i < n; i++) {
         var prv = (i - 1 + n) % n;
-        var climb = -RACE.pitch[i] * 12;
-        var aF = aAcc + climb;
+        var aF = ACCEL - RACE.pitch[i] * 12;
         if (aF < 1.6) aF = 1.6;
-        var fwd = Math.sqrt(RACE.v[prv] * RACE.v[prv] + 2 * aF * ds);
-        if (RACE.v[i] > fwd) RACE.v[i] = fwd;
+        var fwd = Math.sqrt(v[prv] * v[prv] + 2 * aF * ds);
+        if (v[i] > fwd + 0.01) {
+          v[i] = fwd;
+          moved = true;
+        }
       }
+      if (!moved) break;
     }
   }
 
   function raceAt(s) {
     ensureRaceBrain();
-    if (RACE.n < 4 || !(TRACK_LEN > 0)) return { off: 0, v: MAX_SPEED, kap: 0 };
+    if (RACE.n < 4 || !(TRACK_LEN > 0)) return { off: 0, v: SPEED_LIMIT, kap: 0 };
     s = ((s % TRACK_LEN) + TRACK_LEN) % TRACK_LEN;
     var f = s / RACE.ds;
     var i0 = Math.floor(f) % RACE.n;
@@ -6026,24 +6209,58 @@
     };
   }
 
-  function raceWantAhead(s, vNow, p) {
+  // Profile speed blended between the fresh and worn bakes, so a bot on
+  // dead rubber slows down instead of asking for grip it hasn't got.
+  function raceVAt(s, tire01) {
     ensureRaceBrain();
-    var want = MAX_SPEED * ((p && p.pace) || 1);
-    if (RACE.n < 4) return want;
-    var v0 = vNow > 4 ? vNow : want;
-    var look = brakeWindow(v0, 14, 1.2);
-    if (look < 90) look = 90;
-    if (look > 280) look = 280;
+    if (RACE.n < 4 || !(TRACK_LEN > 0)) return SPEED_LIMIT;
+    s = ((s % TRACK_LEN) + TRACK_LEN) % TRACK_LEN;
+    var i = Math.floor(s / RACE.ds) % RACE.n;
+    if (i < 0) i += RACE.n;
+    var hi = RACE.v[i];
+    if (tire01 == null) return hi;
+    var lo = RACE.vLo[i];
+    var f = (tireFeelOf(tire01) - WORN_FEEL) / (1 - WORN_FEEL);
+    return lo + (hi - lo) * clamp(f, 0, 1);
+  }
+
+  // A driver's own ceiling. pace trims the straights, grip trims the
+  // corners, and the blend keeps it smooth in between.
+  function paceV(v, p) {
+    var top = SPEED_LIMIT * ((p && p.pace) || 1);
+    var g = (p && p.grip) || 1;
+    if (g < 1) {
+      var t = clamp(v / SPEED_LIMIT, 0, 1);
+      v *= g + (1 - g) * t * t;
+    }
+    return v < top ? v : top;
+  }
+
+  // The one speed authority. At distance d from an apex the fastest a
+  // car may legally be doing is sqrt(apex^2 + 2*a*d) — exact, so there
+  // is nothing left to stack a second conservative guess on top of.
+  function raceWantAhead(s, vNow, p, tire01) {
+    ensureRaceBrain();
+    var top = SPEED_LIMIT * ((p && p.pace) || 1);
+    if (RACE.n < 4) return top;
+    var brave = (p && p.brake) || 1;
+    var v0 = vNow > 8 ? vNow : top;
+    var aB = Math.max(2.2, brakeDecelAt(v0) * brave);
+    var look = (v0 * v0) / (2 * aB) + 26;
+    if (look < 55) look = 55;
+    if (look > 460) look = 460;
     var ds = RACE.ds;
-    var steps = Math.ceil(look / ds);
+    var stride = Math.max(1, Math.round(7 / ds));
+    var stepM = stride * ds;
+    var steps = Math.min(64, Math.ceil(look / stepM));
+    var want = top;
     var k;
-    var bMul = 0.7;
     for (k = 0; k <= steps; k++) {
-      var sample = raceAt(s + k * ds);
-      var apex = sample.v;
-      if (!(apex > 0)) continue;
-      var win = brakeWindow(want, apex, bMul);
-      want = Math.min(want, approachWant(want, k * ds, win, apex, 1.7));
+      var d = k * stepM;
+      var apex = paceV(raceVAt(s + d, tire01), p);
+      if (apex >= want) continue;
+      var cap = k === 0 ? apex : Math.sqrt(apex * apex + 2 * aB * d);
+      if (cap < want) want = cap;
     }
     return want;
   }
@@ -6075,6 +6292,39 @@
     return d;
   }
 
+  var PIT_MOUTH = { len: -1, pitN: -1, a0: null, s: -1 };
+
+  // Where the pit road leaves the ribbon, in track arc length. With this
+  // a bot can decide to box when the mouth is actually coming up, on any
+  // track — the old code leaned on the Campus pit happening to sit just
+  // past the start line, which no editor track guarantees.
+  function pitMouthS() {
+    var seg = PIT_PATH.length ? PIT_PATH[0] : null;
+    var a0 = seg ? (seg.ax != null ? seg.ax : seg.cx) : null;
+    if (PIT_MOUTH.len === TRACK_LEN && PIT_MOUTH.pitN === PIT_PATH.length && PIT_MOUTH.a0 === a0) return PIT_MOUTH.s;
+    PIT_MOUTH.len = TRACK_LEN;
+    PIT_MOUTH.pitN = PIT_PATH.length;
+    PIT_MOUTH.a0 = a0;
+    PIT_MOUTH.s = -1;
+    if (PIT_META.on && seg) {
+      var m = pointOnPitPath(0);
+      if (m) {
+        var pr = projectTrack(m.x, m.z);
+        if (pr) PIT_MOUTH.s = pr.s;
+      }
+    }
+    return PIT_MOUTH.s;
+  }
+
+  // Signed metres past the pit mouth: negative on the approach, positive
+  // once committed. A single unsigned distance made bots abandon the peel
+  // in the gap between the mouth and the pit pavement.
+  function pitDelta(r) {
+    var ms = pitMouthS();
+    if (ms < 0 || !(TRACK_LEN > 8)) return -1e9;
+    return raceDeltaS(r.s, ms);
+  }
+
   function trackLeadGap(self, p) {
     var playerGap = 0;
     var best = 0;
@@ -6085,16 +6335,21 @@
       if (o.kind === "player") playerGap = g;
       if (g > best) best = g;
     });
+    // A hunter reels the player in by race progress, so a 200m lead
+    // still counts and not just the cars he can see.
     if (p && (p.hunter || p.reel) && playerGap > 6) return playerGap;
     return best;
   }
 
   function catchBonus(p, gap) {
+    // Small and capped: this is a driver leaning on it, not a rubber
+    // band. Anyone already ahead gets nothing, so a leading Bowie
+    // stops pushing and can be reeled back in himself.
     if (!(gap > 0)) return 0;
     var hunter = !!(p && (p.hunter || p.reel));
-    var maxB = hunter ? 11.5 : 7;
-    var perM = hunter ? 0.1 : 0.055;
-    var base = hunter ? 3.4 : 1.6;
+    var maxB = hunter ? 6.5 : 3.4;
+    var perM = hunter ? 0.05 : 0.026;
+    var base = hunter ? 1.4 : 0.7;
     var b = base + gap * perM;
     if (b > maxB) b = maxB;
     return b;
@@ -6107,6 +6362,59 @@
     return (Math.cos(r.heading) * dx + Math.sin(r.heading) * dz) / d;
   }
 
+  // Coarse bucket grid over WALLS. Rebuilt whenever placeWalls swaps the
+  // array out; noseBlocked used to scan 200+ segments per bot per frame.
+  var WALL_GRID = { cell: 26, map: null, n: -1, first: null, near: [] };
+
+  function wallGrid() {
+    if (WALL_GRID.map && WALL_GRID.n === WALLS.length && WALL_GRID.first === WALLS[0]) return WALL_GRID;
+    var cell = WALL_GRID.cell;
+    var map = {};
+    var i;
+    for (i = 0; i < WALLS.length; i++) {
+      var w = WALLS[i];
+      var gx0 = Math.floor(Math.min(w.ax, w.bx) / cell);
+      var gx1 = Math.floor(Math.max(w.ax, w.bx) / cell);
+      var gz0 = Math.floor(Math.min(w.az, w.bz) / cell);
+      var gz1 = Math.floor(Math.max(w.az, w.bz) / cell);
+      var gx;
+      var gz;
+      for (gx = gx0; gx <= gx1; gx++) {
+        for (gz = gz0; gz <= gz1; gz++) {
+          var key = gx + "," + gz;
+          if (!map[key]) map[key] = [];
+          map[key].push(w);
+        }
+      }
+    }
+    WALL_GRID.map = map;
+    WALL_GRID.n = WALLS.length;
+    WALL_GRID.first = WALLS[0] || null;
+    return WALL_GRID;
+  }
+
+  function wallsNear(x, z) {
+    var g = wallGrid();
+    var cell = g.cell;
+    var out = g.near;
+    out.length = 0;
+    var gx = Math.floor(x / cell);
+    var gz = Math.floor(z / cell);
+    var dx;
+    var dz;
+    for (dx = -1; dx <= 1; dx++) {
+      for (dz = -1; dz <= 1; dz++) {
+        var bucket = g.map[gx + dx + "," + (gz + dz)];
+        if (!bucket) continue;
+        var i;
+        for (i = 0; i < bucket.length; i++) {
+          if (out.indexOf(bucket[i]) === -1) out.push(bucket[i]);
+        }
+      }
+    }
+    return out;
+  }
+
   function noseBlocked(r) {
     var now = projectTrack(r.x, r.z);
     var hx = Math.cos(r.heading);
@@ -6114,15 +6422,21 @@
     var look = now.dist > ASPHALT - 0.6 || now.grass ? 3.6 : 2.4;
     var ax = r.x + hx * look;
     var az = r.z + hz * look;
+    var near = wallsNear(r.x, r.z);
     var i;
-    for (i = 0; i < WALLS.length; i++) {
-      var w = WALLS[i];
+    for (i = 0; i < near.length; i++) {
+      var w = near[i];
       var here = closestOnSeg(r.x, r.z, w.ax, w.az, w.bx, w.bz);
       var hereD = Math.sqrt(here.d2);
       var rad = 1.35 + (w.thick || 0.55) * 0.5;
-      if (hereD > 4.2) continue;
-      var fx = (here.x - r.x) * hx + (here.z - r.z) * hz;
-      if (fx > 0.2 && hereD < rad + 1.8) return true;
+      if (hereD > rad + 1.8) continue;
+      // Only a wall we are driving INTO blocks us. Running alongside a
+      // barrier used to pin bots in a permanent 6 u/s crawl.
+      var toWallX = here.x - r.x;
+      var toWallZ = here.z - r.z;
+      var d = Math.hypot(toWallX, toWallZ) || 1;
+      var closing = (toWallX / d) * hx + (toWallZ / d) * hz;
+      if (closing > 0.5) return true;
     }
     if (now.dist <= ASPHALT - 0.5 && !now.grass) return false;
     var pr = projectTrack(ax, az);
@@ -6151,15 +6465,21 @@
       var rx = o.x - hunter.x;
       var rz = o.z - hunter.z;
       var d = Math.hypot(rx, rz);
-      if (d < 0.7 || d > 96) return;
+      if (d < 0.7) return;
+      var isPlayer = o.kind === "player";
+      // A hunter never loses the player. Everyone else only races what
+      // is in their mirrors.
+      if (d > 96 && !(huntBias && isPlayer)) return;
       var fwd = rx * fx + rz * fz;
       var lat = -rx * fz + rz * fx;
       var score = d;
       if (fwd < -8) score += 24;
       if (fwd < 2.2 && fwd > -20 && d < 24) score -= 15;
-      if (huntBias && o.kind === "player" && fwd > -12) score -= 22;
-      // Lead on the player: defend the pass before hunting someone else.
-      if (huntBias && o.kind === "player" && fwd < 2.2 && fwd > -22 && d < 26) score -= 40;
+      if (huntBias && isPlayer) {
+        score -= 30;
+        // Lead on the player: defend the pass before hunting anyone else.
+        if (fwd < 2.2 && fwd > -22 && d < 26) score -= 40;
+      }
       if (score < best) {
         best = score;
         _prey.r = o;
@@ -6171,14 +6491,62 @@
     return _prey;
   }
 
+  // Do not drive into the car in front. This is the term the old brain
+  // was missing entirely: it steered around traffic but never lifted
+  // for it, so a full field turned into a demolition derby.
+  function followLimit(r, p, want, passing) {
+    var fx = Math.cos(r.heading);
+    var fz = Math.sin(r.heading);
+    var floor = p && p.hunter ? 0.6 : 2.2;
+    var lim = want;
+    eachRival(r, function (o) {
+      if (o.pitServicing) return;
+      var rx = o.x - r.x;
+      var rz = o.z - r.z;
+      var fwd = rx * fx + rz * fz;
+      if (fwd <= 0) return;
+      var lat = -rx * fz + rz * fx;
+      // Off to one side is a car we are going around, not one in the way.
+      if (Math.abs(lat) > 2.6) return;
+      var gap = fwd - MESH_NOSE - MESH_TAIL;
+      if (gap > 26) return;
+      var theirs = Math.max(0, o.speed || 0);
+      var close = theirs + Math.max(0, gap - floor) * (passing ? 1.35 : 0.95);
+      if (close < lim) lim = close;
+    });
+    return lim;
+  }
+
+  function laneClear(r, side) {
+    // Is there room to move that way, or is someone already there?
+    var fx = Math.cos(r.heading);
+    var fz = Math.sin(r.heading);
+    var clear = true;
+    eachRival(r, function (o) {
+      if (!clear || o.pitServicing) return;
+      var rx = o.x - r.x;
+      var rz = o.z - r.z;
+      var fwd = rx * fx + rz * fz;
+      if (fwd < -6 || fwd > 22) return;
+      var lat = -rx * fz + rz * fx;
+      if (lat * side > 0.8 && Math.abs(lat) < 5.2) clear = false;
+    });
+    return clear;
+  }
+
   function passSide(r, prey) {
+    // Commit to a side and stay there. Re-deciding every frame is how
+    // a bot ends up dithering behind a car it is quicker than.
+    var held = r.aiPassSide || 0;
+    if (held && (r.aiCommit || 0) > 0) return held;
     var inside = _scan.inside || 0;
-    if (_scan.dTight < 58 && inside) {
-      if (prey.lat * inside <= 0.7) return inside;
-      return -inside;
-    }
-    if (Math.abs(prey.lat) > 0.35) return prey.lat >= 0 ? -1 : 1;
-    return inside || -1;
+    var side;
+    if (_scan.dTight < 58 && inside) side = prey.lat * inside <= 0.7 ? inside : -inside;
+    else if (Math.abs(prey.lat) > 0.35) side = prey.lat >= 0 ? -1 : 1;
+    else side = inside || -1;
+    r.aiPassSide = side;
+    r.aiCommit = 1.2;
+    return side;
   }
 
   function planHunt(r, p, want) {
@@ -6188,29 +6556,36 @@
     _hunt.catchUp = false;
     _hunt.block = false;
     _hunt.pass = false;
+    _hunt.draft = false;
     _hunt.cover = 0;
     _hunt.gap = 0;
     _hunt.want = want;
     var prey = pickPrey(r, p.hunter);
     var gap = trackLeadGap(r, p);
+    var aggro = p.aggro == null ? 0.5 : p.aggro;
     _hunt.gap = gap;
-    if (prey.r && prey.fwd < 2.2) {
-      // Ahead of them / door-to-door. Cover the lane. Aiming at their
-      // XY yaws 180 and rams — that's a U-turn, not a block.
-      _hunt.block = true;
-      var cover = prey.lat * 0.9;
-      if (Math.abs(cover) < 0.4) cover = 0;
-      _hunt.cover = clamp(cover, -2.8, 2.8);
-      _hunt.want = Math.min(MAX_SPEED, Math.max(want, (prey.r.speed || 0) + 2));
+    if (prey.r && prey.fwd < 2.2 && prey.d < 26) {
+      // Ahead of them / door-to-door. Cover the lane once, then get on
+      // with racing — aiming at their XY yaws 180 and rams.
+      var mayDefend = (p.defend || 0) > 0.2 && (r.aiDefendT || 0) <= 0;
+      if (mayDefend) {
+        _hunt.block = true;
+        var cover = prey.lat * (0.55 + 0.45 * (p.defend || 0));
+        if (Math.abs(cover) < 0.4) cover = 0;
+        _hunt.cover = clamp(cover, -2.8, 2.8);
+      }
+      _hunt.want = Math.min(SPEED_LIMIT, Math.max(want, (prey.r.speed || 0) + 2));
       return _hunt;
     }
-    if (p.hunter && prey.r && prey.d <= 16) {
+    // The dive is reserved for the player. Against the rest of the field
+    // Bowie is simply the fastest, hardest driver on the grid.
+    if (p.hunter && prey.r && prey.r.kind === "player" && prey.d <= 16) {
       var lead = prey.d * 0.14;
       if (lead > 3.2) lead = 3.2;
       if (lead < 0.45) lead = 0.45;
       _hunt.tx = prey.r.x + Math.cos(prey.r.heading) * lead;
       _hunt.tz = prey.r.z + Math.sin(prey.r.heading) * lead;
-      var close = Math.min(MAX_SPEED, (prey.r.speed || 0) + 10);
+      var close = Math.min(SPEED_LIMIT, (prey.r.speed || 0) + 10);
       if (close < want) close = want;
       _hunt.want = close;
       _hunt.on = true;
@@ -6218,21 +6593,35 @@
         _hunt.tx = prey.r.x;
         _hunt.tz = prey.r.z;
         _hunt.noLift = true;
-        _hunt.want = MAX_SPEED;
+        _hunt.want = SPEED_LIMIT;
       }
       return _hunt;
     }
-    if (prey.r && prey.fwd > 2.2 && prey.d <= 22 && !(_scan.dTight < 20 && _scan.tightR < 18)) {
-      _hunt.pass = true;
-      _hunt.cover = passSide(r, prey) * 2.45;
-      _hunt.want = Math.min(MAX_SPEED, Math.max(want, (prey.r.speed || 0) + 6));
+    if (prey.r && prey.fwd > 2.2 && prey.d <= 26 && !(_scan.dTight < 20 && _scan.tightR < 18)) {
+      // Sit in the tow first, then take the lane. The draft is what
+      // turns a train into an actual overtake.
+      if (prey.fwd > 6 && Math.abs(prey.lat) < 3.2) {
+        _hunt.draft = true;
+        _hunt.want = Math.min(SPEED_LIMIT, want + 4.2 * (p.draft == null ? 0.7 : p.draft));
+      }
+      // Only pull out if the lane is actually free and we are quick
+      // enough to use it. Two bots diving for one gap is a crash.
+      if (prey.fwd <= 22 && aggro > 0.15) {
+        var side = passSide(r, prey);
+        if (laneClear(r, side)) {
+          _hunt.pass = true;
+          _hunt.cover = side * 3.1;
+          _hunt.want = Math.min(SPEED_LIMIT, Math.max(_hunt.want, (prey.r.speed || 0) + 6));
+        } else {
+          r.aiPassSide = 0;
+          r.aiCommit = 0;
+        }
+      }
     }
     if (gap > 12) {
-      // Track-progress reel-in. Euclidean 96m used to drop a 200m lead.
       _hunt.catchUp = true;
       var bonus = catchBonus(p, gap);
-      var reelWant = Math.min(MAX_SPEED, want + bonus);
-      if (prey.r) reelWant = Math.min(MAX_SPEED, Math.max(reelWant, (prey.r.speed || 0) + (p.hunter ? 10 : 7)));
+      var reelWant = Math.min(SPEED_LIMIT, want + bonus);
       if (reelWant > _hunt.want) _hunt.want = reelWant;
     }
     return _hunt;
@@ -6245,7 +6634,7 @@
     }
     var p = aiOf(r);
     if (!r.launchArmed) applyCpuLaunch(r, p);
-    var proj = projectTrack(r.x, r.z);
+    var proj = projectTrackNear(r.x, r.z, r.s);
     r.s = proj.s;
 
     if (r.pitServicing) {
@@ -6281,64 +6670,72 @@
       poseCar(r);
       return;
     }
-    if (!r.didPit && !r.wantPit && PIT_META.on) {
-      if (r.lap >= p.pitLap || r.fuel < p.pitFuel || r.tires < p.pitTires) r.wantPit = true;
+    if (PIT_META.on) {
+      var bookD = pitDelta(r);
+      if (!r.wantPit && bookD > -300 && bookD < 20) {
+        // The mouth is the only place a stop can be taken, so the whole
+        // decision is: can this tank still reach the flag, and if not,
+        // is this the last mouth it can still reach? Boxing any earlier
+        // throws away range and costs a stop nobody needed.
+        var per = lapFuel();
+        var lapsLeft = LAPS - r.lap + 1;
+        var canFinish = r.fuel >= per * lapsLeft;
+        var lastChance = r.fuel < per * 1.15;
+        if ((!canFinish && lastChance) || r.tires < p.pitTires) r.wantPit = true;
+      }
+      // Missed the peel. Give the plan up and take it next time round
+      // rather than spending the rest of the race at pit-lane pace with
+      // an entry that is already behind the car.
+      if (r.wantPit && !r.pitServicing && bookD > 170) r.wantPit = false;
     }
 
-    var skilled = p.hunter || p.craft;
-    var pow = skilled ? 1.7 : 2;
-    var bMul = 0.7;
-    var planV = planSpeed(r, MAX_SPEED);
-    var scanMeters = skilled ? Math.max(260, brakeWindow(planV, 15, 1.15) + 40) : 190 * p.brake;
-    var scan = scanAhead(r.s, scanMeters);
     ensureRaceBrain();
-    var look = clamp((16 + r.speed * 0.44) * p.look, 11, 26);
-    if (scan.dBend < 88 && scan.dBend > 14) look = Math.min(look, 10 + scan.dBend * 0.28);
-    if (scan.dTight < 64) look = Math.min(look, 8 + scan.dTight * 0.2);
-    if (scan.dChi < 36) look = Math.min(look, 12);
-    var want = raceWantAhead(r.s, r.speed, p);
-    var hpApex = p.hairpin;
-    if (scan.dHair < 110 && (scan.tightR < 24 || scan.bendR < 24)) {
-      var hairV = hpApex;
-      if (scan.bendR >= 24 && scan.tightR >= 24) hairV = apexFromRadius(Math.max(scan.bendR, 40), 0.95);
-      want = Math.min(want, approachWant(want, scan.dHair, brakeWindow(want, hairV, bMul), hairV, pow));
-    }
-    if (scan.dBend < 900 && scan.bendR < 200) {
-      var bendV = apexFromRadius(scan.bendR, 0.95);
-      if (scan.dHair < 24 && scan.bendR < 20) bendV = Math.min(bendV, hpApex);
-      if (scan.dTight < 80 && scan.tightR < scan.bendR) bendV = Math.min(bendV, apexFromRadius(scan.tightR, 0.95));
-      want = Math.min(want, approachWant(want, scan.dBend, brakeWindow(want, bendV, bMul), bendV, pow));
-    }
-    if (scan.dChi < 900) {
-      want = Math.min(want, approachWant(want, scan.dChi, brakeWindow(want, p.chicane, bMul), p.chicane, pow));
-    }
-    if (scan.d90 < 6 && scan.d90Left > 0 && scan.d90Left < 14) {
-      want = Math.max(want, unwindWant(want, scan.d90, scan.d90Left, p.the90, 20));
-    }
-    if (scan.dSweep < 6 && scan.dSweepLeft > 0 && scan.dSweepLeft < 16) {
-      want = Math.max(want, unwindWant(want, scan.dSweep, scan.sweepLeft, p.sweeper, 24));
-    }
+    var tire01 = clamp(r.tires / 100, 0, 1);
+    var scan = scanAhead(r.s, 300);
+    r.aiT = (r.aiT || 0) + dt;
+    r.aiCommit = Math.max(0, (r.aiCommit || 0) - dt);
+    r.aiDefendT = Math.max(0, (r.aiDefendT || 0) - dt);
+    r.aiHitT = Math.max(0, (r.aiHitT || 0) - dt);
+
+    // One speed authority: the baked profile, read through this
+    // driver's pace and grip. No second or third opinion on top.
+    var want = raceWantAhead(r.s, r.speed, p, tire01);
+    if (r.aiHitT > 0 && !p.hunter) want = Math.min(want, r.speed * 0.94);
     if (r.fuel <= 0) want = Math.min(want, LIMP_SPEED);
 
+    var lineHere = raceAt(r.s);
+    var tight = scan.dTight < 60 || scan.dHair < 70 || (scan.dBend < 50 && scan.bendR < 60);
     var hunt = planHunt(r, p, want);
-    if (p.hunter && hunt.on && scan.dTight > 36 && scan.dHair > 50 && scan.dBend > 40) {
+    if (hunt.block && !tight) r.aiDefendT = 2.6;
+    if (p.hunter && hunt.on && !tight) {
+      // Bowie leaves the brake later than his own maths says when the
+      // player is in reach. Sometimes that means he runs deep.
       hunt.dive = true;
       hunt.noLift = true;
-      hunt.want = Math.max(hunt.want, Math.min(MAX_SPEED, want + 4));
+      hunt.want = Math.max(hunt.want, Math.min(SPEED_LIMIT, want + 5));
       want = hunt.want;
     }
-    if (p.hunter && hunt.on && (scan.dHair < 50 || scan.dTight < 28 || scan.dBend < 36 || cornerKind(proj.name) === "hairpin" || cornerKind(proj.name) === "the90")) {
-      // Close enough to bash, still make the corner. A 22-into-180 is a free pass.
+    if (p.hunter && hunt.on && tight) {
+      // Close enough to bash, still make the corner. A 22-into-a-180
+      // is a free pass, not a move.
       hunt.noLift = false;
       hunt.want = Math.min(hunt.want, want);
       want = hunt.want;
     }
-    if (hunt.catchUp && scan.dHair > 90 && scan.dTight > 70 && scan.dBend > 80 && scan.dChi > 50) {
-      want = Math.min(MAX_SPEED, Math.max(want, hunt.want));
-    }
-    if ((hunt.block || hunt.pass) && scan.dHair > 36 && scan.dTight > 28) {
-      want = Math.max(want, hunt.want);
-    }
+    if ((hunt.catchUp || hunt.draft) && !tight) want = Math.max(want, hunt.want);
+    if ((hunt.block || hunt.pass) && !tight) want = Math.max(want, hunt.want);
+    want = Math.min(want, SPEED_LIMIT);
+    if (!hunt.noLift) want = followLimit(r, p, want, hunt.pass);
+
+    // Pure Pursuit lookahead: long enough to be smooth on a straight,
+    // short enough to actually turn in, and shortened again when the
+    // car has been shoved off its line and needs to get back.
+    var look = clamp((13 + r.speed * 0.42) * (p.look || 1), 10, 32);
+    if (scan.dBend < 90 && scan.bendR < 90) look = Math.min(look, 10 + scan.dBend * 0.26);
+    if (scan.dTight < 64) look = Math.min(look, 8 + scan.dTight * 0.2);
+    if (scan.dChi < 40) look = Math.min(look, 13);
+    var offErr = Math.abs(proj.dist - Math.abs(lineHere.off));
+    if (offErr > 2.5) look = Math.min(look, 11 + Math.max(0, 26 - offErr));
 
     var target = centerlinePoint(r.s + look);
     var nx = -Math.sin(target.h);
@@ -6346,7 +6743,6 @@
     var inside = scan.inside || 1;
     var line = raceAt(r.s + look);
     var off = line.off + Math.abs(p.lineOff) * inside * 0.2;
-    if (p.wideEntry && scan.dTight > 14 && scan.dTight < 52) off -= 1.1;
     if (hunt.pass) off = hunt.cover;
     else if (hunt.block) {
       off = line.off + Math.abs(p.lineOff) * inside * 0.2;
@@ -6362,41 +6758,32 @@
     }
     var peeling = false;
     var midHit = hunt.on && hunt.noLift && _prey.d < 8;
-    if (r.wantPit && !r.didPit && PIT_META.on && !midHit) {
-      if (isDriveableLoop()) {
-        var gx = (PIT_GRAB.x0 + PIT_GRAB.x1) * 0.5;
-        var gz = (PIT_GRAB.z0 + PIT_GRAB.z1) * 0.5;
-        if (Math.hypot(r.x - gx, r.z - gz) < 56 || onPitPavement(r.x, r.z)) {
-          peeling = true;
-          var lookLoop = pitPathAhead(r.x, r.z, 20);
-          if (lookLoop) {
-            tx = lookLoop.x;
-            tz = lookLoop.z;
-          } else {
-            tx = gx;
-            tz = gz;
-          }
-          want = Math.min(want, 18);
+    var mouthD = pitDelta(r);
+    if (r.wantPit && PIT_META.on && !midHit) {
+      var onPitRoad = inPitLane(r);
+      if (onPitRoad || (mouthD > -90 && mouthD < 130)) {
+        peeling = true;
+        var aim = pitPathAhead(r.x, r.z, 20);
+        if (aim) {
+          tx = aim.x;
+          tz = aim.z;
+        } else {
+          var mouth = pointOnPitPath(0);
+          tx = mouth ? mouth.x : (PIT_GRAB.x0 + PIT_GRAB.x1) * 0.5;
+          tz = mouth ? mouth.z : (PIT_GRAB.z0 + PIT_GRAB.z1) * 0.5;
         }
-      } else {
-        var east = Math.cos(r.heading) > 0.25;
-        var onSf = Math.abs(r.z - SF_Z) < 24 && r.x > -70 && r.x < PIT_GRAB.x1 + 2;
-        if (east && onSf) {
-          peeling = true;
-          var lookIn = pitPathAhead(r.x, r.z, 22);
-          if (lookIn) {
-            tx = lookIn.x;
-            tz = lookIn.z;
-          } else {
-            tx = clamp(r.x + 28, PIT_LANE.x0 + 4, (PIT_GRAB.x0 + PIT_GRAB.x1) * 0.5);
-            tz = (PIT_LANE.z0 + PIT_LANE.z1) * 0.5;
-          }
-          want = Math.min(want, 18);
+        // Brake for the pit entry like it is a corner — arrive at lane
+        // pace instead of crawling the whole approach at 18.
+        var slowTo = 18;
+        if (!onPitRoad && mouthD < -8) {
+          var aBrk = Math.max(2.6, brakeDecelAt(r.speed));
+          slowTo = Math.sqrt(18 * 18 + 2 * aBrk * (-mouthD - 8));
         }
+        want = Math.min(want, slowTo);
       }
     }
     if (inPitLane(r) && !r.pitServicing) {
-      if (r.wantPit && !r.didPit && !midHit) {
+      if (r.wantPit && !midHit) {
         peeling = true;
         tx = isDriveableLoop()
           ? (PIT_GRAB.x0 + PIT_GRAB.x1) * 0.5
@@ -6422,61 +6809,104 @@
       }
     }
 
+    // Pursuit error plus a curvature feed-forward, so the wheel is
+    // already turned at the apex instead of chasing the error, minus a
+    // slide term so a car that starts washing out catches itself.
     var desiredH = Math.atan2(tz - r.z, tx - r.x);
-    var err = Math.atan2(Math.sin(desiredH - r.heading), Math.cos(desiredH - r.heading));
-    var steer = clamp(err * (hunt.on ? 2.05 : hunt.block || hunt.pass ? 2.0 : skilled ? 2.18 : 1.5), -1, 1);
+    var err = aiWrap(desiredH - r.heading);
+    var yawNow =
+      STEER_RATE *
+      clamp(Math.abs(r.speed) / 9, 0.5, 1) *
+      (1 - 0.7 * clamp(Math.abs(r.speed) / MAX_SPEED, 0, 1)) *
+      tireFeelOf(tire01);
+    var ff = 0;
+    if (yawNow > 0.05 && !hunt.on && !peeling) {
+      ff = clamp((r.speed * raceAt(r.s + look * 0.5).kap) / yawNow, -1, 1);
+    }
+    var steer = clamp(err * 1.75 + ff * 0.5 - (r.slide || 0) * 0.022, -1, 1);
     if (!inPitLane(r) && !inPitGrab(r) && (r.pitExitT || 0) > 0) {
       r.pitExitT -= dt;
       if (r.pitExitT < 0) r.pitExitT = 0;
     }
+
+    // Watchdog. Measured on race progress, so a bot spinning on the
+    // ribbon at speed counts as stuck exactly like one nosed into a
+    // barrier — the old speed-based check let it circle forever.
     var inPit = peeling || inPitLane(r) || inPitGrab(r) || (r.pitExitT || 0) > 0;
     var blocked = !inPit && noseBlocked(r);
     var wayOff = !inPit && (proj.grass || proj.dist > ASPHALT + RUNOFF - 0.25);
     var wide = !inPit && proj.dist > ASPHALT + 0.45;
-    var toward = faceDot(r, proj.x, proj.z);
-    if (inPit || (!wayOff && !blocked && proj.dist < ASPHALT - 0.6 && Math.abs(r.speed) > 2.5)) {
-      r.aiStuck = 0;
-    } else if (wayOff || blocked) {
-      r.aiStuck = (r.aiStuck || 0) + (Math.abs(r.speed) < 5.5 ? dt : dt * 0.35);
+    var wrongWay = !inPit && Math.cos(aiWrap(r.heading - proj.h)) < -0.25;
+    // Progress along the ribbon, wrapped, so crossing the line is not
+    // mistaken for going backwards. raceProg() only steps on a scored
+    // lap, which used to make the whole grid reset on lap one.
+    var jam = jammedByTraffic(r);
+    if (r.aiProgS == null || inPit) {
+      r.aiProgS = r.s;
+      r.aiStuckT = 0;
+    } else if (raceDeltaS(r.s, r.aiProgS) > 3) {
+      r.aiProgS = r.s;
+      r.aiStuckT = 0;
     } else {
-      r.aiStuck = Math.max(0, (r.aiStuck || 0) - dt * 2);
+      // Sitting behind a stopped car is traffic, not being stuck. Count
+      // it slowly so a real deadlock still escalates but a queue does
+      // not send the whole field into reverse.
+      r.aiStuckT = (r.aiStuckT || 0) + (jam ? dt * 0.35 : dt);
     }
-    var stuck = (r.aiStuck || 0) > 0.45;
-    if (wide && !wayOff && !blocked && !stuck) want = Math.min(want, 18);
-    var recover = !inPit && (wayOff || blocked || stuck);
-    var keepHit = p.hunter && hunt.on && hunt.noLift && !proj.grass && proj.dist < ASPHALT - 0.5 && !blocked;
+    var stuckT = r.aiStuckT || 0;
+    if (stuckT > 5.5) {
+      // Last resort so a race can never be decided by a parked bot.
+      resetOnLine(r);
+      stuckT = 0;
+    }
+    var stuck = stuckT > 0.9;
+    if (wide && !wayOff && !blocked && !stuck) want = Math.min(want, 22);
+    var recover = !inPit && (wayOff || blocked || wrongWay || stuck);
+    var keepHit = p.hunter && hunt.on && hunt.noLift && !proj.grass && proj.dist < ASPHALT - 0.5 && !blocked && !wrongWay;
     var reverse = false;
     if (recover && !peeling && !keepHit) {
       hunt.on = false;
       hunt.noLift = false;
-      tx = proj.x;
-      tz = proj.z;
-      want = wayOff ? 8 : 12;
-      if (proj.dist > 10) want = 7;
+      // Aim at the line a car length AHEAD, never at the projection
+      // point: a spun bot told to drive at its own shadow turns circles.
+      var back = centerlinePoint(r.s + 9);
+      var backOff = raceAt(r.s + 9).off;
+      tx = back.x - Math.sin(back.h) * backOff;
+      tz = back.z + Math.cos(back.h) * backOff;
+      want = wayOff ? 10 : 14;
+      if (proj.dist > 10) want = 8;
       if (blocked) want = Math.min(want, 6);
-      var mustRev = blocked || (wayOff && toward < -0.25) || stuck;
-      if (r.speed > 7 && (blocked || (wayOff && toward < -0.25))) {
-        reverse = false;
-        steer = recoverSteer(r, proj.x, proj.z, false);
+      var mustRev = blocked || wrongWay || stuckT > 1.8;
+      if (r.speed > 7 && mustRev) {
+        // Too fast to select reverse — stop first, still steering back.
+        steer = recoverSteer(r, tx, tz, false);
         applyMotion(r, steer, false, true, false, dt, false);
         updateLaps(r);
         return;
       }
-      reverse = mustRev;
-      steer = recoverSteer(r, proj.x, proj.z, reverse);
+      reverse = mustRev && (r.aiRevT || 0) < 1.6;
+      if (reverse) r.aiRevT = (r.aiRevT || 0) + dt;
+      else if (!mustRev) r.aiRevT = 0;
+      steer = recoverSteer(r, tx, tz, reverse);
+    } else {
+      r.aiRevT = 0;
     }
-    r.aiT = (r.aiT || 0) + dt;
     if (p.wobble && (r.aiT % 3.6) < 0.28 && !recover) {
       steer = clamp(steer + Math.sin(r.aiT * 9 + (r.s || 0)) * p.wobble, -1, 1);
     }
-    if (!p.hunter && !hunt.block && !hunt.pass && !recover) steer = avoidRams(r, steer);
+    if (!recover && !(p.hunter && hunt.on)) steer = avoidRams(r, steer);
 
-    var slack = skilled ? (want > MAX_SPEED * 0.88 ? 2.4 : 1.05) : 2.2;
-    var throttle = !reverse && r.speed < want - (skilled ? 0.05 : 0.4);
-    var brake = !reverse && r.speed > want + slack;
+    // Committed brake zones. applyMotion ramps brake bite over 0.2s, so
+    // chattering the pedal is the slowest possible way to slow down.
+    var over = r.speed - want;
+    if (over > 0.8) r.aiBrake = 1;
+    else if (over < -0.15) r.aiBrake = 0;
+    var brake = !reverse && !!r.aiBrake && r.speed > 1;
+    var throttle = !reverse && !brake && r.speed < want - 0.12;
     if (hunt.on && hunt.noLift && !recover) {
       throttle = !reverse;
       brake = false;
+      r.aiBrake = 0;
     }
     if (reverse) {
       throttle = false;
@@ -6484,6 +6914,29 @@
     }
     applyMotion(r, steer, throttle, brake, reverse, dt, false);
     updateLaps(r);
+  }
+
+  function jammedByTraffic(r) {
+    var jam = false;
+    eachRival(r, function (o) {
+      if (jam) return;
+      if (Math.hypot(o.x - r.x, o.z - r.z) < 4.5) jam = true;
+    });
+    return jam;
+  }
+
+  function resetOnLine(r) {
+    var p = centerlinePoint(r.s + 6);
+    var off = raceAt(r.s + 6).off;
+    r.x = p.x - Math.sin(p.h) * off;
+    r.z = p.z + Math.cos(p.h) * off;
+    r.heading = p.h;
+    r.speed = 12;
+    r.slide = 0;
+    r.aiStuckT = 0;
+    r.aiRevT = 0;
+    r.aiProgS = r.s;
+    r.aiResets = (r.aiResets || 0) + 1;
   }
 
   function hitCarFeel(r, vx, vz, nx, nz, impact) {
@@ -6495,6 +6948,9 @@
     var fwd = c * nx + s * nz;
     var side = c * nz - s * nx;
     var dir = side >= 0 ? 1 : -1;
+    // Bots lift briefly after contact so one shunt does not cascade
+    // into a pile-up. The hunter ignores it.
+    r.aiHitT = 0.45;
     var nose = clamp(-fwd, 0, 1);
     var tail = clamp(fwd, 0, 1);
     var hip = 1 - Math.abs(fwd);
@@ -7293,16 +7749,16 @@
 
   function speedKph(r) {
     if (!r) return 0;
-    var fromSpeed = Math.abs(r.speed) * 3.15;
-    var fromSlide = Math.abs(r.slide || 0) * 3.15;
-    return Math.round(Math.max(fromSpeed, fromSlide));
+    var fromSpeed = Math.abs(r.speed) * KPH_PER_UNIT;
+    var fromSlide = Math.abs(r.slide || 0) * KPH_PER_UNIT;
+    return Math.round(Math.min(TOP_KPH, Math.max(fromSpeed, fromSlide)));
   }
 
   function motionKph(r, moved, dt) {
     var live = speedKph(r);
     var step = dt > 0.0001 ? dt : 1 / 60;
-    var fromMove = (moved / step) * 3.15;
-    var shown = Math.max(live, fromMove);
+    var fromMove = (moved / step) * KPH_PER_UNIT;
+    var shown = Math.min(TOP_KPH, Math.max(live, fromMove));
     if (shown < 0.5) return 0;
     return Math.round(shown);
   }

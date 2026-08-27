@@ -34,6 +34,15 @@ function assert(cond, msg) {
   if (!cond) throw new Error(msg);
 }
 
+// Physics constants come out of game.js verbatim. Hand-copied numbers
+// drifted once already: #29 raised MAX_SPEED to 200 and the stub kept
+// 48, so every handling test here was quietly grading old physics.
+function constFrom(name) {
+  var m = src.match(new RegExp("^\\s*var " + name + " = ([^;\\n]+);", "m"));
+  if (!m) throw new Error("missing const " + name);
+  return "var " + name + " = " + m[1] + ";";
+}
+
 var code = [
   "var ASPHALT = 8.6;",
   "var RUNOFF = 3.8;",
@@ -43,7 +52,16 @@ var code = [
   "var GRASS_ROLL = 4;",
   "var GRASS_DUMP = 40;",
   "var TIRE_FLOOR = 22;",
+  constFrom("WORN_FEEL"),
+  constFrom("KPH_PER_UNIT"),
+  constFrom("TOP_KPH"),
+  constFrom("PIT_HALF"),
+  // The map sandbox keeps the old 48 cap and the old quick accel on
+  // purpose (#29): these tests drive 10s of W down short editor boards.
+  // SPEED_LIMIT has to follow the sandbox cap, not the shipped 200, or
+  // every handling sample here runs 30% faster than it was written for.
   "var MAX_SPEED = 48;",
+  "var SPEED_LIMIT = MAX_SPEED;",
   "var ACCEL = 16;",
   "var BRAKE_DECEL = 20;",
   "var COAST = 5;",
@@ -124,6 +142,9 @@ var code = [
   sliceFn("setDefaultPit"),
   sliceFn("clearPit"),
   sliceFn("placePitHere"),
+  sliceFn("turnWrap"),
+  sliceFn("joinPlan"),
+  sliceFn("emitJoin"),
   sliceFn("autoClosePath"),
   sliceFn("cornerKind"),
   sliceFn("builtinSpec"),
@@ -141,6 +162,9 @@ var code = [
   sliceFromTo("var MAP_SURF = [];", "rebuildPath"),
   sliceFn("rebuildPath"),
   sliceFn("projectOn"),
+  sliceFn("raceDeltaS"),
+  sliceFn("trackInfoAt"),
+  sliceFn("projectTrackNear"),
   sliceFn("projectTrack"),
   sliceFn("inPitBox"),
   sliceFn("dressClear"),
@@ -153,7 +177,9 @@ var code = [
   sliceFn("hitCarFeel"),
   sliceFn("applyMotion"),
   sliceFn("updateLaps"),
-  sliceFn("onRaceRibbon"),
+  sliceFn("pitRoadDist"),
+  sliceFn("raceRoadDist"),
+  sliceFn("pitClaims"),
   sliceFn("inPitLane"),
   sliceFn("inPitGrab"),
   sliceFn("cleanTrack"),
@@ -207,7 +233,7 @@ var code = [
   "  updateLaps: updateLaps,",
   "  inPitGrab: inPitGrab,",
   "  inPitLane: inPitLane,",
-  "  onRaceRibbon: onRaceRibbon,",
+  "  pitClaims: pitClaims,",
   "  cleanTrack: cleanTrack,",
   "  cellsInBoard: cellsInBoard,",
   "  customGridPose: customGridPose,",
@@ -920,9 +946,10 @@ assert(src.indexOf("if (launchCall === \"DUMP\") launchCall = \"SLUGGISH\"") !==
 assert(!/function applyLaunch\([\s\S]{0,500}dumpLaunch/.test(src), "lights-out does not spin onto grass");
 assert(!/function applyCpuLaunch\([\s\S]{0,900}dumpLaunch/.test(src), "room Bowie does not dump-spin at GO");
 assert(src.indexOf("function slotHeading") !== -1 && src.indexOf("gridHeading = slotHeading(g)") !== -1, "room grid keeps the slot heading");
-assert(src.indexOf("function onRaceRibbon") !== -1, "ribbon test is shared by lane and grab");
-assert(src.indexOf("if (onRaceRibbon(r.x, r.z)) return false") !== -1, "on-ribbon never enters pit lane or grab");
-assert(src.indexOf("if (!isDriveableLoop() && r.z <= SF_Z + ASPHALT) return false") !== -1, "campus center/right of the ribbon is never the pit lane");
+assert(src.indexOf("function pitClaims") !== -1, "one nearer-road test is shared by lane and grab");
+assert(src.indexOf("return rd > ASPHALT && pd < rd;") !== -1, "the pit only owns a spot off the asphalt, where it is the nearer road");
+assert(/function inPitLane\([\s\S]{0,120}return pitClaims/.test(src), "PIT LANE is the pit ribbon, not an axis-aligned box");
+assert(/function inPitGrab\([\s\S]{0,120}if \(!pitClaims/.test(src), "the grab box is on the pit ribbon too");
 assert(src.indexOf("var inBox = inPitGrab(player)") !== -1, "PIT LANE banner is the halfway box, not the peel mouth");
 assert(src.indexOf("inBox = inPitLane(player) || inPitGrab(player)") === -1, "peel mouth does not paint PIT LANE");
 assert(src.indexOf("z0: -74.0") === -1, "campus pit pave is not painted on the racing line");
@@ -939,10 +966,10 @@ assert(src.indexOf('pathLine(680, "start")') !== -1, "start road is long enough 
 assert(src.indexOf("The racing ribbon stays whole") !== -1, "second road is added beside the ribbon, not a hole");
 assert(src.indexOf("z0: -61.5") !== -1, "second asphalt road starts past the grass median");
 assert(src.indexOf("function stampPitBand") !== -1 && src.indexOf("stampPitBand(PIT_HALF, 0.09, 0.08, asphaltMat, endS)") !== -1, "pit lane is the same asphalt as the race track, just smaller");
-assert(src.indexOf("r.z <= SF_Z + ASPHALT + 8") !== -1, "grab requires the visible left lane, not the median");
+assert(src.indexOf("if (pd > PIT_HALF) return false") !== -1, "grab requires the visible left lane, not the median");
 assert(src.indexOf("inRect(wx, wz, PIT_ENTRY) || inRect(wx, wz, PIT_EXIT)") !== -1, "left wall opens only at IN/OUT mouths");
 assert(src.indexOf("player.heading = slotHeading({ h: gridHeading })") !== -1, "campus GO snaps heading east");
-assert(src.indexOf("return inRect(r.x, r.z, PIT_GRAB)") !== -1, "campus pit grab is the halfway box");
+assert(src.indexOf("return t >= 0.42 && t <= 0.98") !== -1, "pit grab is the middle of the lane, not the mouths");
 assert(src.indexOf("var onRace = ribbon && ribbon.dist <= ASPHALT") !== -1, "full racing ribbon is on-race");
 assert(src.indexOf("r.z > leftOfRace && r.z < PIT_LANE.z1 + 4") === -1, "pit grab does not eat toward the racing line");
 assert(src.indexOf("launchT = GETAWAY_T") !== -1 && src.indexOf("var GETAWAY_T = 1.5") !== -1, "SLUGGISH is a 1.5s getaway, not a grass limp");
