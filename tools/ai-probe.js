@@ -94,6 +94,10 @@ function buildTrack(name) {
     CUSTOM[name]();
     sim.autoClosePath();
     sim.sealCustom();
+    // buildTrackMeshes() does this for every rebuild in the game. Skip it
+    // here and a custom loop inherits the last track's barriers, which
+    // reads as the brain jamming when it is really the harness lying.
+    sim.placeWalls();
     return;
   }
   sim.buildBuiltin(name);
@@ -143,12 +147,14 @@ function padL(s, n) {
   return s;
 }
 
-function runTrack(name, seconds) {
+function runTrack(name, seconds, seed, quiet) {
   buildTrack(name);
+  sim.setSeed(seed || 1);
   var len = sim.trackLen();
   var prof = profileReport();
   var spawn = { s: len - 6 };
   var field = sim.runField(FIELD, seconds || 620, spawn);
+  if (quiet) return summarise(name, len, field, seed);
   console.log(
     "\n" +
       name +
@@ -233,13 +239,29 @@ function runTrack(name, seconds) {
       );
     });
   }
+  return summarise(name, len, field, seed);
+}
+
+function summarise(name, len, field, seed) {
   var fastest = field[0];
   var slowest = field[field.length - 1];
   return {
     track: name,
     len: len,
+    seed: seed || 1,
     spread: +(slowest.finishTime - fastest.finishTime).toFixed(1),
     winner: fastest.name,
+    worst: slowest.name,
+    reverseT: +field
+      .reduce(function (a, f) {
+        return a + f.reverseT;
+      }, 0)
+      .toFixed(1),
+    stillT: +field
+      .reduce(function (a, f) {
+        return a + f.still;
+      }, 0)
+      .toFixed(1),
     allFinished: field.every(function (f) {
       return f.finished;
     }),
@@ -370,19 +392,34 @@ if (args.indexOf("--laps") !== -1) {
     console.log(pad(name, 16), sim.trackLen().toFixed(0), JSON.stringify(profileReport()));
   });
 } else {
-  var summary = list.map(function (name) {
-    return runTrack(name);
+  // A single race is one roll of the dice on a jam. Run a few seeds so a
+  // regression cannot hide behind a lucky start.
+  var seeds = (process.env.SEEDS || "1").split(",").map(Number);
+  var quiet = args.indexOf("--quiet") !== -1;
+  var summary = [];
+  list.forEach(function (name) {
+    seeds.forEach(function (seed) {
+      summary.push(runTrack(name, 0, seed, quiet));
+    });
   });
   console.log("\nsummary");
   summary.forEach(function (s) {
     console.log(
       "  " +
-        pad(s.track, 16) +
+        pad(s.track, 14) +
+        "seed " +
+        s.seed +
         padL(s.len.toFixed(0), 6) +
         "  spread " +
         padL(s.spread, 6) +
+        "  rev " +
+        padL(s.reverseT, 6) +
+        "  still " +
+        padL(s.stillT, 6) +
         "  won by " +
-        pad(s.winner, 14) +
+        pad(s.winner, 13) +
+        "  last " +
+        pad(s.worst, 13) +
         (s.allFinished ? "" : "  DNF") +
         (s.resets ? "  resets=" + s.resets : "")
     );

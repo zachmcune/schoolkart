@@ -111,6 +111,12 @@ var code = [
   "var cpus = [];",
   "var FUEL_OVERRIDE = 0;",
   "function setFuelOverride(v) { FUEL_OVERRIDE = v; }",
+  // A/B-ing a brain change is meaningless if the run wanders. The only
+  // randomness the sim reaches is the worn-tire twitch, so pin it.
+  "var _seed = 1;",
+  "function setSeed(v) { _seed = (v >>> 0) || 1; }",
+  "var Math = Object.create(global.Math);",
+  "Math.random = function () { _seed = (_seed * 1103515245 + 12345) & 0x7fffffff; return _seed / 0x7fffffff; };",
   sliceFn("clamp"),
   sliceFn("inRect"),
   sliceFn("pitSegLine"),
@@ -283,6 +289,7 @@ var code = [
   "  runBot: runBot,",
   "  runField: runField,",
   "  setFuelOverride: setFuelOverride,",
+  "  setSeed: setSeed,",
   "  runTrace: runTrace,",
   "  SPEED_LIMIT: SPEED_LIMIT,",
   "  runHunt: runHunt,",
