@@ -109,14 +109,39 @@ assert(bowie.grass <= 6, "Bowie holds the ribbon, not a wide dump (" + bowie.gra
 assert(tidy.grass <= 6, "Hall Monitor holds the ribbon (" + tidy.grass.toFixed(1) + "s grass)");
 assert(bowie.maxOff < 26, "Bowie does not take the 90/180 wide (" + bowie.maxOff.toFixed(1) + ")");
 assert(sim.AI_AGGRO.lineOff > 0.4, "Bowie holds the inside");
-assert(sim.AI_AGGRO.the90 < 25, "Bowie's 90 is a speed he can turn");
 assert(sim.AI_AGGRO.pace >= 1, "Bowie winds the longs at the cap");
-assert(sim.AI_SMART.pace >= 1 && sim.AI_TIDY.pace >= 1, "campus kids wind the longs at the cap");
-assert(sim.AI_SMART.brake === sim.AI_AGGRO.brake, "everyone brakes with Bowie");
-assert(sim.AI_SMART.pitFuel === sim.AI_AGGRO.pitFuel, "everyone boxes on Bowie's window");
-assert(sim.AI_MESSY.lineOff === sim.AI_AGGRO.lineOff, "nobody runs a sloppy wide line");
 assert(sim.AI_AGGRO.overshoot === 1 && sim.AI_SMART.overshoot === 1, "the field can overshoot the 180");
 assert(sim.AI_SMART.craft === 1 && !sim.AI_SMART.hunter, "smart craft, no hunt");
+
+// The field used to be nine names sharing one set of numbers, which read
+// as a train of clones. Every table now has to be its own driver, and
+// Bowie has to be the one at the sharp end of it.
+var TABLES = {
+  AI_AGGRO: sim.AI_AGGRO,
+  AI_SMART: sim.AI_SMART,
+  AI_TIDY: sim.AI_TIDY,
+  AI_MESSY: sim.AI_MESSY,
+  AI_SHY: sim.AI_SHY,
+  AI_BEAT: sim.AI_BEAT,
+  AI_LAB: sim.AI_LAB,
+  AI_WILD: sim.AI_WILD,
+  AI_WIDE: sim.AI_WIDE,
+};
+var seen = {};
+Object.keys(TABLES).forEach(function (key) {
+  var t = TABLES[key];
+  var print = [t.pace, t.grip, t.brake, t.look, t.lineOff, t.aggro, t.defend, t.draft].join("/");
+  assert(!seen[print], key + " is a clone of " + seen[print]);
+  seen[print] = key;
+  assert(t.pace > 0.9 && t.pace <= 1, key + " pace is a real fraction of Bowie's (" + t.pace + ")");
+  assert(t.grip > 0.9 && t.grip <= 1, key + " grip is a real fraction of Bowie's (" + t.grip + ")");
+  assert(t.brake <= sim.AI_AGGRO.brake, key + " does not brake later than Bowie (" + t.brake + ")");
+  assert(t.pace <= sim.AI_AGGRO.pace, key + " does not out-pace Bowie (" + t.pace + ")");
+  assert(t.pitFuel > 20 && t.pitFuel < 45, key + " boxes on a sane fuel window (" + t.pitFuel + ")");
+  assert(t.pitTires > 15 && t.pitTires < 40, key + " boxes on a sane tire window (" + t.pitTires + ")");
+  assert(t.lineOff > 0.3 && t.lineOff < 0.7, key + " runs a believable line offset (" + t.lineOff + ")");
+  assert(t.wobble >= 0 && t.wobble <= 0.1, key + " wobble is a twitch, not a swerve (" + t.wobble + ")");
+});
 assert(bowie.finishTime > 220, "beatable — heavy car, not a ghost (" + bowie.finishTime.toFixed(1) + ")");
 assert(bowie.finishTime < 340, "Bowie is the car to beat, not a backmarker (" + bowie.finishTime.toFixed(1) + ")");
 assert(tidy.finishTime < 340, "Hall Monitor keeps race pace (" + tidy.finishTime.toFixed(1) + ")");
@@ -127,10 +152,9 @@ assert(sim.gradeLaunch(0.81) === "DUMP", "past the mark dumps");
 assert(sim.gradeLaunch(1) === "DUMP", "at max is a fail");
 assert(sim.AI_AGGRO.hunter === 1, "BowieKnife99 is the hunter");
 assert(!sim.AI_TIDY.hunter && !sim.AI_MESSY.hunter, "only Bowie hunts");
-assert(sim.AI_SHY.pace === sim.AI_TIDY.pace, "Library Kid shares Hall Monitor pace");
-assert(sim.AI_WILD.pace === sim.AI_BEAT.pace, "Detention shares Band Kid pace");
-assert(sim.AI_WIDE.lineOff === sim.AI_LAB.lineOff, "Yearbook shares Lab Partner line");
-assert(sim.AI_LAB.brake === sim.AI_BEAT.brake, "Lab Partner shares Band Kid brakes");
+assert(sim.AI_WILD.aggro > sim.AI_SHY.aggro, "Detention leans on people, Sub Teacher does not");
+assert(sim.AI_WILD.wobble > sim.AI_LAB.wobble, "Detention is the scruffy one, Lab Partner the surgical one");
+assert(sim.AI_TIDY.defend > sim.AI_SHY.defend, "Hall Monitor shuts the door, Sub Teacher leaves it open");
 
 ["Library Kid", "Band Kid", "Lab Partner", "Detention", "Yearbook"].forEach(function (name) {
   var extra = sim.runBot(name, -14, -80 + 2.7, sim.TRACK_LEN - 14, 12);
@@ -311,10 +335,14 @@ for (ws = 0; ws < sim.trackLen(); ws += 8) {
   }
 }
 assert(wideHair && wideHair.r > 30, "wide loop has a tile-scale hairpin");
-assert(sim.namedApex(10, 17.4, wideHair.r, 1) > 28, "wide hairpin uses grip, not campus crawl apex");
-assert(sim.namedApex(10, 17.4, 11, 1) < 20, "campus 180 still uses the tight apex");
-assert(sim.namedApex(10, 31, 40, 1) === 31, "campus 90 entry keeps the tuned apex");
-assert(sim.gripApex(44, 1) > 30, "44m tile corners carry race speed");
+// Apex speeds come out of the arc, not a table of tuned corner names, so
+// the same maths has to tell a fat editor hairpin apart from Campus's 180.
+var wideApex = sim.apexLimit(wideHair.r, wideHair.r, "hairpin", 1);
+var tightApex = sim.apexLimit(11, 11, "hairpin", 1);
+assert(wideApex > 26, "wide hairpin uses grip, not a campus crawl (" + wideApex.toFixed(1) + ")");
+assert(tightApex < 20, "campus 180 is still a slow corner (" + tightApex.toFixed(1) + ")");
+assert(wideApex > tightApex + 8, "the two hairpins are not the same corner");
+assert(sim.apexFromRadius(44, 1) > 30, "44m tile corners carry race speed");
 var wide = sim.runBot("Hall Monitor", widePt.x, widePt.z, 0, 28);
 console.log(
   "wide Hall t=" +

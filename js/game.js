@@ -2088,11 +2088,23 @@
   // the car then reads as pointing the wrong way, 700m further round the
   // lap, and braking for a corner that is somewhere else entirely. A car
   // cannot travel 70m in a frame, so the hint settles it.
+  //
+  // But the hint only settles a TIE. Every built-in circuit crosses over
+  // itself somewhere, and a spin at the crossing really does leave the
+  // car on the other road. Preferring the hint whenever it was merely
+  // findable pinned one bot's reading 38m off the ribbon for four and a
+  // half seconds — long enough to plan for a corner it had left, and to
+  // miss the lap it was driving.
+  var HINT_SLACK = 6;
+
   function projectTrackNear(px, pz, sHint) {
     var segs = PATH.length ? PATH : MAP_SURF;
-    if (sHint == null || !isFinite(sHint) || !segs.length || !(TRACK_LEN > 8)) return projectTrack(px, pz);
-    var best = null;
-    var bestS = 0;
+    if (!segs.length) return projectTrack(px, pz);
+    var useHint = sHint != null && isFinite(sHint) && TRACK_LEN > 8;
+    var near = null;
+    var nearS = 0;
+    var any = null;
+    var anyS = 0;
     var i;
     for (i = 0; i < segs.length; i++) {
       var seg = segs[i];
@@ -2101,17 +2113,28 @@
           ? closestOnSeg(px, pz, seg.ax, seg.az, seg.bx, seg.bz)
           : closestOnArc(px, pz, seg.cx, seg.cz, seg.r, seg.a0, seg.a1);
       var s = (seg.startS || 0) + hit.t * (seg.len != null ? seg.len : 0);
-      if (Math.abs(raceDeltaS(s, sHint)) > 70) continue;
-      if (!best || hit.d2 < best.d2) {
-        best = hit;
-        bestS = s;
-        best.name = seg.name;
+      if (!any || hit.d2 < any.d2) {
+        any = hit;
+        anyS = s;
+        any.name = seg.name;
+      }
+      if (useHint && Math.abs(raceDeltaS(s, sHint)) <= 70 && (!near || hit.d2 < near.d2)) {
+        near = hit;
+        nearS = s;
+        near.name = seg.name;
       }
     }
-    // Nothing near the hint, or the car has clearly been moved (reset,
-    // rejoin, grid pin): the hint is stale, so answer without it.
-    if (!best || best.d2 > (ASPHALT + RUNOFF + 26) * (ASPHALT + RUNOFF + 26)) return projectTrack(px, pz);
-    return trackInfoAt(px, pz, best, bestS);
+    if (!any) return projectTrack(px, pz);
+    // Let the hint go when the alternative is both plainly closer and a
+    // believable on-road reading. That second half matters: down the pit
+    // lane every bit of ribbon is fifteen metres away and equally wrong,
+    // so flipping between them there breaks continuity for nothing.
+    var keep = !!near;
+    if (keep) {
+      var dAny = Math.sqrt(any.d2);
+      if (Math.sqrt(near.d2) > dAny + HINT_SLACK && dAny <= ASPHALT + RUNOFF) keep = false;
+    }
+    return keep ? trackInfoAt(px, pz, near, nearS) : trackInfoAt(px, pz, any, anyS);
   }
 
   function projectTrack(px, pz) {
@@ -4976,7 +4999,8 @@
       passedHalf: false,
       lastX: 0,
       s: 0,
-      lastS: 0,
+      lastS: null,
+      lapDist: null,
       brakeHold: 0,
       finished: false,
       finishTime: 0,
@@ -5157,7 +5181,11 @@
     r.passedHalf = false;
     r.lastX = x;
     r.s = s;
-    r.lastS = s;
+    r.lastS = null;
+    r.lapDist = null;
+    r.burnLap = 0;
+    r.burnLapN = -1;
+    r.burnMark = null;
     r.brakeHold = 0;
     r.finished = false;
     r.finishTime = 0;
@@ -5240,7 +5268,8 @@
     });
     function pinS(r) {
       r.s = projectTrack(r.x, r.z).s;
-      r.lastS = r.s;
+      r.lastS = null;
+      r.lapDist = null;
       r.passedHalf = false;
     }
     pinS(player);
@@ -5334,6 +5363,16 @@
     return LAP_ORIGIN.s;
   }
 
+  function scoreLap(r, into) {
+    r.lapDist = into;
+    r.lap += 1;
+    if (r.lap > LAPS) {
+      r.finished = true;
+      r.finishTime = raceTime;
+      r.lap = LAPS;
+    }
+  }
+
   function updateLaps(r) {
     if (r.finished) return;
     var prog = projectTrackNear(r.x, r.z, r.s);
@@ -5343,38 +5382,39 @@
     // gate, so they stayed on lap 1 until the clock ran out.
     if (PATH.length && TRACK_LEN > 80) {
       var origin = lapOriginS();
-      var prevRaw = r.lastS != null ? r.lastS : r.s;
-      var prev = prevRaw - origin;
       var cur = r.s - origin;
-      if (prev < 0) prev += TRACK_LEN;
       if (cur < 0) cur += TRACK_LEN;
-      // A frame can only move a car a few metres. Anything bigger is the
-      // projection hopping to a neighbouring bit of ribbon — normal on a
-      // twisty board when you run wide — and scoring it hands out free
-      // laps. Tight custom loops were finishing in a third of the time.
-      var step = cur - prev;
-      if (step > TRACK_LEN * 0.5) step -= TRACK_LEN;
-      else if (step < -TRACK_LEN * 0.5) step += TRACK_LEN;
-      if (Math.abs(step) > 40) {
+      if (r.lapDist == null || r.lastS == null) {
+        // Cars are gridded behind the line, so their first crossing ends
+        // a lap nobody drove. Start the tally where they are standing and
+        // that lap comes out negative, exactly as it should.
+        r.lapDist = cur > TRACK_LEN * 0.5 ? cur - TRACK_LEN : cur;
         r.lastS = r.s;
         r.lastX = r.x;
         return;
       }
-      if (prev < TRACK_LEN * 0.5 && cur >= TRACK_LEN * 0.5) r.passedHalf = true;
+      var prev = r.lastS - origin;
+      if (prev < 0) prev += TRACK_LEN;
+      var step = cur - prev;
+      if (step > TRACK_LEN * 0.5) step -= TRACK_LEN;
+      else if (step < -TRACK_LEN * 0.5) step += TRACK_LEN;
+      // A frame can only move a car a few metres. Anything bigger is the
+      // reading hopping to another bit of ribbon — every built-in circuit
+      // crosses over itself somewhere — so bank no ground for that frame.
+      // Throwing the whole frame away instead, as this used to, meant the
+      // one crossing that mattered went unseen and the lap being driven
+      // was never scored: 70 seconds gone, and because burn is measured
+      // per scored lap, the car then believed it needed a stop every lap.
+      var jumped = Math.abs(step) > 40;
+      if (!jumped) r.lapDist += step;
       // The pit road leaves the ribbon just before the line on most
       // boards, so a car taking a stop crosses the stripe on pit paint
       // or on the grass between the two. Requiring racing asphalt threw
       // that lap away and made every stop cost a whole extra lap.
       var scoreable = prog.onAsphalt || pitRoadDist(r.x, r.z) <= PIT_HALF + 9;
-      if (r.passedHalf && prev > TRACK_LEN * 0.72 && cur < TRACK_LEN * 0.28 && scoreable) {
-        r.passedHalf = false;
-        r.lap += 1;
-        if (r.lap > LAPS) {
-          r.finished = true;
-          r.finishTime = raceTime;
-          r.lap = LAPS;
-        }
-      }
+      var crossed = !jumped && prev > TRACK_LEN * 0.72 && cur < TRACK_LEN * 0.28;
+      if (r.lapDist > TRACK_LEN * 0.5 && crossed && scoreable) scoreLap(r, cur);
+      else if (r.lapDist >= TRACK_LEN) scoreLap(r, r.lapDist - TRACK_LEN);
       r.lastS = r.s;
       r.lastX = r.x;
       return;
@@ -5657,6 +5697,12 @@
   //   defend  willingness to cover the lane
   //   draft   how much of a tow the driver takes
   //   wobble  mistake amplitude
+  // A defensive move is one lean on the lane, then a spell of racing the
+  // ribbon. Without the rest a car sits on the inside forever and the
+  // player can never get by; without the hold the lean lasts one frame
+  // and moves the car four inches, which nobody notices.
+  var DEFEND_MOVE = 1.1;
+  var DEFEND_REST = 2.4;
   var AI_AGGRO = {
     // BowieKnife99. Fastest, bravest on the brakes, wants you gone.
     pace: 1,
@@ -6265,8 +6311,15 @@
     r.burnRefuel = false;
   }
 
+  // Measured, but never wilder than the physics allows. A lap spent stuck
+  // in traffic or crawling out of a spin burns two or three times the
+  // going rate, and taking that reading at face value told one bot its
+  // tank was good for less than a lap — so it queued for the pit at every
+  // opportunity for the rest of the race with three quarters of a tank.
   function burnPerLap(r) {
-    return r.burnLap > 1 ? r.burnLap : lapFuel();
+    var theory = lapFuel();
+    if (!(r.burnLap > 1)) return theory;
+    return clamp(r.burnLap, theory * 0.55, theory * 1.25);
   }
 
   // Forward/backward feasibility, run to convergence. Two fixed passes
@@ -6697,8 +6750,10 @@
     _hunt.gap = gap;
     if (prey.r && prey.fwd < 2.2 && prey.d < 26) {
       // Ahead of them / door-to-door. Cover the lane once, then get on
-      // with racing — aiming at their XY yaws 180 and rams.
-      var mayDefend = (p.defend || 0) > 0.2 && (r.aiDefendT || 0) <= 0;
+      // with racing — aiming at their XY yaws 180 and rams. "Once" means
+      // one move that finishes: while the hold is running the car keeps
+      // leaning on the lane, and only the rest afterwards locks it out.
+      var mayDefend = (p.defend || 0) > 0.2 && ((r.aiDefendHold || 0) > 0 || (r.aiDefendT || 0) <= 0);
       if (mayDefend) {
         _hunt.block = true;
         var cover = prey.lat * (0.55 + 0.45 * (p.defend || 0));
@@ -6831,6 +6886,10 @@
     r.aiT = (r.aiT || 0) + dt;
     r.aiCommit = Math.max(0, (r.aiCommit || 0) - dt);
     r.aiDefendT = Math.max(0, (r.aiDefendT || 0) - dt);
+    var wasHold = r.aiDefendHold || 0;
+    r.aiDefendHold = Math.max(0, wasHold - dt);
+    // The move just finished, so now start serving the sentence for it.
+    if (wasHold > 0 && r.aiDefendHold <= 0) r.aiDefendT = DEFEND_REST;
     r.aiHitT = Math.max(0, (r.aiHitT || 0) - dt);
 
     // One speed authority: the baked profile, read through this
@@ -6842,7 +6901,7 @@
     var lineHere = raceAt(r.s);
     var tight = scan.dTight < 60 || scan.dHair < 70 || (scan.dBend < 50 && scan.bendR < 60);
     var hunt = planHunt(r, p, want);
-    if (hunt.block && !tight) r.aiDefendT = 2.6;
+    if (hunt.block && !tight && r.aiDefendHold <= 0 && r.aiDefendT <= 0) r.aiDefendHold = DEFEND_MOVE;
     if (p.hunter && hunt.on && !tight) {
       // Bowie leaves the brake later than his own maths says when the
       // player is in reach. Sometimes that means he runs deep.

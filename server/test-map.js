@@ -110,6 +110,9 @@ var code = [
   "var MESH_TAIL = 2.1;",
   "var MESH_HALF_W = 1.2;",
   "var WALLS = [];",
+  // These tests are about geometry, not strategy, so the tank burns at
+  // the stock rate rather than one sized to a particular board.
+  "var RACE = { burn: 1 };",
   "var TYPE_ENC = { s: 'A', S: 'L', r: 'R', w: 'W', H: 'H', C: 'C', F: 'F', P: 'P', t: 'T' };",
   "var TYPE_DEC = { A:'s', a:'s', s:'s', L:'S', S:'S', R:'r', r:'r', W:'w', w:'w', H:'H', h:'H', C:'C', c:'C', F:'F', f:'F', P:'P', p:'P', T:'t', t:'t' };",
   sliceFn("canonType"),
@@ -165,6 +168,7 @@ var code = [
   sliceFn("projectOn"),
   sliceFn("raceDeltaS"),
   sliceFn("trackInfoAt"),
+  src.match(/var HINT_SLACK = [0-9.]+;/)[0],
   sliceFn("projectTrackNear"),
   sliceFn("projectTrack"),
   sliceFn("inPitBox"),
@@ -177,6 +181,10 @@ var code = [
   sliceFn("wheelWorld"),
   sliceFn("hitCarFeel"),
   sliceFn("applyMotion"),
+  sliceFn("isDriveableLoop"),
+  src.match(/var LAP_ORIGIN = \{[^}]*\};/)[0],
+  sliceFn("lapOriginS"),
+  sliceFn("scoreLap"),
   sliceFn("updateLaps"),
   sliceFn("pitRoadDist"),
   sliceFn("raceRoadDist"),
