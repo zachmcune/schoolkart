@@ -145,6 +145,7 @@ var code = [
   sliceFn("turnWrap"),
   sliceFn("joinPlan"),
   sliceFn("emitJoin"),
+  sliceFn("joinClearance"),
   sliceFn("autoClosePath"),
   sliceFn("cornerKind"),
   sliceFn("builtinSpec"),

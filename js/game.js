@@ -52,6 +52,9 @@
   var IDLE_FUEL = 0.46;
   var THROTTLE_FUEL = 0.12;
   var PIT_HOLD = 2.5;
+  // Pace to take the pit road at. A bot has to brake for this the way it
+  // brakes for a hairpin, which from flat out is most of a straight.
+  var PIT_ENTRY_V = 18;
   var REV_SWEET_LO = 0.58;
   var REV_SWEET_HI = 0.8;
   var REV_GREAT_LO = 0.64;
@@ -1027,9 +1030,15 @@
       run = D;
     } else {
       if (D < 2 * R + 0.05) return null;
-      var phi = Math.acos((2 * R) / D);
-      t = th + (branch ? phi : -phi);
       run = Math.sqrt(D * D - 4 * R * R);
+      // The crossing tangent is offset from the centre line by the angle
+      // whose OPPOSITE side is 2R, not whose adjacent side is. acos here
+      // put every S-shaped join 90 degrees out, and the only plan that
+      // then closed the ribbon was a 337-degree loop laid straight over
+      // the start straight — which is why four of the five circuits had
+      // two bits of road sharing the same tarmac.
+      var phi = Math.atan2(2 * R, run);
+      t = th + (branch ? phi : -phi);
     }
     var a1 = turnWrap(d1 > 0 ? t - _h : _h - t);
     var a2 = turnWrap(d2 > 0 ? -t : t);
@@ -1042,6 +1051,26 @@
     if (pl.a2 > 0.004) pathArc(pl.R, (pl.d2 * pl.a2 * 180) / Math.PI, name);
   }
 
+  // Every metre of ribbon the join adds, against every metre that was
+  // already there. The bit of road the join leaves and the bit it rejoins
+  // are meant to be close; anything else means two parts of the lap share
+  // the same tarmac, and then one leg's barriers stand across the other
+  // leg's road and cars collide with rivals half a lap away.
+  function joinClearance(pts, len0) {
+    var worst = 1e9;
+    var s;
+    var i;
+    for (s = len0 + 5; s < TRACK_LEN - 5; s += 5) {
+      var p = centerlinePoint(s);
+      for (i = 0; i < pts.length; i++) {
+        if (pts[i].s > len0 - 46 || pts[i].s < 46) continue;
+        var d = Math.hypot(p.x - pts[i].x, p.z - pts[i].z);
+        if (d < worst) worst = d;
+      }
+    }
+    return worst;
+  }
+
   function autoClosePath() {
     var dx = -200 - _x;
     var dz = SF_Z - _z;
@@ -1052,9 +1081,19 @@
     // unraceable: every car drives off the end of the road once a lap.
     // Every candidate is driven into a scratch path and checked against
     // the start pose, so a sign slip cannot ship a broken ribbon.
-    var radii = [22, 30, 44, 64, 90];
-    var best = null;
+    // Tight radii matter: a 57m lateral step with 29m of road left to do
+    // it in has no gentle S-turn, and without a tight one the only plan
+    // that closes is a near-loop.
+    var radii = [12, 16, 22, 30, 44, 64, 90];
     var save = { x: _x, z: _z, h: _h, n: PATH.length, len: TRACK_LEN };
+    var pts = [];
+    var s;
+    for (s = 0; s < TRACK_LEN; s += 5) {
+      var sp = centerlinePoint(s);
+      pts.push({ x: sp.x, z: sp.z, s: s });
+    }
+    var clean = null;
+    var any = null;
     var i;
     var d1;
     var d2;
@@ -1065,22 +1104,26 @@
           for (br = 0; br < 2; br++) {
             var plan = joinPlan(radii[i], d1, d2, !!br);
             if (!plan) continue;
-            if (best && plan.cost >= best.cost) continue;
+            if (clean && plan.cost >= clean.cost) continue;
             emitJoin(plan, "close");
             var gap = Math.hypot(-200 - _x, SF_Z - _z);
             var kink = Math.abs(Math.atan2(Math.sin(-_h), Math.cos(-_h)));
+            var clear = joinClearance(pts, save.len);
             PATH.length = save.n;
             TRACK_LEN = save.len;
             _x = save.x;
             _z = save.z;
             _h = save.h;
-            if (gap < 0.6 && kink < 0.02) best = plan;
+            if (gap > 0.6 || kink > 0.02) continue;
+            if (!any || plan.cost < any.cost) any = plan;
+            if (clear > ASPHALT * 2 + 3 && (!clean || plan.cost < clean.cost)) clean = plan;
           }
         }
       }
     }
-    if (best) {
-      emitJoin(best, "close");
+    var pick = clean || any;
+    if (pick) {
+      emitJoin(pick, "close");
       return;
     }
     var want = (Math.atan2(dz, dx) * 180) / Math.PI;
@@ -5637,8 +5680,8 @@
   // Everyone else: real racecraft, no divebomb / ram.
   var AI_SMART = {
     // Library Kid — the best of the kids, quietly quick.
-    pace: 0.985,
-    grip: 0.98,
+    pace: 0.99,
+    grip: 0.985,
     brake: 1,
     look: 1.02,
     lineOff: 0.5,
@@ -5655,8 +5698,8 @@
   };
   var AI_TIDY = {
     // Hall Monitor — clean, early on the brakes, hard to pass legally.
-    pace: 0.978,
-    grip: 0.97,
+    pace: 0.985,
+    grip: 0.975,
     brake: 0.97,
     look: 1.06,
     lineOff: 0.44,
@@ -5673,8 +5716,8 @@
   };
   var AI_MESSY = {
     // Yearbook — quick hands, inconsistent lap to lap.
-    pace: 0.962,
-    grip: 0.94,
+    pace: 0.975,
+    grip: 0.96,
     brake: 0.99,
     look: 0.96,
     lineOff: 0.46,
@@ -5691,9 +5734,9 @@
   };
   var AI_SHY = {
     // Sub Teacher — lifts early, leaves the door open.
-    pace: 0.945,
-    grip: 0.92,
-    brake: 0.9,
+    pace: 0.968,
+    grip: 0.955,
+    brake: 0.93,
     look: 1.12,
     lineOff: 0.34,
     aggro: 0.1,
@@ -5709,9 +5752,9 @@
   };
   var AI_BEAT = {
     // Band Kid — brave into the corner, scruffy on the way out.
-    pace: 0.97,
-    grip: 0.95,
-    brake: 1.01,
+    pace: 0.98,
+    grip: 0.965,
+    brake: 1.02,
     look: 0.98,
     lineOff: 0.4,
     aggro: 0.55,
@@ -5727,9 +5770,9 @@
   };
   var AI_LAB = {
     // Lab Partner — surgical line, timid with the throttle.
-    pace: 0.974,
+    pace: 0.982,
     grip: 0.99,
-    brake: 0.95,
+    brake: 0.96,
     look: 1.1,
     lineOff: 0.52,
     aggro: 0.3,
@@ -5745,8 +5788,8 @@
   };
   var AI_WILD = {
     // Detention — fast and unhinged. Will have it off eventually.
-    pace: 0.99,
-    grip: 0.93,
+    pace: 0.995,
+    grip: 0.962,
     brake: 1.05,
     look: 0.94,
     lineOff: 0.62,
@@ -5763,9 +5806,9 @@
   };
   var AI_WIDE = {
     // Fallback for lobby / remote bot names. Runs a wide, safe line.
-    pace: 0.955,
-    grip: 0.95,
-    brake: 0.94,
+    pace: 0.972,
+    grip: 0.965,
+    brake: 0.95,
     look: 1.08,
     lineOff: 0.38,
     aggro: 0.35,
@@ -6171,15 +6214,20 @@
     RACE.lapT = lapT;
 
     // A tank is really a time budget: most of the burn is per second, not
-    // per throttle. On a board with no pit tile there is nowhere to top up,
-    // so a long custom loop would strand the whole field — including the
-    // player — with two laps still to run. Stretch the tank to the race
-    // instead. Never richen it: boards with a pit keep their strategy.
+    // per throttle. The stock rate is tuned to Campus, where five laps
+    // force exactly one box, and every longer board inherited a tank that
+    // could not do the job — Harbor and Forest needed two stops, and a
+    // custom loop with no pit tile stranded the whole field with laps to
+    // run. Size the tank to the race the board actually asks for. Never
+    // richen it, so Campus and the short loops keep their strategy.
     RACE.burn = 1;
-    if (!PIT_META.on && lapT > 1) {
-      var budget = lapT * LAPS * 1.3;
-      var need = 100 / budget;
-      RACE.burn = Math.min(1, need / (IDLE_FUEL + THROTTLE_FUEL));
+    if (lapT > 1) {
+      var race = lapT * LAPS;
+      // With a pit road: a little over half the race, so one stop is
+      // mandatory and a driver held up in traffic still only needs one.
+      // Without one: the whole race, with room to spare.
+      var budget = PIT_META.on ? race * 1.06 * 0.62 : race * 1.3;
+      RACE.burn = Math.min(1, 100 / budget / (IDLE_FUEL + THROTTLE_FUEL));
     }
   }
 
@@ -6383,6 +6431,29 @@
     var ms = pitMouthS();
     if (ms < 0 || !(TRACK_LEN > 8)) return -1e9;
     return raceDeltaS(r.s, ms);
+  }
+
+  var PIT_SIDE = { len: -1, n: -1, v: 1 };
+
+  // Which side of the ribbon the pit road leaves on, as a normal-offset
+  // sign. Editor boards put it wherever the author dropped the tile, so
+  // this cannot be the hard-coded left the Campus pit happens to use.
+  function pitSide() {
+    if (PIT_SIDE.len === TRACK_LEN && PIT_SIDE.n === PIT_PATH.length) return PIT_SIDE.v;
+    PIT_SIDE.len = TRACK_LEN;
+    PIT_SIDE.n = PIT_PATH.length;
+    PIT_SIDE.v = 1;
+    var m0 = PIT_PATH.length ? pointOnPitPath(0) : null;
+    var m1 = PIT_PATH.length ? pointOnPitPath(26) || pointOnPitPath(9) : null;
+    if (m0 && m1) {
+      var pr = projectTrack(m0.x, m0.z);
+      if (pr) {
+        var cp = centerlinePoint(pr.s);
+        var d = (m1.x - cp.x) * -Math.sin(cp.h) + (m1.z - cp.z) * Math.cos(cp.h);
+        if (d < 0) PIT_SIDE.v = -1;
+      }
+    }
+    return PIT_SIDE.v;
   }
 
   function trackLeadGap(self, p) {
@@ -6689,7 +6760,7 @@
 
   function updateCpu(r, dt) {
     if (r.finished) {
-      applyMotion(r, 0, false, true, false, dt, false);
+      coolDown(r, dt);
       return;
     }
     var p = aiOf(r);
@@ -6826,25 +6897,38 @@
     var mouthD = pitDelta(r);
     if (r.wantPit && PIT_META.on && !midHit) {
       var onPitRoad = inPitLane(r);
-      if (onPitRoad || (mouthD > -90 && mouthD < 130)) {
+      if (onPitRoad || (mouthD > -420 && mouthD < 130)) {
         peeling = true;
-        var aim = pitPathAhead(r.x, r.z, 20);
-        if (aim) {
-          tx = aim.x;
-          tz = aim.z;
+        var toMouth = Math.max(0, -mouthD - 6);
+        var aBrk = Math.max(2.6, brakeDecelAt(r.speed));
+        if (onPitRoad || mouthD > -15) {
+          // Committed. Follow the pit road itself.
+          var aim = pitPathAhead(r.x, r.z, 20);
+          if (aim) {
+            tx = aim.x;
+            tz = aim.z;
+          } else {
+            var mouth = pointOnPitPath(0);
+            tx = mouth ? mouth.x : (PIT_GRAB.x0 + PIT_GRAB.x1) * 0.5;
+            tz = mouth ? mouth.z : (PIT_GRAB.z0 + PIT_GRAB.z1) * 0.5;
+          }
+          want = Math.min(want, PIT_ENTRY_V);
         } else {
-          var mouth = pointOnPitPath(0);
-          tx = mouth ? mouth.x : (PIT_GRAB.x0 + PIT_GRAB.x1) * 0.5;
-          tz = mouth ? mouth.z : (PIT_GRAB.z0 + PIT_GRAB.z1) * 0.5;
+          // Not committed yet, so stay on the ribbon and just slide across
+          // to the pit side of it. Aiming at the pit road from 90m back
+          // pointed the car at a spot beyond the mouth and it drove the
+          // chord — straight over the grass on anything but a straight.
+          var w = clamp((112 - toMouth) / 74, 0, 1);
+          var edge = pitSide() * (ASPHALT - 2.4);
+          var pOff = clamp(off + (edge - off) * w, -(ASPHALT - 2.15), ASPHALT - 2.15);
+          var pTgt = centerlinePoint(r.s + Math.min(look, 18));
+          tx = pTgt.x - Math.sin(pTgt.h) * pOff;
+          tz = pTgt.z + Math.cos(pTgt.h) * pOff;
+          // Brake for the mouth like it is a corner. The old window opened
+          // 90m out and the mouth needs nearer 280 from flat out, so cars
+          // arrived at 40 and speared straight through the pit road.
+          want = Math.min(want, Math.sqrt(PIT_ENTRY_V * PIT_ENTRY_V + 2 * aBrk * toMouth));
         }
-        // Brake for the pit entry like it is a corner — arrive at lane
-        // pace instead of crawling the whole approach at 18.
-        var slowTo = 18;
-        if (!onPitRoad && mouthD < -8) {
-          var aBrk = Math.max(2.6, brakeDecelAt(r.speed));
-          slowTo = Math.sqrt(18 * 18 + 2 * aBrk * (-mouthD - 8));
-        }
-        want = Math.min(want, slowTo);
       }
     }
     if (inPitLane(r) && !r.pitServicing) {
@@ -6979,6 +7063,24 @@
     }
     applyMotion(r, steer, throttle, brake, reverse, dt, false);
     updateLaps(r);
+  }
+
+  // A car that took the flag used to brake to a stop wherever it happened
+  // to be and sit there, solid, for the rest of the race. On a board where
+  // the leaders finish a lap up, whoever was still running rammed the same
+  // parked car every lap — eight resets and 28s in reverse for one bot.
+  // Do a slow-down lap on the far edge of the road, like a real one.
+  function coolDown(r, dt) {
+    var proj = projectTrackNear(r.x, r.z, r.s);
+    r.s = proj.s;
+    var tgt = centerlinePoint(r.s + 15);
+    var edge = -pitSide() * (ASPHALT - 2.4);
+    var tx = tgt.x - Math.sin(tgt.h) * edge;
+    var tz = tgt.z + Math.cos(tgt.h) * edge;
+    var err = aiWrap(Math.atan2(tz - r.z, tx - r.x) - r.heading);
+    var steer = clamp(err * 1.75, -1, 1);
+    applyMotion(r, steer, r.speed < 13.4, r.speed > 15.6, false, dt, false);
+    poseCar(r);
   }
 
   function jammedByTraffic(r) {

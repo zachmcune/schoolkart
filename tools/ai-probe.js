@@ -372,6 +372,10 @@ function lapsTrack(name, driver) {
   );
 }
 
+module.exports = { sim: sim, FIELD: FIELD, CUSTOM: CUSTOM, buildTrack: buildTrack, trackNames: trackNames };
+
+if (require.main !== module) return;
+
 var args = process.argv.slice(2);
 var which = args.filter(function (a) {
   return a.charAt(0) !== "-";
