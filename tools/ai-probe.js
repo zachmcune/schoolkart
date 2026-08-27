@@ -321,13 +321,46 @@ function traceTrack(name, driver) {
   });
 }
 
+// One bot, alone, real fuel: what does a race actually cost lap by lap?
+function lapsTrack(name, driver) {
+  buildTrack(name);
+  var prof = profileReport();
+  sim.setFuelOverride(100);
+  var tr = sim.runTrace(driver || "Hall Monitor", 620);
+  sim.setFuelOverride(process.env.NOFUEL ? 1e6 : 0);
+  var total = 0;
+  var line = tr.lapLog
+    .map(function (l) {
+      total += l.t;
+      return l.t.toFixed(1) + (l.pit ? "*" : "") + "(t" + l.tires.toFixed(0) + "/f" + l.fuel.toFixed(0) + ")";
+    })
+    .join("  ");
+  console.log(
+    "\n" +
+      pad(name, 14) +
+      (driver || "Hall Monitor") +
+      "  ideal " +
+      prof.lapIdeal +
+      "s  laps: " +
+      line +
+      "  total " +
+      total.toFixed(1) +
+      "s  (* = pit lap)  fuel left " +
+      tr.fuel.toFixed(0)
+  );
+}
+
 var args = process.argv.slice(2);
 var which = args.filter(function (a) {
   return a.charAt(0) !== "-";
 });
 var list = which.length ? which : trackNames();
 
-if (args.indexOf("--trace") !== -1) {
+if (args.indexOf("--laps") !== -1) {
+  list.forEach(function (name) {
+    lapsTrack(name, process.env.DRIVER);
+  });
+} else if (args.indexOf("--trace") !== -1) {
   list.forEach(function (name) {
     traceTrack(name, process.env.DRIVER);
   });

@@ -5273,6 +5273,24 @@
     return t >= 0.42 && t <= 0.98;
   }
 
+  var LAP_ORIGIN = { len: -1, n: -1, s: 0 };
+
+  // Arc length of the scoring line. Custom boards start the ribbon on it,
+  // but the built-in circuits paint their S/F at world (0, SF_Z), which
+  // can sit hundreds of metres along the path from s=0. Anything reasoning
+  // about "how much of this lap is left" has to measure from here.
+  function lapOriginS() {
+    if (LAP_ORIGIN.len === TRACK_LEN && LAP_ORIGIN.n === PATH.length) return LAP_ORIGIN.s;
+    LAP_ORIGIN.len = TRACK_LEN;
+    LAP_ORIGIN.n = PATH.length;
+    LAP_ORIGIN.s = 0;
+    if (!isDriveableLoop()) {
+      var stripe = projectTrack(0, SF_Z);
+      if (stripe && stripe.onAsphalt) LAP_ORIGIN.s = stripe.s;
+    }
+    return LAP_ORIGIN.s;
+  }
+
   function updateLaps(r) {
     if (r.finished) return;
     var prog = projectTrackNear(r.x, r.z, r.s);
@@ -5281,12 +5299,7 @@
     // Harbor / Park / Desert / Forest never trip the old Campus x=8 / z>8
     // gate, so they stayed on lap 1 until the clock ran out.
     if (PATH.length && TRACK_LEN > 80) {
-      var origin = 0;
-      if (!isDriveableLoop()) {
-        // Built-in painted S/F is world (0, SF_Z), not path s=0 at x=-200.
-        var stripe = projectTrack(0, SF_Z);
-        if (stripe && stripe.onAsphalt) origin = stripe.s;
-      }
+      var origin = lapOriginS();
       var prevRaw = r.lastS != null ? r.lastS : r.s;
       var prev = prevRaw - origin;
       var cur = r.s - origin;
@@ -5305,7 +5318,12 @@
         return;
       }
       if (prev < TRACK_LEN * 0.5 && cur >= TRACK_LEN * 0.5) r.passedHalf = true;
-      if (r.passedHalf && prev > TRACK_LEN * 0.72 && cur < TRACK_LEN * 0.28 && prog.onAsphalt) {
+      // The pit road leaves the ribbon just before the line on most
+      // boards, so a car taking a stop crosses the stripe on pit paint
+      // or on the grass between the two. Requiring racing asphalt threw
+      // that lap away and made every stop cost a whole extra lap.
+      var scoreable = prog.onAsphalt || pitRoadDist(r.x, r.z) <= PIT_HALF + 9;
+      if (r.passedHalf && prev > TRACK_LEN * 0.72 && cur < TRACK_LEN * 0.28 && scoreable) {
         r.passedHalf = false;
         r.lap += 1;
         if (r.lap > LAPS) {
@@ -5428,8 +5446,9 @@
     }
 
     if (state === "racing") {
-      r.fuel -= IDLE_FUEL * dt;
-      if (throttle && !empty && r.speed >= 0) r.fuel -= THROTTLE_FUEL * dt;
+      var burn = RACE.burn > 0 ? RACE.burn : 1;
+      r.fuel -= IDLE_FUEL * burn * dt;
+      if (throttle && !empty && r.speed >= 0) r.fuel -= THROTTLE_FUEL * burn * dt;
       if (r.fuel < 0) r.fuel = 0;
     }
 
@@ -5957,6 +5976,7 @@
     vLo: [],
     pitch: [],
     lapT: 0,
+    burn: 1,
   };
 
   function aiWrap(a) {
@@ -6149,6 +6169,18 @@
     var lapT = 0;
     for (i = 0; i < n; i++) lapT += ds / Math.max(4, RACE.v[i]);
     RACE.lapT = lapT;
+
+    // A tank is really a time budget: most of the burn is per second, not
+    // per throttle. On a board with no pit tile there is nowhere to top up,
+    // so a long custom loop would strand the whole field — including the
+    // player — with two laps still to run. Stretch the tank to the race
+    // instead. Never richen it: boards with a pit keep their strategy.
+    RACE.burn = 1;
+    if (!PIT_META.on && lapT > 1) {
+      var budget = lapT * LAPS * 1.3;
+      var need = 100 / budget;
+      RACE.burn = Math.min(1, need / (IDLE_FUEL + THROTTLE_FUEL));
+    }
   }
 
   // What a lap of THIS track costs in fuel. Burn is per second, so it is
@@ -6158,7 +6190,35 @@
   function lapFuel() {
     ensureRaceBrain();
     var t = RACE.lapT > 1 ? RACE.lapT : Math.max(8, TRACK_LEN / 30);
-    return (IDLE_FUEL + THROTTLE_FUEL) * t * 1.12;
+    return (IDLE_FUEL + THROTTLE_FUEL) * (RACE.burn > 0 ? RACE.burn : 1) * t * 1.12;
+  }
+
+  // How much of this lap is still to come, measured from the scoring
+  // line — not from s=0, which on the built-in circuits is most of a lap
+  // adrift and had cars budgeting for a lap they were about to finish.
+  function lapFrac(r) {
+    if (!(TRACK_LEN > 8)) return 1;
+    var d = r.s - lapOriginS();
+    if (d < 0) d += TRACK_LEN;
+    return clamp(1 - d / TRACK_LEN, 0, 1);
+  }
+
+  // Measured burn beats predicted burn. lapFuel assumes full throttle
+  // for a whole profile lap, which reads ~15% high, and 15% is the
+  // difference between one stop and two.
+  function trackBurn(r) {
+    if (r.burnLapN === r.lap) return;
+    if (r.burnMark != null && r.burnLapN === r.lap - 1 && !r.burnRefuel) {
+      var used = r.burnMark - r.fuel;
+      if (used > 1) r.burnLap = r.burnLap > 1 ? r.burnLap * 0.45 + used * 0.55 : used;
+    }
+    r.burnLapN = r.lap;
+    r.burnMark = r.fuel;
+    r.burnRefuel = false;
+  }
+
+  function burnPerLap(r) {
+    return r.burnLap > 1 ? r.burnLap : lapFuel();
   }
 
   // Forward/backward feasibility, run to convergence. Two fixed passes
@@ -6644,6 +6704,7 @@
       if (r.pitTimer >= PIT_HOLD) {
         r.fuel = 100;
         r.tires = 100;
+        r.burnRefuel = true;
         r.didPit = true;
         r.wantPit = false;
         r.pitServicing = false;
@@ -6670,6 +6731,7 @@
       poseCar(r);
       return;
     }
+    trackBurn(r);
     if (PIT_META.on) {
       var bookD = pitDelta(r);
       if (!r.wantPit && bookD > -300 && bookD < 20) {
@@ -6677,9 +6739,12 @@
         // decision is: can this tank still reach the flag, and if not,
         // is this the last mouth it can still reach? Boxing any earlier
         // throws away range and costs a stop nobody needed.
-        var per = lapFuel();
-        var lapsLeft = LAPS - r.lap + 1;
-        var canFinish = r.fuel >= per * lapsLeft;
+        var per = burnPerLap(r);
+        var lapsLeft = LAPS - r.lap + lapFrac(r);
+        // Running the tank dry inside the last lap costs a few seconds of
+        // limp; a stop costs ten. So carry a reserve while the flag is
+        // still laps away and spend it on the run to the line.
+        var canFinish = r.fuel >= per * lapsLeft * (lapsLeft > 1.2 ? 1.06 : 0.99);
         var lastChance = r.fuel < per * 1.15;
         if ((!canFinish && lastChance) || r.tires < p.pitTires) r.wantPit = true;
       }
