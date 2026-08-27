@@ -1518,6 +1518,7 @@ function proveTiltFeel() {
 }
 proveTiltFeel();
 
+assert(src.indexOf("var MAX_SPEED = 200") !== -1, "cars wind out to 200");
 assert(src.indexOf("var ACCEL = 5") !== -1, "wind-up is slow (arcade, not a snap)");
 assert(src.indexOf("var COAST = 2") !== -1, "coast bleeds speed");
 assert(src.indexOf("var BRAKE_DECEL = 6") !== -1, "Space is a planned squeeze");

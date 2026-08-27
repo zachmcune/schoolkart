@@ -27,8 +27,8 @@
   var THREE = window.THREE;
 
   var LAPS = 5;
-  var MAX_SPEED = 48;
-  var ACCEL = 5; // ~10s wind-out to max (was 16 / ~3s)
+  var MAX_SPEED = 200;
+  var ACCEL = 5; // ~40s wind-out to max (was 16 / ~3s at 48)
   var BRAKE_DECEL = 6; // squeeze: weaker at wind-out, full bite when slow (hairpin)
   var COAST = 2;
   var REVERSE_ACCEL = 7;
@@ -5684,6 +5684,13 @@
     return (d + 14) * mul;
   }
 
+  function planSpeed(r, want) {
+    // Brake marks from the speed we can actually be carrying, not the
+    // 200 cap. A 200-to-apex stop is kilometers and crawls the lap.
+    var now = Math.abs(r && r.speed) || 0;
+    return Math.min(want, Math.max(now, 18) + 16);
+  }
+
   function apexFromRadius(r, mul) {
     // Speed the washed-out car can actually yaw around this radius.
     // Custom 90s are ~44m; Campus's decreasing 90 is ~12m. Same brain.
@@ -6281,7 +6288,8 @@
     var skilled = p.hunter || p.craft;
     var pow = skilled ? 1.7 : 2;
     var bMul = 0.7;
-    var scanMeters = skilled ? Math.max(260, brakeWindow(MAX_SPEED, 15, 1.15) + 40) : 190 * p.brake;
+    var planV = planSpeed(r, MAX_SPEED);
+    var scanMeters = skilled ? Math.max(260, brakeWindow(planV, 15, 1.15) + 40) : 190 * p.brake;
     var scan = scanAhead(r.s, scanMeters);
     ensureRaceBrain();
     var look = clamp((16 + r.speed * 0.44) * p.look, 11, 26);
