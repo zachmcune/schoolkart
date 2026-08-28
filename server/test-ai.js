@@ -506,6 +506,8 @@ function raceField(label, lay) {
   var resets = 0;
   var stops = 0;
   var slowest = 0;
+  var grind = 0;
+  var ground = "";
   var i;
   for (i = 0; i < field.length; i++) {
     var f = field[i];
@@ -514,11 +516,26 @@ function raceField(label, lay) {
     resets += f.resets;
     if (f.pitStops > stops) stops = f.pitStops;
     if (f.finishTime > slowest) slowest = f.finishTime;
+    // Share of its own race this car spent with bodywork touching.
+    var share = f.contactT / Math.max(1, f.finishTime);
+    if (share > grind) {
+      grind = share;
+      ground = f.name;
+    }
   }
   assert(resets === 0, label + ": " + resets + " cars had to be put back on the road");
   assert(rev < 2, label + ": " + rev.toFixed(1) + "s spent reversing out of trouble");
   assert(stops <= 1, label + ": someone boxed " + stops + " times");
   assert(slowest < 400, label + ": last car took " + slowest.toFixed(0) + "s");
+  // A pass used to be triggered by proximity alone, so on a board where
+  // the field is evenly matched every car spent the whole race hanging
+  // off the line leaning on the one ahead: the back four finished half a
+  // minute down having been in contact for a tenth of the race. Nobody
+  // was ever stuck, nothing reset, and no assertion here noticed. Under a
+  // lap of 400m the field genuinely has nowhere to go, so that gets more
+  // rope — everywhere else, contact is incidental or it is a bug.
+  var cap = len < 400 ? 0.2 : 0.1;
+  assert(grind < cap, label + ": " + ground + " spent " + (100 * grind).toFixed(0) + "% of the race leaning on someone");
   return { len: Math.round(len), last: Math.round(slowest), win: field[0].name };
 }
 
