@@ -5327,6 +5327,15 @@
     r.aiRevT = 0;
     r.aiWrongT = 0;
     r.aiProgS = null;
+    // Racecraft state, so a new race does not start half way through the
+    // last one's overtake.
+    r.aiPassWho = null;
+    r.aiPassT = 0;
+    r.aiPassRest = 0;
+    r.aiPassSide = 0;
+    r.aiCommit = 0;
+    r.aiTow = 0;
+    r.aiSideOff = 0;
     r.pitExitT = 0;
     r.hitYawT = 0;
     r.kerbBump = 0;
@@ -6942,6 +6951,22 @@
   // traded one grind for another.
   var PASS_ROOM = SIDE_ROOM + 0.5;
 
+  // How long a bot will keep at one move before it concedes, and how long
+  // it then spends rebuilding instead of attacking. Scaled by aggro, so
+  // Bowie hangs it out roughly three times as long as Hall Monitor and
+  // gets back on you almost at once.
+  //
+  // Proximity alone used to be the whole test for pulling out, which is
+  // fine until the field is evenly matched: then every car is permanently
+  // within range of the one ahead, so it spends the entire race hanging
+  // off the racing line asking for six metres a second it has no way of
+  // using. A pass wants a run at the car — real pace in hand, or a tow
+  // that has built some — and a move that has not worked wants giving up.
+  var PASS_TRY = 3;
+  var PASS_REST = 2.6;
+  // Seconds in the slipstream that count as a run at the car ahead.
+  var TOW_RUN = 0.9;
+
   // A pass needs a lane, and a lane is a piece of road beside the car
   // being passed. This used to be a fixed step off the racing line,
   // which is the same place as the prey whenever the prey happened to be
@@ -6982,7 +7007,7 @@
     return null;
   }
 
-  function planHunt(r, p, want) {
+  function planHunt(r, p, want, dt) {
     _hunt.on = false;
     _hunt.noLift = false;
     _hunt.dive = false;
@@ -6997,12 +7022,49 @@
     var gap = trackLeadGap(r, p);
     var aggro = p.aggro == null ? 0.5 : p.aggro;
     _hunt.gap = gap;
+
+    // How long has this car been at the same rival, and is it getting
+    // anywhere? Time spent wheel to wheel counts, which is why this sits
+    // above the door-to-door branch rather than inside the passing one.
+    // Bowie chasing you is exempt: being unable to shake him is the
+    // point of him.
+    var step = dt || 0;
+    var relentless = p.hunter && prey.r && prey.r.kind === "player";
+    var who = prey.r ? prey.r.name || "" : "";
+    if (r.aiPassWho !== who) {
+      r.aiPassWho = who;
+      r.aiPassT = 0;
+      r.aiPassRest = 0;
+    }
+    r.aiPassRest = Math.max(0, (r.aiPassRest || 0) - step);
+    var chasing = prey.r && prey.fwd > -MESH_TAIL && prey.d < 30;
+    if (chasing && (r.aiPassRest || 0) <= 0) r.aiPassT = (r.aiPassT || 0) + step;
+    else if (!chasing) r.aiPassT = 0;
+    // Sitting in the slipstream is what earns the run.
+    if (prey.r && prey.fwd > 4 && prey.fwd < 26 && Math.abs(prey.lat) < 3.2) r.aiTow = Math.min(2.5, (r.aiTow || 0) + step);
+    else r.aiTow = Math.max(0, (r.aiTow || 0) - step * 1.5);
+    if (!relentless && (r.aiPassRest || 0) <= 0 && (r.aiPassT || 0) > PASS_TRY * (0.7 + 0.9 * aggro)) {
+      r.aiPassRest = PASS_REST * (1 - 0.55 * aggro);
+      r.aiPassT = 0;
+      r.aiCommit = 0;
+      r.aiPassSide = 0;
+      r.aiTow = 0;
+    }
+
     if (prey.r && prey.fwd < 2.2 && prey.d < 26) {
       // Ahead of them / door-to-door. Cover the lane once, then get on
       // with racing — aiming at their XY yaws 180 and rams. "Once" means
       // one move that finishes: while the hold is running the car keeps
       // leaning on the lane, and only the rest afterwards locks it out.
-      var mayDefend = (p.defend || 0) > 0.2 && ((r.aiDefendHold || 0) > 0 || (r.aiDefendT || 0) <= 0);
+      //
+      // But a lane with a car already in it is not a lane to cover. The
+      // cover aims at where the rival is, so two cars genuinely wheel to
+      // wheel both moved toward each other and met in the middle: it was
+      // most of the contact in a close pack, and on equal-pace boards it
+      // pinned four cars together for twenty seconds a race. Once the
+      // bodywork overlaps, hold the line and let sideNudge keep the gap.
+      var wheelToWheel = prey.fwd > -(MESH_NOSE + MESH_TAIL) && Math.abs(prey.lat) < SIDE_ROOM + 1.4;
+      var mayDefend = (p.defend || 0) > 0.2 && !wheelToWheel && ((r.aiDefendHold || 0) > 0 || (r.aiDefendT || 0) <= 0);
       if (mayDefend) {
         _hunt.block = true;
         var cover = prey.lat * (0.55 + 0.45 * (p.defend || 0));
@@ -7040,8 +7102,11 @@
         _hunt.want = Math.min(SPEED_LIMIT, want + 4.2 * (p.draft == null ? 0.7 : p.draft));
       }
       // Only pull out if the lane is actually free and we are quick
-      // enough to use it. Two bots diving for one gap is a crash.
-      if (prey.fwd <= 22 && aggro > 0.15) {
+      // enough to use it. Two bots diving for one gap is a crash, and a
+      // move with no pace behind it is not a move — it is a car driving
+      // the long way round at the same speed as the one it is beside.
+      var run = r.speed > (prey.r.speed || 0) + 1.2 || (r.aiTow || 0) > TOW_RUN || relentless;
+      if (prey.fwd <= 22 && aggro > 0.15 && (r.aiPassRest || 0) <= 0 && ((r.aiCommit || 0) > 0 || run)) {
         var lane = passLane(r, prey);
         if (lane != null) {
           _hunt.pass = true;
@@ -7155,7 +7220,7 @@
 
     var lineHere = raceAt(r.s);
     var tight = scan.dTight < 60 || scan.dHair < 70 || (scan.dBend < 50 && scan.bendR < 60);
-    var hunt = planHunt(r, p, want);
+    var hunt = planHunt(r, p, want, dt);
     if (hunt.block && !tight && r.aiDefendHold <= 0 && r.aiDefendT <= 0) r.aiDefendHold = DEFEND_MOVE;
     if (p.hunter && hunt.on && !tight) {
       // Bowie leaves the brake later than his own maths says when the

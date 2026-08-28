@@ -280,6 +280,9 @@ var code = [
   sliceFn("ribbonOff"),
   src.match(/var LANE_MAX = RACE_MAX_OFF \+ [0-9.]+;/)[0],
   src.match(/var PASS_ROOM = SIDE_ROOM \+ [0-9.]+;/)[0],
+  src.match(/var PASS_TRY = [0-9.]+;/)[0],
+  src.match(/var PASS_REST = [0-9.]+;/)[0],
+  src.match(/var TOW_RUN = [0-9.]+;/)[0],
   sliceFn("passLane"),
   sliceFn("planHunt"),
   sliceFn("gradeLaunch"),
@@ -300,6 +303,18 @@ var code = [
   sliceFn("isDriveableLoop"),
   "function poseCar(r) { if (r.mesh) { r.mesh.position.x = r.x; r.mesh.position.z = r.z; } }",
   "function trackLen() { return TRACK_LEN; }",
+  // Harness-only: who is closest, and where, in the car's own frame.
+  "function nearestRival(r) {",
+  "  var fx = Math.cos(r.heading), fz = Math.sin(r.heading);",
+  "  var best = null;",
+  "  eachRival(r, function (o) {",
+  "    var rx = o.x - r.x, rz = o.z - r.z;",
+  "    var d = Math.hypot(rx, rz);",
+  "    if (best && d >= best.d) return;",
+  "    best = { who: o.name, d: d, fwd: rx * fx + rz * fz, lat: -rx * fz + rz * fx, v: o.speed };",
+  "  });",
+  "  return best;",
+  "}",
   "function pathDump() { return PATH.map(function (s) { return { type: s.type, name: s.name, startS: s.startS, len: s.len, r: s.r, deg: s.type === 'arc' ? ((s.a1 - s.a0) * 180) / Math.PI : 0 }; }); }",
   // rebuildPath() re-points the kerb list on every rebuild. Skip that here
   // and a custom loop inherits the last circuit's kerb naming, so the same
@@ -510,7 +525,12 @@ var code = [
   "        var b = bots[i];",
   "        carLog.push({ t: t, who: names[i], s: b.s, x: b.x, z: b.z, gs: projectTrack(b.x, b.z).s, dist: pj.dist, name2: pj.name, v: b.speed, stuckT: b.aiStuckT || 0, revT: b.aiRevT || 0,",
   "          grass: !!pj.grass, blocked: noseBlocked(b), wrong: Math.cos(aiWrap(b.heading - pj.h)), lap: b.lap,",
-  "          wantPit: !!b.wantPit, inLane: inPitLane(b), serv: !!b.pitServicing, hitT: b.aiHitT || 0, resets: b.aiResets || 0, fuel: b.fuel });",
+  "          wantPit: !!b.wantPit, inLane: inPitLane(b), serv: !!b.pitServicing, hitT: b.aiHitT || 0, resets: b.aiResets || 0, fuel: b.fuel,",
+  // Where is this car relative to the line it wants and to whoever is
+  // closest? Without these, a pack losing half a minute reads as seven
+  // slow cars rather than four cars in each other's way.
+  "          off: ribbonOff(b), line: raceAt(b.s).off, side: b.aiSideOff || 0, passSide: b.aiPassSide || 0, commit: b.aiCommit || 0, near: nearestRival(b),",
+  "          tires: b.tires, per: burnPerLap(b), lapsLeft: LAPS - b.lap + lapFrac(b), mouthD: pitDelta(b) });",
   "      }",
   "    }",
   "    for (pass = 0; pass < 3; pass++) {",
