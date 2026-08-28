@@ -6851,6 +6851,12 @@
     // closer before they lift, committing to a pass buys more still, and
     // Bowie leaves it later than anyone — which is most of what makes him
     // frightening in a mirror rather than just quick on an empty lap.
+    //
+    // He gets it against the whole field, not just the player. Aiming it
+    // at the player alone reads like the tidier choice and costs him two
+    // thirds of his wins: riding a bot's gearbox is how the pressure
+    // turns into a place, and a Bowie who queues politely behind the
+    // fourth-placed car is not a rival.
     var nerve = Math.max(2.6, brakeDecelAt(r.speed));
     nerve *= 1 + 0.45 * (p && p.aggro != null ? p.aggro : 0.5);
     if (passing) nerve *= 1.3;
