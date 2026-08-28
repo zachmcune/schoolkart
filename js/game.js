@@ -1065,12 +1065,18 @@
     var s;
     for (s = len0 + 4; s < TRACK_LEN - 2; s += 5) {
       var sp = centerlinePoint(s);
-      mine.push({ x: sp.x, z: sp.z, s: s });
+      mine.push({ x: sp.x, z: sp.z, y: sp.y || 0, s: s });
     }
     function apart(a, b) {
       var d = Math.abs(a - b);
       if (d > TRACK_LEN * 0.5) d = TRACK_LEN - d;
       return d >= JOIN_APART;
+    }
+    // Road passing over road at a different height is a bridge, not shared
+    // tarmac, and Forest is built around one.
+    function room(a, b) {
+      if (Math.abs(a.y - b.y) > 4) return 1e9;
+      return Math.hypot(a.x - b.x, a.z - b.z);
     }
     var worst = 1e9;
     var i;
@@ -1079,12 +1085,12 @@
       var p = mine[i];
       for (j = 0; j < pts.length; j++) {
         if (!apart(p.s, pts[j].s)) continue;
-        var d = Math.hypot(p.x - pts[j].x, p.z - pts[j].z);
+        var d = room(p, pts[j]);
         if (d < worst) worst = d;
       }
       for (j = i + 1; j < mine.length; j++) {
         if (!apart(p.s, mine[j].s)) continue;
-        var dm = Math.hypot(p.x - mine[j].x, p.z - mine[j].z);
+        var dm = room(p, mine[j]);
         if (dm < worst) worst = dm;
       }
     }
@@ -1110,7 +1116,7 @@
     var s;
     for (s = 0; s < TRACK_LEN; s += 5) {
       var sp = centerlinePoint(s);
-      pts.push({ x: sp.x, z: sp.z, s: s });
+      pts.push({ x: sp.x, z: sp.z, y: sp.y || 0, s: s });
     }
     var clean = null;
     var any = null;
@@ -1220,11 +1226,50 @@
     if (headingDeg != null) pathSnap(headingDeg, 26, name);
   }
 
+  // A long final sweeper is these circuits' signature, so it is what we
+  // reach for. But goTo drives one blind straight to a fixed corner, and on
+  // Harbor, Park and Desert that straight ran a couple of metres from road
+  // the lap had already used. Two legs on the same tarmac means head-on
+  // contact between cars a third of a lap apart, and a shove there puts a
+  // car on the wrong leg. So lay the sweeper, measure it, and fall back to
+  // the planned join only when the sweeper genuinely has nowhere to go.
   function closeWithSweeper(name) {
     var R = 72;
-    goTo(-200 - R, SF_Z + R, -90, name);
-    pathArc(R, 90, name);
-    if (Math.hypot(-200 - _x, SF_Z - _z) > 6) autoClosePath();
+    var save = { x: _x, z: _z, h: _h, y: _y, n: PATH.length, len: TRACK_LEN };
+    var pts = [];
+    var s;
+    for (s = 0; s < TRACK_LEN; s += 5) {
+      var sp = centerlinePoint(s);
+      pts.push({ x: sp.x, z: sp.z, y: sp.y || 0, s: s });
+    }
+    function undo() {
+      PATH.length = save.n;
+      TRACK_LEN = save.len;
+      _x = save.x;
+      _z = save.z;
+      _h = save.h;
+      _y = save.y;
+    }
+    function laySweeper() {
+      goTo(-200 - R, SF_Z + R, -90, name);
+      pathArc(R, 90, name);
+      if (Math.hypot(-200 - _x, SF_Z - _z) > 6) autoClosePath();
+    }
+    laySweeper();
+    var sweep = joinClearance(pts, save.len);
+    undo();
+    if (sweep <= ASPHALT * 2 + 3) {
+      autoClosePath();
+      var planned = joinClearance(pts, save.len);
+      // The sweeper keeps the tie: it is the shape these circuits were
+      // drawn with, and only a real gain in room is worth losing it for.
+      if (planned < sweep + 4) {
+        undo();
+        laySweeper();
+      }
+    } else {
+      laySweeper();
+    }
     flattenCloseToZero(name);
   }
 
@@ -3093,7 +3138,7 @@
     syncCampusDressing();
   }
 
-  function wallSeg(ax, az, bx, bz, thick, kind, silent) {
+  function wallSeg(ax, az, bx, bz, thick, kind, silent, y) {
     if (Math.hypot(bx - ax, bz - az) < 0.8) return;
     WALLS.push({
       ax: ax,
@@ -3103,6 +3148,7 @@
       thick: thick || 0.55,
       kind: kind || "low",
       silent: !!silent,
+      y: y || 0,
     });
   }
 
@@ -3149,7 +3195,14 @@
       var t = i / n;
       var mx = w.ax + (w.bx - w.ax) * t;
       var mz = w.az + (w.bz - w.az) * t;
-      if (projectTrack(mx, mz).dist < ASPHALT + 3.0) return true;
+      var pr = projectTrack(mx, mz);
+      if (pr.dist >= ASPHALT + 3.0) continue;
+      // Forest crosses over its own start straight nine metres up. From
+      // above that is one road on top of another, and dropping the bridge's
+      // barriers to keep the straight clear left the bridge with nothing to
+      // stop a car going over the side.
+      if (Math.abs((pr.y || 0) - (w.y || 0)) > 4) continue;
+      return true;
     }
     return false;
   }
@@ -3174,15 +3227,15 @@
       if (!skipLeftBarrier(p)) {
         var jumpL = lastL && Math.hypot(lx - lastL.x, lz - lastL.z) > STEP * 2.4;
         var kinkL = lastL && Math.abs(Math.atan2(Math.sin(p.h - lastL.h), Math.cos(p.h - lastL.h))) > 0.55;
-        if (lastL && !jumpL && !kinkL) wallSeg(lastL.x, lastL.z, lx, lz, 0.5, lastL.kind, false);
-        lastL = { x: lx, z: lz, kind: kL, h: p.h };
+        if (lastL && !jumpL && !kinkL) wallSeg(lastL.x, lastL.z, lx, lz, 0.5, lastL.kind, false, lastL.y);
+        lastL = { x: lx, z: lz, kind: kL, h: p.h, y: p.y || 0 };
       } else {
         lastL = null;
       }
       var jump = lastR && Math.hypot(rx - lastR.x, rz - lastR.z) > STEP * 2.4;
       var kinkR = lastR && Math.abs(Math.atan2(Math.sin(p.h - lastR.h), Math.cos(p.h - lastR.h))) > 0.55;
-      if (lastR && !jump && !kinkR) wallSeg(lastR.x, lastR.z, rx, rz, 0.5, lastR.kind, false);
-      lastR = { x: rx, z: rz, kind: kR, h: p.h };
+      if (lastR && !jump && !kinkR) wallSeg(lastR.x, lastR.z, rx, rz, 0.5, lastR.kind, false, lastR.y);
+      lastR = { x: rx, z: rz, kind: kR, h: p.h, y: p.y || 0 };
     }
     var keep = [];
     var wi;
@@ -3199,6 +3252,7 @@
 
   function joinColinearWall(a, b) {
     if ((a.kind || "low") !== (b.kind || "low")) return null;
+    if (Math.abs((a.y || 0) - (b.y || 0)) > 4) return null;
     var adx = a.bx - a.ax;
     var adz = a.bz - a.az;
     var bdx = b.bx - b.ax;
@@ -3240,6 +3294,7 @@
       thick: Math.max(a.thick || 0.55, b.thick || 0.55),
       kind: a.kind || "low",
       silent: !!(a.silent && b.silent),
+      y: a.y || 0,
     };
   }
 

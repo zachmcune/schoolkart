@@ -2843,7 +2843,7 @@ assert(line.onAsphalt && !line.grass, "Campus S/F is asphalt again");
 function assertBuiltin(code, label, opts) {
   sim.rebuildPath(code);
   assert(!sim.MAP_CLOSED, label + " is a built-in, not a custom closed flag");
-  assert(sim.TRACK_LEN > 1800 && sim.TRACK_LEN < 2500, label + " length " + sim.TRACK_LEN);
+  assert(sim.TRACK_LEN > 1500 && sim.TRACK_LEN < 2600, label + " length " + sim.TRACK_LEN);
   var a = sim.centerlinePoint(0);
   var b = sim.centerlinePoint(Math.max(0, sim.TRACK_LEN - 0.4));
   var gap = Math.hypot(a.x - b.x, a.z - b.z);
@@ -2863,6 +2863,8 @@ function assertBuiltin(code, label, opts) {
     assert(Math.abs(a.y) < 0.8, label + " starts at valley height");
   }
   assert(sim.menuTrackName() === opts.menu, label + " menu is " + sim.menuTrackName());
+  var clear = selfClearance();
+  assert(clear > 14, label + " does not run two legs on one bit of tarmac (closest " + clear.toFixed(1) + "m)");
 }
 
 assertBuiltin("HARBOR", "Harbor Street", { flat: true, menu: "HARBOR STREET" });
@@ -2934,6 +2936,9 @@ function selfClearance() {
     for (j = i + 1; j < pts.length; j++) {
       var along = Math.min((j - i) * 4, sim.TRACK_LEN - (j - i) * 4);
       if (along < 60) continue;
+      // Road over road at a different height is a bridge, and Forest is
+      // built around one, so only same-level pairs count as shared tarmac.
+      if (Math.abs((pts[i].y || 0) - (pts[j].y || 0)) > 4) continue;
       var d = Math.hypot(pts[i].x - pts[j].x, pts[i].z - pts[j].z);
       if (d < worst) worst = d;
     }

@@ -26,6 +26,8 @@ probe.trackNames().forEach(function (name) {
     for (j = i + 1; j < pts.length; j++) {
       var along = Math.min((j - i) * step, len - (j - i) * step);
       if (along < 60) continue;
+      // Road over road at a different height is a bridge, not shared tarmac.
+      if (Math.abs((pts[i].y || 0) - (pts[j].y || 0)) > 4) continue;
       var d = Math.hypot(pts[i].x - pts[j].x, pts[i].z - pts[j].z);
       if (d < worst) {
         worst = d;
