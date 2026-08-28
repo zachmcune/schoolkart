@@ -5306,6 +5306,7 @@
     r.roadY = null;
     r.burnLap = 0;
     r.burnLapN = -1;
+    r.burnMin = 0;
     r.burnMark = null;
     r.brakeHold = 0;
     r.finished = false;
@@ -6450,7 +6451,10 @@
     if (r.burnLapN === r.lap) return;
     if (r.burnMark != null && r.burnLapN === r.lap - 1 && !r.burnRefuel) {
       var used = r.burnMark - r.fuel;
-      if (used > 1) r.burnLap = r.burnLap > 1 ? r.burnLap * 0.45 + used * 0.55 : used;
+      if (used > 1) {
+        r.burnLap = r.burnLap > 1 ? r.burnLap * 0.45 + used * 0.55 : used;
+        if (!(r.burnMin > 1) || used < r.burnMin) r.burnMin = used;
+      }
     }
     r.burnLapN = r.lap;
     r.burnMark = r.fuel;
@@ -6466,6 +6470,20 @@
     var theory = lapFuel();
     if (!(r.burnLap > 1)) return theory;
     return clamp(r.burnLap, theory * 0.55, theory * 1.25);
+  }
+
+  // The lightest lap this car has actually driven. Burn is per second, so
+  // a lap spent in the grass or stuck behind someone costs half again
+  // what a clean one does — and the rolling average carries that into the
+  // run to the flag. One bot read its last lap 21% high on the strength
+  // of a single scruffy one, boxed at the final mouth, and finished half
+  // a minute down with seventy litres still in the tank. What a clean lap
+  // costs is the honest number for a run-in, because a run-in is what it
+  // is about to drive. Only ever used inside the last lap or so, where
+  // being a few litres out means a short limp rather than a dry car.
+  function burnClean(r) {
+    if (!(r.burnMin > 1)) return burnPerLap(r);
+    return Math.max(r.burnMin, lapFuel() * 0.8);
   }
 
   // Forward/backward feasibility, run to convergence. Two fixed passes
@@ -7156,7 +7174,15 @@
       r.pitAwayT = 0;
     } else {
       r.pitAwayT = (r.pitAwayT || 0) + dt;
-      if (r.pitAwayT >= 0.48) {
+      // Half a second out of the lane used to be enough to call the visit
+      // over, but the lane test loses a car for about that long while it
+      // rejoins — so the same stop got taken twice. The car took fuel,
+      // pulled out, was grabbed again eight seconds later and finished
+      // half a minute down with a full tank. A visit is only really over
+      // once the car is back on the approach, and it cannot be there
+      // without having gone round.
+      var backAround = pitDelta(r) < -Math.min(300, TRACK_LEN * 0.4);
+      if (r.pitAwayT >= 0.48 && backAround) {
         r.pitTimer = 0;
         r.pitUsedVisit = false;
       }
@@ -7185,7 +7211,7 @@
         // break even is around LIMP_SWAP of limping. A car a hundred
         // metres short used to throw a stop at it on the final lap and
         // finish half a minute adrift with seventy litres still in.
-        var shortBy = (lapsLeft - r.fuel / per) * TRACK_LEN;
+        var shortBy = (lapsLeft - r.fuel / burnClean(r)) * TRACK_LEN;
         var canFinish = lapsLeft > 1.2 ? r.fuel >= per * lapsLeft * 1.06 : shortBy < LIMP_SWAP;
         var lastChance = r.fuel < per * 1.15;
         // Fresh rubber only pays for the stop if there is race left to

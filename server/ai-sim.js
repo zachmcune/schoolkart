@@ -252,6 +252,7 @@ var code = [
   sliceFn("lapFrac"),
   sliceFn("trackBurn"),
   sliceFn("burnPerLap"),
+  sliceFn("burnClean"),
   sliceFn("raceAt"),
   sliceFn("raceVAt"),
   sliceFn("paceV"),
