@@ -6411,6 +6411,13 @@
   // the profile lap time plus a margin for a driver who is not the
   // profile. Never derive it from the speed right now: read at a hairpin
   // that says the tank cannot reach the flag, and the car boxes every lap.
+  // How far a car can afford to limp rather than box. A dry car does
+  // LIMP_SPEED where it would otherwise be doing forty-odd, which costs
+  // about a twentieth of a second per metre; a stop costs the hold plus
+  // the pit-lane crawl, call it ten seconds. Two hundred metres is where
+  // the two meet.
+  var LIMP_SWAP = 190;
+
   function lapFuel() {
     ensureRaceBrain();
     var t = RACE.lapT > 1 ? RACE.lapT : Math.max(8, TRACK_LEN / 30);
@@ -7106,12 +7113,21 @@
         // throws away range and costs a stop nobody needed.
         var per = burnPerLap(r);
         var lapsLeft = LAPS - r.lap + lapFrac(r);
-        // Running the tank dry inside the last lap costs a few seconds of
-        // limp; a stop costs ten. So carry a reserve while the flag is
-        // still laps away and spend it on the run to the line.
-        var canFinish = r.fuel >= per * lapsLeft * (lapsLeft > 1.2 ? 1.06 : 0.99);
+        // Carry a reserve while the flag is still laps away. Once it is
+        // close, compare the two costs instead: coasting in on fumes
+        // loses the difference between limping and racing over whatever
+        // is left, and a stop loses the best part of ten seconds, so
+        // break even is around LIMP_SWAP of limping. A car a hundred
+        // metres short used to throw a stop at it on the final lap and
+        // finish half a minute adrift with seventy litres still in.
+        var shortBy = (lapsLeft - r.fuel / per) * TRACK_LEN;
+        var canFinish = lapsLeft > 1.2 ? r.fuel >= per * lapsLeft * 1.06 : shortBy < LIMP_SWAP;
         var lastChance = r.fuel < per * 1.15;
-        if ((!canFinish && lastChance) || r.tires < p.pitTires) r.wantPit = true;
+        // Fresh rubber only pays for the stop if there is race left to
+        // spend it on. A tires stop costs the same ten seconds and buys
+        // a couple a lap, so it is not worth taking on the run-in.
+        var worthTires = r.tires < p.pitTires && lapsLeft > 2.2;
+        if ((!canFinish && lastChance) || worthTires) r.wantPit = true;
       }
       // Missed the peel. Give the plan up and take it next time round
       // rather than spending the rest of the race at pit-lane pace with

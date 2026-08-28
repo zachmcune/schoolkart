@@ -247,6 +247,7 @@ var code = [
   sliceFn("ensureRaceBrain"),
   sliceFn("bakeRaceBrain"),
   sliceFn("profilePasses"),
+  src.match(/var LIMP_SWAP = [0-9]+;/)[0],
   sliceFn("lapFuel"),
   sliceFn("lapFrac"),
   sliceFn("trackBurn"),
