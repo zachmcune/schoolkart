@@ -2175,10 +2175,25 @@
   // miss the lap it was driving.
   var HINT_SLACK = 6;
 
-  function projectTrackNear(px, pz, sHint) {
+  // Nine metres is Forest's bridge over its own start straight. Anything
+  // that far apart in height is a different deck, not the same road, and
+  // nothing on one deck can touch — or be mistaken for — the other.
+  var DECK_APART = 4;
+
+  // Which deck is this car driving? Plan view cannot tell: the bridge and
+  // the straight beneath it occupy the same x/z. The height comes from the
+  // projection that does know, and is kept on the car frame to frame.
+  function carDeckY(r) {
+    if (r && r.roadY != null) return r.roadY;
+    if (!r || r.x == null) return 0;
+    return projectTrack(r.x, r.z).y || 0;
+  }
+
+  function projectTrackNear(px, pz, sHint, yHint) {
     var segs = PATH.length ? PATH : MAP_SURF;
     if (!segs.length) return projectTrack(px, pz);
     var useHint = sHint != null && isFinite(sHint) && TRACK_LEN > 8;
+    var useY = yHint != null && isFinite(yHint);
     var near = null;
     var nearS = 0;
     var any = null;
@@ -2191,6 +2206,16 @@
           ? closestOnSeg(px, pz, seg.ax, seg.az, seg.bx, seg.bz)
           : closestOnArc(px, pz, seg.cx, seg.cz, seg.r, seg.a0, seg.a1);
       var s = (seg.startS || 0) + hit.t * (seg.len != null ? seg.len : 0);
+      // A bridge and the road under it are the same place in plan, so the
+      // only thing that tells them apart is height. Without this the car
+      // on Forest's bridge reads as being on the start straight 1400m
+      // back, and everything downstream believes it: the watchdog decides
+      // a healthy car has driven a lap backwards and resets it.
+      if (useY) {
+        var y0 = seg.y0 || 0;
+        var y1 = seg.y1 == null ? y0 : seg.y1;
+        if (Math.abs(y0 + (y1 - y0) * hit.t - yHint) > DECK_APART) continue;
+      }
       if (!any || hit.d2 < any.d2) {
         any = hit;
         anyS = s;
@@ -2202,6 +2227,9 @@
         near.name = seg.name;
       }
     }
+    // Every deck rejected — airborne, or freshly placed with a stale
+    // height. Take the plain answer rather than none.
+    if (!any && useY) return projectTrackNear(px, pz, sHint, null);
     if (!any) return projectTrack(px, pz);
     // Let the hint go when the alternative is both plainly closer and a
     // believable on-road reading. That second half matters: down the pit
@@ -3186,20 +3214,6 @@
       return side === outside ? "tall" : "low";
     }
     return "low";
-  }
-
-  // Nine metres is Forest's bridge over its own start straight. Anything
-  // that far apart in height is a different deck, not the same road, and
-  // nothing on one deck can touch anything on the other.
-  var DECK_APART = 4;
-
-  // Which deck is this car driving? Plan view cannot tell — the bridge and
-  // the straight beneath it occupy the same x/z. r.s comes from the
-  // hint-aware projection, which does know, so its height is the answer.
-  function carDeckY(r) {
-    if (r && r.roadY != null) return r.roadY;
-    if (!r || r.x == null) return 0;
-    return projectTrack(r.x, r.z).y || 0;
   }
 
   function sameDeck(r, w) {
@@ -5484,7 +5498,7 @@
 
   function updateLaps(r) {
     if (r.finished) return;
-    var prog = projectTrackNear(r.x, r.z, r.s);
+    var prog = projectTrackNear(r.x, r.z, r.s, r.roadY);
     r.s = prog.s;
     r.roadY = prog.y || 0;
     // Any long ribbon — custom closed boards AND the built-in circuits.
@@ -5608,7 +5622,7 @@
   function applyMotion(r, steer, throttle, brake, reverse, dt, isPlayer) {
     if (!isFinite(r.speed)) r.speed = 0;
     if (!isFinite(r.slide)) r.slide = 0;
-    var info = projectTrackNear(r.x, r.z, r.s);
+    var info = projectTrackNear(r.x, r.z, r.s, r.roadY);
     var wheelKerb = sampleWheelKerbs(r);
     var onKerb = info.kerb || wheelKerb.count > 0;
     var kerbDepth = wheelKerb.depth;
@@ -6994,7 +7008,7 @@
     }
     var p = aiOf(r);
     if (!r.launchArmed) applyCpuLaunch(r, p);
-    var proj = projectTrackNear(r.x, r.z, r.s);
+    var proj = projectTrackNear(r.x, r.z, r.s, r.roadY);
     r.s = proj.s;
 
     if (r.pitServicing) {
@@ -7226,10 +7240,15 @@
     // mistaken for going backwards. raceProg() only steps on a scored
     // lap, which used to make the whole grid reset on lap one.
     var jam = jammedByTraffic(r);
+    var moved = raceDeltaS(r.s, r.aiProgS);
     if (r.aiProgS == null || inPit) {
       r.aiProgS = r.s;
       r.aiStuckT = 0;
-    } else if (raceDeltaS(r.s, r.aiProgS) > 3) {
+      // A step no car could have driven is the projection changing its
+      // mind about which bit of ribbon this is, not a lap gone backwards.
+      // Every self-crossing board can produce one; believing it cost a
+      // healthy car at racing speed five seconds and a reset.
+    } else if (moved > 3 || Math.abs(moved) > 60) {
       r.aiProgS = r.s;
       r.aiStuckT = 0;
     } else {
@@ -7311,7 +7330,7 @@
   // parked car every lap — eight resets and 28s in reverse for one bot.
   // Do a slow-down lap on the far edge of the road, like a real one.
   function coolDown(r, dt) {
-    var proj = projectTrackNear(r.x, r.z, r.s);
+    var proj = projectTrackNear(r.x, r.z, r.s, r.roadY);
     r.s = proj.s;
     var tgt = centerlinePoint(r.s + 15);
     var edge = -pitSide() * (ASPHALT - 2.4);

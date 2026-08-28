@@ -525,6 +525,17 @@ var circuits = {};
 ["harbor", "park", "desert", "forest"].forEach(function (id) {
   circuits[id] = raceBuiltin(id, id);
 });
+// 200 KPH is the whole point of the ceiling, and the needle reads world
+// units times 3.15, so it has to bite in the sim and not just the HUD.
+assert(Math.abs(sim.SPEED_LIMIT - 200 / 3.15) < 0.01, "the cap is 200 KPH, not a world-unit guess");
+assert(src.indexOf("var maxV = empty ? LIMP_SPEED : SPEED_LIMIT") !== -1, "motion clamps to the cap, not MAX_SPEED");
+assert(/return Math\.round\(Math\.min\(TOP_KPH,/.test(src), "the speedo cannot read past the cap");
+sim.buildBuiltin("forest");
+var flatOut = sim.runField(FIELD, 620, { s: sim.trackLen() - 6 });
+var topV = 0;
+for (wi = 0; wi < flatOut.length; wi++) topV = Math.max(topV, flatOut[wi].maxSpeed);
+assert(topV > sim.SPEED_LIMIT - 1, "somebody reaches the cap down Forest's straight (" + topV.toFixed(1) + ")");
+assert(topV <= sim.SPEED_LIMIT + 0.01, "nobody sails past it (" + (topV * 3.15).toFixed(0) + " KPH)");
 // Forest bridges over its own start straight. Plan view cannot tell the
 // two apart, so the bridge's barriers used to read as a wall across the
 // straight and the whole field piled into a phantom nine metres up.
