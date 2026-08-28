@@ -482,11 +482,69 @@ buildSweeperLoop(-1);
 var sweepR = runCustom("BowieKnife99");
 assertFight(sweepR, "custom-right-sweeper");
 
+// A lone bot on an empty circuit proves nothing about a race. Put the
+// whole field on each shipped board and check they all get home: every
+// jam this brain has had came from cars in each other's way, and every
+// one of them showed up as reverse time and resets, never as a slow lap.
+var FIELD = ["BowieKnife99", "Hall Monitor", "Sub Teacher", "Library Kid", "Band Kid", "Lab Partner", "Detention"];
+
+function raceBuiltin(id, label) {
+  sim.buildBuiltin(id);
+  sim.setSeed(1);
+  var len = sim.trackLen();
+  var field = sim.runField(FIELD, 620, { s: len - 6 });
+  var rev = 0;
+  var resets = 0;
+  var stops = 0;
+  var slowest = 0;
+  var i;
+  for (i = 0; i < field.length; i++) {
+    var f = field[i];
+    assert(f.finished, label + ": " + f.name + " never finished (lap " + f.lap + ")");
+    rev += f.reverseT;
+    resets += f.resets;
+    if (f.pitStops > stops) stops = f.pitStops;
+    if (f.finishTime > slowest) slowest = f.finishTime;
+  }
+  assert(resets === 0, label + ": " + resets + " cars had to be put back on the road");
+  assert(rev < 4, label + ": " + rev.toFixed(1) + "s spent reversing out of trouble");
+  assert(stops <= 2, label + ": someone boxed " + stops + " times");
+  assert(slowest < 400, label + ": last car took " + slowest.toFixed(0) + "s");
+  return { len: Math.round(len), last: Math.round(slowest), win: field[0].name };
+}
+
+var circuits = {};
+["harbor", "park", "desert", "forest"].forEach(function (id) {
+  circuits[id] = raceBuiltin(id, id);
+});
+// Forest bridges over its own start straight. Plan view cannot tell the
+// two apart, so the bridge's barriers used to read as a wall across the
+// straight and the whole field piled into a phantom nine metres up.
+sim.buildBuiltin("forest");
+var underBridge = sim.centerlinePoint(22);
+assert(Math.abs(underBridge.y || 0) < 0.5, "forest start straight is at valley height");
+var overhead = 0;
+for (wi = 0; wi < sim.WALLS.length; wi++) {
+  var wb = sim.WALLS[wi];
+  if ((wb.y || 0) < 4) continue;
+  if (Math.hypot((wb.ax + wb.bx) * 0.5 - underBridge.x, (wb.az + wb.bz) * 0.5 - underBridge.z) < 14) overhead += 1;
+}
+assert(overhead > 0, "the bridge keeps its barriers over the start straight");
+assert(
+  !sim.noseBlocked({ x: underBridge.x, z: underBridge.z, heading: underBridge.h, roadY: 0 }),
+  "a car under the bridge is not blocked by the bridge"
+);
+assert(
+  sim.carDeckY({ x: underBridge.x, z: underBridge.z, roadY: 9.1 }) > 4,
+  "a car on the bridge reads the bridge's height, not the road beneath it"
+);
+
 sim.restoreCampus();
 assert(!sim.isDriveableLoop(), "Campus uses the locked S/F, not MAP_CLOSED");
 assert(Math.abs(sim.trackLen() - sim.TRACK_LEN) < 1, "Campus path restored");
 
 console.log("OK bot AI all tracks", {
+  circuits: circuits,
   campus: Math.round(bowie.finishTime),
   campusGrass: +bowie.grass.toFixed(1),
   left90: Math.round(left90.finishTime),

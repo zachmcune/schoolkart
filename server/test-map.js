@@ -211,6 +211,9 @@ var code = [
   sliceFn("wallSeg"),
   sliceFn("skipLeftBarrier"),
   sliceFn("wallKindFor"),
+  src.match(/var DECK_APART = [0-9.]+;/)[0],
+  sliceFn("carDeckY"),
+  sliceFn("sameDeck"),
   sliceFn("wallCutsRibbon"),
   sliceFn("joinColinearWall"),
   sliceFn("mergeColinearWalls"),
@@ -1010,7 +1013,7 @@ assert(src.indexOf('createRacer("cpu", 0xe67e22, "Detention"') !== -1, "Detentio
 assert(src.indexOf('createRacer("cpu", 0x1abc9c, "Yearbook"') !== -1, "Yearbook is on the solo grid");
 assert((src.match(/createRacer\("cpu", 0x[0-9a-f]+, "/g) || []).length === 7, "solo races field seven CPUs");
 assert(src.indexOf("slot: 3,") === -1, "no CPU sits in the player's GRID_P2 slot");
-assert(src.indexOf("rideHeight(r.x, r.z) + 1.46") !== -1, "tags sit tiny over the halo");
+assert(src.indexOf("rideHeight(r.x, r.z, r) + 1.46") !== -1, "tags sit tiny over the halo, on the car's own deck");
 assert(src.indexOf("dropNameTag") !== -1, "nametags leave the scene with the car");
 
 sim.lockRacePath("");

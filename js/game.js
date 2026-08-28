@@ -3188,6 +3188,24 @@
     return "low";
   }
 
+  // Nine metres is Forest's bridge over its own start straight. Anything
+  // that far apart in height is a different deck, not the same road, and
+  // nothing on one deck can touch anything on the other.
+  var DECK_APART = 4;
+
+  // Which deck is this car driving? Plan view cannot tell — the bridge and
+  // the straight beneath it occupy the same x/z. r.s comes from the
+  // hint-aware projection, which does know, so its height is the answer.
+  function carDeckY(r) {
+    if (r && r.roadY != null) return r.roadY;
+    if (!r || r.x == null) return 0;
+    return projectTrack(r.x, r.z).y || 0;
+  }
+
+  function sameDeck(r, w) {
+    return Math.abs((w.y || 0) - carDeckY(r)) <= DECK_APART;
+  }
+
   function wallCutsRibbon(w) {
     var n = 4;
     var i;
@@ -3201,7 +3219,7 @@
       // above that is one road on top of another, and dropping the bridge's
       // barriers to keep the straight clear left the bridge with nothing to
       // stop a car going over the side.
-      if (Math.abs((pr.y || 0) - (w.y || 0)) > 4) continue;
+      if (Math.abs((pr.y || 0) - (w.y || 0)) > DECK_APART) continue;
       return true;
     }
     return false;
@@ -3252,7 +3270,7 @@
 
   function joinColinearWall(a, b) {
     if ((a.kind || "low") !== (b.kind || "low")) return null;
-    if (Math.abs((a.y || 0) - (b.y || 0)) > 4) return null;
+    if (Math.abs((a.y || 0) - (b.y || 0)) > DECK_APART) return null;
     var adx = a.bx - a.ax;
     var adz = a.bz - a.az;
     var bdx = b.bx - b.ax;
@@ -3354,7 +3372,7 @@
       var rotY = -Math.atan2(dz, dx);
       var mx = (w.ax + w.bx) * 0.5;
       var mz = (w.az + w.bz) * 0.5;
-      var wy = (projectTrack(mx, mz).y || 0);
+      var wy = w.y || 0;
       var tall = w.kind === "tall";
       var ch = tall ? 1.28 : 0.9;
       var cd = tall ? 0.64 : 0.58;
@@ -5190,7 +5208,7 @@
       paintNameTag(r);
       // Halo sits at 0.8. Tiny tag just above it — not a floating HUD plaque,
       // and not up at chase-cam height (that put tags behind the lens).
-      var y = rideHeight(r.x, r.z) + 1.46;
+      var y = rideHeight(r.x, r.z, r) + 1.46;
       r.tag.position.set(r.x, y, r.z);
       r.tag.quaternion.copy(camera.quaternion);
       var dist = Math.hypot(r.x - cam.x, y - cam.y, r.z - cam.z);
@@ -5271,6 +5289,7 @@
     r.s = s;
     r.lastS = null;
     r.lapDist = null;
+    r.roadY = null;
     r.burnLap = 0;
     r.burnLapN = -1;
     r.burnMark = null;
@@ -5295,11 +5314,12 @@
     r.mesh.rotation.set(0, -heading, 0);
   }
 
-  function rideHeight(x, z) {
+  function rideHeight(x, z, r) {
     // Custom ribbon sits at y=0.055. Wheel center is 0.28, radius 0.32, so
     // contact is ride-0.04. 0.12 puts the open wheels ON the ribbon, not in it.
     var base = isDriveableLoop() ? 0.12 : 0;
     if (x == null || z == null || !PATH.length) return base;
+    if (r) return base + carDeckY(r);
     var pr = projectTrack(x, z);
     return base + (pr && pr.y ? pr.y : 0);
   }
@@ -5358,6 +5378,7 @@
       r.s = projectTrack(r.x, r.z).s;
       r.lastS = null;
       r.lapDist = null;
+      r.roadY = null;
       r.passedHalf = false;
     }
     pinS(player);
@@ -5465,6 +5486,7 @@
     if (r.finished) return;
     var prog = projectTrackNear(r.x, r.z, r.s);
     r.s = prog.s;
+    r.roadY = prog.y || 0;
     // Any long ribbon — custom closed boards AND the built-in circuits.
     // Harbor / Park / Desert / Forest never trip the old Campus x=8 / z>8
     // gate, so they stayed on lap 1 until the clock ran out.
@@ -6698,6 +6720,7 @@
     var i;
     for (i = 0; i < near.length; i++) {
       var w = near[i];
+      if (!sameDeck(r, w)) continue;
       var here = closestOnSeg(r.x, r.z, w.ax, w.az, w.bx, w.bz);
       var hereD = Math.sqrt(here.d2);
       var rad = 1.35 + (w.thick || 0.55) * 0.5;
@@ -7507,6 +7530,7 @@
     var i;
     for (i = 0; i < WALLS.length; i++) {
       var w = WALLS[i];
+      if (!sameDeck(r, w)) continue;
       var rad = 1.35 + (w.thick || 0.55) * 0.5;
       var d = Math.sqrt(closestOnSeg(r.x, r.z, w.ax, w.az, w.bx, w.bz).d2);
       if (d < rad && d < nearD) {
@@ -7674,7 +7698,7 @@
   }
 
   function poseCar(r) {
-    r.mesh.position.set(r.x, rideHeight(r.x, r.z), r.z);
+    r.mesh.position.set(r.x, rideHeight(r.x, r.z, r), r.z);
     r.mesh.rotation.set(0, -r.heading, 0);
     r.mesh.rotation.x = 0;
     r.mesh.rotation.z = 0;
