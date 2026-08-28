@@ -285,6 +285,17 @@ function summarise(name, len, field, seed) {
     resets: field.reduce(function (a, f) {
       return a + f.resets;
     }, 0),
+    hits: field.reduce(function (a, f) {
+      return a + f.contacts;
+    }, 0),
+    rubT: +field
+      .reduce(function (a, f) {
+        return a + f.contactT;
+      }, 0)
+      .toFixed(1),
+    stops: field.reduce(function (a, f) {
+      return Math.max(a, f.pitStops);
+    }, 0),
   };
 }
 
@@ -416,13 +427,105 @@ if (args.indexOf("--laps") !== -1) {
   // A single race is one roll of the dice on a jam. Run a few seeds so a
   // regression cannot hide behind a lucky start.
   var seeds = (process.env.SEEDS || "1").split(",").map(Number);
+  if (process.env.NSEEDS) {
+    seeds = [];
+    for (var si = 1; si <= Number(process.env.NSEEDS); si++) seeds.push(si);
+  }
   var quiet = args.indexOf("--quiet") !== -1;
+  var roll = args.indexOf("--roll") !== -1;
   var summary = [];
   list.forEach(function (name) {
     seeds.forEach(function (seed) {
-      summary.push(runTrack(name, 0, seed, quiet));
+      summary.push(runTrack(name, 0, seed, quiet || roll));
     });
   });
+  if (roll) {
+    // Per-race numbers swing hard on who happened to start where. Roll
+    // them up per track so a change can be told from a lucky grid.
+    console.log("\nper track, mean of " + seeds.length + " seeds");
+    var worst = { spread: 0, hits: 0, rev: 0, still: 0, resets: 0, dnf: 0, stops: 0, rub: 0 };
+    list.forEach(function (name) {
+      var rows = summary.filter(function (s) {
+        return s.track === name;
+      });
+      function mean(key) {
+        return (
+          rows.reduce(function (a, s) {
+            return a + s[key];
+          }, 0) / rows.length
+        );
+      }
+      function total(key) {
+        return rows.reduce(function (a, s) {
+          return a + s[key];
+        }, 0);
+      }
+      var dnf = rows.filter(function (s) {
+        return !s.allFinished;
+      }).length;
+      var maxStops = rows.reduce(function (a, s) {
+        return Math.max(a, s.stops);
+      }, 0);
+      worst.spread = Math.max(worst.spread, mean("spread"));
+      worst.hits = Math.max(worst.hits, mean("hits"));
+      worst.rev = Math.max(worst.rev, mean("reverseT"));
+      worst.still = Math.max(worst.still, mean("stillT"));
+      worst.resets = Math.max(worst.resets, total("resets"));
+      worst.dnf += dnf;
+      worst.stops = Math.max(worst.stops, maxStops);
+      worst.rub = Math.max(worst.rub, mean("rubT"));
+      var wins = {};
+      rows.forEach(function (s) {
+        wins[s.winner] = (wins[s.winner] || 0) + 1;
+      });
+      console.log(
+        "  " +
+          pad(name, 14) +
+          padL(rows[0].len.toFixed(0), 6) +
+          "  spread " +
+          padL(mean("spread").toFixed(1), 5) +
+          "  hits " +
+          padL(mean("hits").toFixed(0), 4) +
+          "  rub " +
+          padL(mean("rubT").toFixed(1), 6) +
+          "  rev " +
+          padL(mean("reverseT").toFixed(1), 5) +
+          "  still " +
+          padL(mean("stillT").toFixed(1), 5) +
+          "  resets " +
+          padL(total("resets"), 3) +
+          "  DNF " +
+          padL(dnf, 2) +
+          "  maxStops " +
+          maxStops +
+          "  bowie " +
+          padL((wins.BowieKnife99 || 0) + "/" + rows.length, 6)
+      );
+    });
+    console.log(
+      "\n  worst track: spread " +
+        worst.spread.toFixed(1) +
+        "  hits " +
+        worst.hits.toFixed(0) +
+        "  rub " +
+        worst.rub.toFixed(1) +
+        "  rev " +
+        worst.rev.toFixed(1) +
+        "  still " +
+        worst.still.toFixed(1) +
+        "  resets " +
+        worst.resets +
+        "  DNF " +
+        worst.dnf +
+        "  maxStops " +
+        worst.stops
+    );
+    var bw = summary.filter(function (s) {
+      return s.winner === "BowieKnife99";
+    }).length;
+    console.log("  Bowie won " + bw + "/" + summary.length + " across every board");
+    return;
+  }
   console.log("\nsummary");
   summary.forEach(function (s) {
     console.log(
@@ -437,6 +540,12 @@ if (args.indexOf("--laps") !== -1) {
         padL(s.reverseT, 6) +
         "  still " +
         padL(s.stillT, 6) +
+        "  hits " +
+        padL(s.hits, 5) +
+        "  rub " +
+        padL(s.rubT, 6) +
+        "  stops " +
+        padL(s.stops, 2) +
         "  won by " +
         pad(s.winner, 13) +
         "  last " +

@@ -6812,6 +6812,55 @@
     return lim;
   }
 
+  // Cars are 2.4m across, so anything under that is already touching.
+  // Ask for a little more than that and a pair running side by side
+  // still has room when one of them takes a kerb.
+  var SIDE_ROOM = 3.2;
+  var SIDE_EASE = 5.5;
+
+  // Every bot wants the same racing line, so two of them at the same
+  // point on the ribbon aim at the same patch of tarmac and grind along
+  // each other until one lifts. This is the term that makes them leave
+  // each other room: while a rival is genuinely alongside, the target
+  // offset gets shoved off the line, away from him, by whatever the pair
+  // is short of a car's width.
+  //
+  // Held on the car and eased, not recomputed raw: rivals cross in and
+  // out of the window every few frames, and feeding that straight to the
+  // steering was worth twice as many cars in the scenery as it saved in
+  // contact. Eased, it reads as leaving room rather than flinching.
+  function sideNudge(r, off, room, dt) {
+    var fx = Math.cos(r.heading);
+    var fz = Math.sin(r.heading);
+    var edge = ASPHALT - 2.15;
+    var push = 0;
+    if (room) {
+      eachRival(r, function (o) {
+        if (o.pitServicing) return;
+        var rx = o.x - r.x;
+        var rz = o.z - r.z;
+        var fwd = rx * fx + rz * fz;
+        // Overlapping bodywork only. A car clearly ahead is followLimit's
+        // problem, and one clearly behind is not ours at all.
+        if (fwd < -MESH_TAIL - 3 || fwd > MESH_NOSE + 3) return;
+        var lat = -rx * fz + rz * fx;
+        var side = Math.abs(lat);
+        if (side > SIDE_ROOM) return;
+        var away = lat >= 0 ? -1 : 1;
+        // Only ask for room the road actually has. Leaning away from a
+        // rival into a barrier just swaps who you are grinding, and on a
+        // hairpin it swaps it for the grass.
+        var have = away > 0 ? edge - off : off + edge;
+        var give = away * Math.min(SIDE_ROOM - side, Math.max(0, have));
+        if (Math.abs(give) > Math.abs(push)) push = give;
+      });
+    }
+    var held = r.aiSideOff || 0;
+    var ease = Math.min(1, SIDE_EASE * (dt || 0.033));
+    r.aiSideOff = held + (push - held) * ease;
+    return r.aiSideOff;
+  }
+
   function laneClear(r, side) {
     // Is there room to move that way, or is someone already there?
     var fx = Math.cos(r.heading);
@@ -7054,6 +7103,9 @@
       off = line.off + Math.abs(p.lineOff) * inside * 0.2;
       if (Math.abs(hunt.cover) > 0.45) off = clamp(off + hunt.cover * 0.62, -2.8, 2.4);
     }
+    // Not through the tight stuff: there is no room to give in a hairpin,
+    // and the line is the only thing keeping either car on the road.
+    off += sideNudge(r, off, !tight && !r.wantPit, dt);
     off = clamp(off, -(ASPHALT - 2.15), ASPHALT - 2.15);
     var tx = target.x + nx * off;
     var tz = target.z + nz * off;
