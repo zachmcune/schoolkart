@@ -24,6 +24,17 @@ function sliceFn(name) {
   throw new Error("unclosed " + name);
 }
 
+// The tile editor's machinery is one long run of small helpers, so take
+// the run wholesale rather than naming thirty functions. It ends where
+// rebuildPath begins.
+function sliceFromTo(start, endName) {
+  var a = src.indexOf(start);
+  if (a < 0) throw new Error("missing start " + start);
+  var b = src.indexOf("function " + endName + "(", a + start.length);
+  if (b < 0) throw new Error("missing end " + endName);
+  return src.slice(a, b);
+}
+
 function sliceAssign(name) {
   var needle = "var " + name + " = {";
   var idx = src.indexOf(needle);
@@ -99,6 +110,11 @@ var code = [
   "var _h = 0;",
   "var _y = 0;",
   "var stampTrees = [];",
+  src.match(/var TRACK_CODE_MAX = [0-9]+;/)[0],
+  src.match(/var TYPE_ENC = \{[^}]*\};/)[0],
+  sliceAssign("TYPE_DEC"),
+  sliceFn("canonType"),
+  sliceFn("cleanTrack"),
   "var RIBBON_SEGS = 360;",
   "var trackCode = '';",
   "var state = 'racing';",
@@ -160,6 +176,11 @@ var code = [
   sliceFn("buildParkPath"),
   sliceFn("buildDesertPath"),
   sliceFn("buildForestPath"),
+  sliceFn("buildCodePath"),
+  // Everything the tile editor and the letter codes need, so the probe
+  // and the tests can race a board the editor really emits instead of a
+  // hand-written stand-in for one.
+  sliceFromTo("var MAP_SURF = [];", "rebuildPath"),
   sliceFn("pointOnSeg"),
   sliceFn("centerlinePoint"),
   sliceFn("projectOn"),
@@ -302,6 +323,25 @@ var code = [
   "  else buildCampusPath();",
   "  placeWalls();",
   "}",
+  // Same two branches rebuildPath takes for a non-reserved code: an M
+  // string from the tile editor, or the older letter codes. Letter codes
+  // leave MAP_SURF empty in the browser, so seal it here to race them as
+  // the custom they are rather than on Campus's start line and pit road.
+  "function buildCustomCode(code) {",
+  "  MAP_SURF = [];",
+  "  MAP_CLOSED = false;",
+  "  resetPathCursor();",
+  "  setTrackKerbs('campus');",
+  "  if (code.charAt(0) === 'M') buildMapPath(code);",
+  "  else {",
+  "    clearPit();",
+  "    buildCodePath(code);",
+  "    MAP_CLOSED = TRACK_LEN > 80;",
+  "    if (MAP_CLOSED) MAP_SURF = PATH.slice();",
+  "  }",
+  "  placeWalls();",
+  "  return MAP_CLOSED && MAP_SURF.length > 0;",
+  "}",
   "setDefaultPit();",
   "buildCampusPath();",
   "return {",
@@ -330,6 +370,8 @@ var code = [
   "  setDefaultPit: setDefaultPit,",
   "  buildCampusPath: buildCampusPath,",
   "  buildBuiltin: buildBuiltin,",
+  "  buildCustomCode: buildCustomCode,",
+  "  encodeMap: encodeMap,",
   "  autoClosePath: autoClosePath,",
   "  bashCars: bashCars,",
   "  apexFromRadius: apexFromRadius,",

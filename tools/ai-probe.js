@@ -9,6 +9,7 @@
 "use strict";
 
 var sim = require("../server/ai-sim.js").buildSim();
+var BOARDS = require("./boards.js");
 
 var FIELD = (process.env.FIELD || "BowieKnife99,Hall Monitor,Sub Teacher,Library Kid,Band Kid,Lab Partner,Detention").split(",");
 
@@ -88,6 +89,15 @@ var CUSTOM = {
 if (process.env.NOFUEL) sim.setFuelOverride(1e6);
 
 function buildTrack(name) {
+  if (BOARDS[name]) {
+    // Straight through the editor's own encoder and decoder, so what
+    // races here is the string a player would paste, not a shape we
+    // drew that happens to resemble one.
+    var code = sim.encodeMap(BOARDS[name]());
+    if (!sim.buildCustomCode(code)) throw new Error(name + " is not a closed board: " + code);
+    if (process.env.NOPIT) sim.clearPit();
+    return;
+  }
   if (CUSTOM[name]) {
     sim.resetPathCursor();
     sim.clearPit();
@@ -100,12 +110,16 @@ function buildTrack(name) {
     sim.placeWalls();
     return;
   }
+  // buildBuiltin falls back to Campus for anything it does not know, so a
+  // typo used to race Campus five times over under five different names
+  // and read as five boards agreeing with each other.
+  if (["campus", "harbor", "park", "desert", "forest"].indexOf(name) === -1) throw new Error("no such track: " + name);
   sim.buildBuiltin(name);
   if (process.env.NOPIT) sim.clearPit();
 }
 
 function trackNames() {
-  return ["campus", "harbor", "park", "desert", "forest"].concat(Object.keys(CUSTOM));
+  return ["campus", "harbor", "park", "desert", "forest"].concat(Object.keys(CUSTOM)).concat(Object.keys(BOARDS));
 }
 
 function profileReport() {
