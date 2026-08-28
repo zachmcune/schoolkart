@@ -34,6 +34,15 @@ function assert(cond, msg) {
   if (!cond) throw new Error(msg);
 }
 
+// Physics constants come out of game.js verbatim. Hand-copied numbers
+// drifted once already: #29 raised MAX_SPEED to 200 and the stub kept
+// 48, so every handling test here was quietly grading old physics.
+function constFrom(name) {
+  var m = src.match(new RegExp("^\\s*var " + name + " = ([^;\\n]+);", "m"));
+  if (!m) throw new Error("missing const " + name);
+  return "var " + name + " = " + m[1] + ";";
+}
+
 var code = [
   "var ASPHALT = 8.6;",
   "var RUNOFF = 3.8;",
@@ -43,7 +52,16 @@ var code = [
   "var GRASS_ROLL = 4;",
   "var GRASS_DUMP = 40;",
   "var TIRE_FLOOR = 22;",
+  constFrom("WORN_FEEL"),
+  constFrom("KPH_PER_UNIT"),
+  constFrom("TOP_KPH"),
+  constFrom("PIT_HALF"),
+  // The map sandbox keeps the old 48 cap and the old quick accel on
+  // purpose (#29): these tests drive 10s of W down short editor boards.
+  // SPEED_LIMIT has to follow the sandbox cap, not the shipped 200, or
+  // every handling sample here runs 30% faster than it was written for.
   "var MAX_SPEED = 48;",
+  "var SPEED_LIMIT = MAX_SPEED;",
   "var ACCEL = 16;",
   "var BRAKE_DECEL = 20;",
   "var COAST = 5;",
@@ -92,6 +110,9 @@ var code = [
   "var MESH_TAIL = 2.1;",
   "var MESH_HALF_W = 1.2;",
   "var WALLS = [];",
+  // These tests are about geometry, not strategy, so the tank burns at
+  // the stock rate rather than one sized to a particular board.
+  "var RACE = { burn: 1 };",
   "var TYPE_ENC = { s: 'A', S: 'L', r: 'R', w: 'W', H: 'H', C: 'C', F: 'F', P: 'P', t: 'T' };",
   "var TYPE_DEC = { A:'s', a:'s', s:'s', L:'S', S:'S', R:'r', r:'r', W:'w', w:'w', H:'H', h:'H', C:'C', c:'C', F:'F', f:'F', P:'P', p:'P', T:'t', t:'t' };",
   sliceFn("canonType"),
@@ -124,6 +145,11 @@ var code = [
   sliceFn("setDefaultPit"),
   sliceFn("clearPit"),
   sliceFn("placePitHere"),
+  sliceFn("turnWrap"),
+  sliceFn("joinPlan"),
+  sliceFn("emitJoin"),
+  src.match(/var JOIN_APART = [0-9.]+;/)[0],
+  sliceFn("joinClearance"),
   sliceFn("autoClosePath"),
   sliceFn("cornerKind"),
   sliceFn("builtinSpec"),
@@ -141,6 +167,12 @@ var code = [
   sliceFromTo("var MAP_SURF = [];", "rebuildPath"),
   sliceFn("rebuildPath"),
   sliceFn("projectOn"),
+  sliceFn("raceDeltaS"),
+  sliceFn("trackInfoAt"),
+  src.match(/var HINT_SLACK = [0-9.]+;/)[0],
+  src.match(/var DECK_APART = [0-9.]+;/)[0],
+  sliceFn("carDeckY"),
+  sliceFn("projectTrackNear"),
   sliceFn("projectTrack"),
   sliceFn("inPitBox"),
   sliceFn("dressClear"),
@@ -152,8 +184,14 @@ var code = [
   sliceFn("wheelWorld"),
   sliceFn("hitCarFeel"),
   sliceFn("applyMotion"),
+  sliceFn("isDriveableLoop"),
+  src.match(/var LAP_ORIGIN = \{[^}]*\};/)[0],
+  sliceFn("lapOriginS"),
+  sliceFn("scoreLap"),
   sliceFn("updateLaps"),
-  sliceFn("onRaceRibbon"),
+  sliceFn("pitRoadDist"),
+  sliceFn("raceRoadDist"),
+  sliceFn("pitClaims"),
   sliceFn("inPitLane"),
   sliceFn("inPitGrab"),
   sliceFn("cleanTrack"),
@@ -175,6 +213,7 @@ var code = [
   sliceFn("wallSeg"),
   sliceFn("skipLeftBarrier"),
   sliceFn("wallKindFor"),
+  sliceFn("sameDeck"),
   sliceFn("wallCutsRibbon"),
   sliceFn("joinColinearWall"),
   sliceFn("mergeColinearWalls"),
@@ -207,11 +246,17 @@ var code = [
   "  updateLaps: updateLaps,",
   "  inPitGrab: inPitGrab,",
   "  inPitLane: inPitLane,",
-  "  onRaceRibbon: onRaceRibbon,",
+  "  pitClaims: pitClaims,",
   "  cleanTrack: cleanTrack,",
   "  cellsInBoard: cellsInBoard,",
   "  customGridPose: customGridPose,",
   "  centerlinePoint: centerlinePoint,",
+  "  pathLine: pathLine,",
+  "  pathArc: pathArc,",
+  "  autoClosePath: autoClosePath,",
+  "  resetPathCursor: function () { PATH.length = 0; TRACK_LEN = 0; _x = -200; _z = SF_Z; _h = 0; _y = 0; },",
+  "  sealCustom: function () { MAP_CLOSED = true; MAP_SURF = PATH.slice(); setTrackKerbs('campus'); },",
+  "  clearPit: function () { PIT_META.on = false; PIT_PATH.length = 0; },",
   "  slotOnPath: slotOnPath,",
   "  gridSlot: gridSlot,",
   "  slotHeading: slotHeading,",
@@ -920,9 +965,10 @@ assert(src.indexOf("if (launchCall === \"DUMP\") launchCall = \"SLUGGISH\"") !==
 assert(!/function applyLaunch\([\s\S]{0,500}dumpLaunch/.test(src), "lights-out does not spin onto grass");
 assert(!/function applyCpuLaunch\([\s\S]{0,900}dumpLaunch/.test(src), "room Bowie does not dump-spin at GO");
 assert(src.indexOf("function slotHeading") !== -1 && src.indexOf("gridHeading = slotHeading(g)") !== -1, "room grid keeps the slot heading");
-assert(src.indexOf("function onRaceRibbon") !== -1, "ribbon test is shared by lane and grab");
-assert(src.indexOf("if (onRaceRibbon(r.x, r.z)) return false") !== -1, "on-ribbon never enters pit lane or grab");
-assert(src.indexOf("if (!isDriveableLoop() && r.z <= SF_Z + ASPHALT) return false") !== -1, "campus center/right of the ribbon is never the pit lane");
+assert(src.indexOf("function pitClaims") !== -1, "one nearer-road test is shared by lane and grab");
+assert(src.indexOf("return rd > ASPHALT && pd < rd;") !== -1, "the pit only owns a spot off the asphalt, where it is the nearer road");
+assert(/function inPitLane\([\s\S]{0,120}return pitClaims/.test(src), "PIT LANE is the pit ribbon, not an axis-aligned box");
+assert(/function inPitGrab\([\s\S]{0,120}if \(!pitClaims/.test(src), "the grab box is on the pit ribbon too");
 assert(src.indexOf("var inBox = inPitGrab(player)") !== -1, "PIT LANE banner is the halfway box, not the peel mouth");
 assert(src.indexOf("inBox = inPitLane(player) || inPitGrab(player)") === -1, "peel mouth does not paint PIT LANE");
 assert(src.indexOf("z0: -74.0") === -1, "campus pit pave is not painted on the racing line");
@@ -939,10 +985,10 @@ assert(src.indexOf('pathLine(680, "start")') !== -1, "start road is long enough 
 assert(src.indexOf("The racing ribbon stays whole") !== -1, "second road is added beside the ribbon, not a hole");
 assert(src.indexOf("z0: -61.5") !== -1, "second asphalt road starts past the grass median");
 assert(src.indexOf("function stampPitBand") !== -1 && src.indexOf("stampPitBand(PIT_HALF, 0.09, 0.08, asphaltMat, endS)") !== -1, "pit lane is the same asphalt as the race track, just smaller");
-assert(src.indexOf("r.z <= SF_Z + ASPHALT + 8") !== -1, "grab requires the visible left lane, not the median");
+assert(src.indexOf("if (pd > PIT_HALF) return false") !== -1, "grab requires the visible left lane, not the median");
 assert(src.indexOf("inRect(wx, wz, PIT_ENTRY) || inRect(wx, wz, PIT_EXIT)") !== -1, "left wall opens only at IN/OUT mouths");
 assert(src.indexOf("player.heading = slotHeading({ h: gridHeading })") !== -1, "campus GO snaps heading east");
-assert(src.indexOf("return inRect(r.x, r.z, PIT_GRAB)") !== -1, "campus pit grab is the halfway box");
+assert(src.indexOf("return t >= 0.42 && t <= 0.98") !== -1, "pit grab is the middle of the lane, not the mouths");
 assert(src.indexOf("var onRace = ribbon && ribbon.dist <= ASPHALT") !== -1, "full racing ribbon is on-race");
 assert(src.indexOf("r.z > leftOfRace && r.z < PIT_LANE.z1 + 4") === -1, "pit grab does not eat toward the racing line");
 assert(src.indexOf("launchT = GETAWAY_T") !== -1 && src.indexOf("var GETAWAY_T = 1.5") !== -1, "SLUGGISH is a 1.5s getaway, not a grass limp");
@@ -967,7 +1013,7 @@ assert(src.indexOf('createRacer("cpu", 0xe67e22, "Detention"') !== -1, "Detentio
 assert(src.indexOf('createRacer("cpu", 0x1abc9c, "Yearbook"') !== -1, "Yearbook is on the solo grid");
 assert((src.match(/createRacer\("cpu", 0x[0-9a-f]+, "/g) || []).length === 7, "solo races field seven CPUs");
 assert(src.indexOf("slot: 3,") === -1, "no CPU sits in the player's GRID_P2 slot");
-assert(src.indexOf("rideHeight(r.x, r.z) + 1.46") !== -1, "tags sit tiny over the halo");
+assert(src.indexOf("rideHeight(r.x, r.z, r) + 1.46") !== -1, "tags sit tiny over the halo, on the car's own deck");
 assert(src.indexOf("dropNameTag") !== -1, "nametags leave the scene with the car");
 
 sim.lockRacePath("");
@@ -2800,7 +2846,7 @@ assert(line.onAsphalt && !line.grass, "Campus S/F is asphalt again");
 function assertBuiltin(code, label, opts) {
   sim.rebuildPath(code);
   assert(!sim.MAP_CLOSED, label + " is a built-in, not a custom closed flag");
-  assert(sim.TRACK_LEN > 1800 && sim.TRACK_LEN < 2500, label + " length " + sim.TRACK_LEN);
+  assert(sim.TRACK_LEN > 1500 && sim.TRACK_LEN < 2600, label + " length " + sim.TRACK_LEN);
   var a = sim.centerlinePoint(0);
   var b = sim.centerlinePoint(Math.max(0, sim.TRACK_LEN - 0.4));
   var gap = Math.hypot(a.x - b.x, a.z - b.z);
@@ -2820,6 +2866,8 @@ function assertBuiltin(code, label, opts) {
     assert(Math.abs(a.y) < 0.8, label + " starts at valley height");
   }
   assert(sim.menuTrackName() === opts.menu, label + " menu is " + sim.menuTrackName());
+  var clear = selfClearance();
+  assert(clear > 14, label + " does not run two legs on one bit of tarmac (closest " + clear.toFixed(1) + "m)");
 }
 
 assertBuiltin("HARBOR", "Harbor Street", { flat: true, menu: "HARBOR STREET" });
@@ -2872,6 +2920,79 @@ proveRibbonLaps("HARBOR", "Harbor Street");
 proveRibbonLaps("PARK", "Royal Park");
 proveRibbonLaps("DESERT", "Desert Dusk");
 proveRibbonLaps("FOREST", "Forest Climb");
+// A loop the editor can draw but that does not come home on its own, so
+// autoClosePath has to route the whole way back. It must not lay the new
+// road over road the lap has already used: where two legs share tarmac
+// the barriers get dropped to keep both clear, leaving a hole cars fall
+// through, and a shove at the crossing puts a car on the wrong leg.
+function selfClearance() {
+  var pts = [];
+  var s;
+  for (s = 0; s < sim.TRACK_LEN; s += 4) {
+    var p = sim.centerlinePoint(s);
+    pts.push(p);
+  }
+  var worst = 1e9;
+  var i;
+  var j;
+  for (i = 0; i < pts.length; i++) {
+    for (j = i + 1; j < pts.length; j++) {
+      var along = Math.min((j - i) * 4, sim.TRACK_LEN - (j - i) * 4);
+      if (along < 60) continue;
+      // Road over road at a different height is a bridge, and Forest is
+      // built around one, so only same-level pairs count as shared tarmac.
+      if (Math.abs((pts[i].y || 0) - (pts[j].y || 0)) > 4) continue;
+      var d = Math.hypot(pts[i].x - pts[j].x, pts[i].z - pts[j].z);
+      if (d < worst) worst = d;
+    }
+  }
+  return worst;
+}
+
+function assertCloses(label, lay) {
+  sim.resetPathCursor();
+  sim.clearPit();
+  lay();
+  sim.autoClosePath();
+  sim.sealCustom();
+  var a = sim.centerlinePoint(0);
+  var b = sim.centerlinePoint(sim.TRACK_LEN - 0.2);
+  assert(Math.hypot(a.x - b.x, a.z - b.z) < 3, label + " ribbon has no hole at the S/F");
+  assert(Math.abs(Math.atan2(Math.sin(a.h - b.h), Math.cos(a.h - b.h))) < 0.1, label + " ribbon has no kink at the S/F");
+  var clear = selfClearance();
+  assert(clear > 14, label + " does not lay new road over old (closest " + clear.toFixed(1) + "m)");
+}
+
+assertCloses("tight twisty loop", function () {
+  sim.pathLine(120, "start");
+  sim.pathArc(14, -95, "the90");
+  sim.pathLine(70, "short");
+  sim.pathArc(18, -70, "the90");
+  sim.pathLine(50, "short");
+  sim.pathArc(16, 78, "the90");
+  sim.pathLine(90, "short");
+  sim.pathArc(11, 176, "hairpin");
+  sim.pathLine(70, "short");
+  sim.pathArc(20, -60, "kink");
+  sim.pathLine(40, "short");
+});
+assertCloses("one long straight", function () {
+  sim.pathLine(300, "start");
+});
+assertCloses("chicane mix", function () {
+  sim.pathLine(300, "start");
+  sim.pathArc(12, 88, "chicane");
+  sim.pathLine(40, "chicane");
+  sim.pathArc(9, -100, "chicane");
+  sim.pathLine(12, "chicane");
+  sim.pathArc(13, 60, "chicane");
+  sim.pathLine(200, "short");
+  sim.pathArc(16, -90, "kink");
+  sim.pathLine(120, "short");
+  sim.pathArc(22, -90, "the90");
+  sim.pathLine(60, "short");
+});
+
 sim.rebuildPath("");
 assert(sim.menuTrackName() === "CAMPUS LOOP", "empty code is Campus");
 assert(src.indexOf("harborDressing") !== -1 && src.indexOf("dressHarbor") !== -1, "Harbor dressing group");

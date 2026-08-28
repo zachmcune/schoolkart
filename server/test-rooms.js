@@ -203,7 +203,7 @@ waitHealth()
                   assert(js.indexOf("hostBots[p.id].mesh.visible = true") !== -1, "room Bowie mesh is forced visible");
                   assert(js.indexOf("function roomBotLook") !== -1, "room Bowie is gold #12");
                   assert(js.indexOf("if (launchCall === \"DUMP\") launchCall = \"SLUGGISH\"") !== -1, "start DUMP is sluggish on asphalt");
-                  assert(js.indexOf("function onRaceRibbon") !== -1, "ribbon lock is shared");
+                  assert(js.indexOf("function pitClaims") !== -1, "nearer-road pit lock is shared");
                   assert(js.indexOf("var inBox = inPitGrab(player)") !== -1, "PIT LANE banner is the halfway box only");
                   assert(js.indexOf("z0: -74.0") === -1 && js.indexOf("z0: -71.6") === -1, "pit pave is not a strip on the racing line");
                   assert(js.indexOf("function paintCampusPitLane") !== -1, "campus paints a visible left pit lane");
@@ -262,7 +262,7 @@ waitHealth()
                   assert(js.indexOf("function attachNameTag") !== -1 && js.indexOf("function layoutNameTags") !== -1, "halo nametags");
                   assert(!/function attachNameTag\([\s\S]{0,500}new THREE\.Sprite/.test(js), "nametags are mesh billboards, not X-flip-killed sprites");
                   assert(js.indexOf('r.kind !== "player"') !== -1, "own nametag can stay off; others still show");
-                  assert(js.indexOf("rideHeight(r.x, r.z) + 1.46") !== -1, "tags sit tiny over the halo, not at chase-cam height");
+                  assert(js.indexOf("rideHeight(r.x, r.z, r) + 1.46") !== -1, "tags sit tiny over the halo, not at chase-cam height");
                   assert(/function playerInput\(\)[\s\S]{0,180}portraitRaceBlock/.test(js), "portrait zeros input before keyboard path");
                   assert(js.indexOf("#ff2038") !== -1 && js.indexOf("#3a3e46") !== -1, "asphalt + kerb piece art");
                 });
