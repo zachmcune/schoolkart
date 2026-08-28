@@ -132,6 +132,22 @@ module.exports = {
       ]
     ).concat([{ t: "t", x: 4, y: 2, r: 0 }]);
   },
+  // board-hair's hairpins open north and south and board-big's long
+  // straights run east and west, which leaves half of each piece's
+  // rotations never driven. This is the same paperclip turned ninety
+  // degrees, so the other half gets raced too.
+  "board-turn": function () {
+    return [
+      { t: "H", x: 8, y: 2, r: 1 },
+      { t: "H", x: 2, y: 3, r: 3 },
+      { t: "S", x: 3, y: 2, r: 0 },
+      { t: "F", x: 5, y: 2, r: 0 },
+      { t: "S", x: 6, y: 2, r: 0 },
+      { t: "S", x: 6, y: 3, r: 0 },
+      { t: "s", x: 5, y: 3, r: 0 },
+      { t: "S", x: 3, y: 3, r: 0 },
+    ];
+  },
   // A board with the editor's pit piece, so the custom pit road and the
   // peel-off are exercised on geometry nobody hand-tuned.
   "board-pit": function () {
