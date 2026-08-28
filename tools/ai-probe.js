@@ -267,6 +267,7 @@ function summarise(name, len, field, seed) {
     len: len,
     seed: seed || 1,
     spread: +(slowest.finishTime - fastest.finishTime).toFixed(1),
+    best: +fastest.finishTime.toFixed(1),
     winner: fastest.name,
     worst: slowest.name,
     reverseT: +field
@@ -482,6 +483,8 @@ if (args.indexOf("--laps") !== -1) {
         "  " +
           pad(name, 14) +
           padL(rows[0].len.toFixed(0), 6) +
+          "  win " +
+          padL(mean("best").toFixed(1), 6) +
           "  spread " +
           padL(mean("spread").toFixed(1), 5) +
           "  hits " +

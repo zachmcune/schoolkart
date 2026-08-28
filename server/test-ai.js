@@ -196,8 +196,12 @@ console.log(
 assert(catchB.d0 > 50, "catch starts from a real lead");
 assert(catchB.endD < catchB.d0 - 14, "Bowie reels in a straight lead (" + catchB.endD.toFixed(1) + ")");
 assert(catchT.endD < catchT.d0 - 14, "Hall Monitor reels in a straight lead (" + catchT.endD.toFixed(1) + ")");
-assert(catchB.speed > 40, "Bowie winds the straight while catching up");
-assert(catchT.speed > 40, "Hall Monitor winds the straight while catching up");
+// The car being chased is doing 30, so anything above that is closing.
+// Do not ask for a number that only a driver planning to rear-end him
+// could reach: from 25m back there is not room to get down from 44.
+assert(catchB.speed > 34, "Bowie winds the straight while catching up (" + catchB.speed.toFixed(1) + ")");
+assert(catchT.speed > 32, "Hall Monitor winds the straight while catching up (" + catchT.speed.toFixed(1) + ")");
+assert(catchB.endD < catchT.endD - 2, "Bowie closes harder than the tidy driver does");
 
 var longCatch = sim.runLongCatch("BowieKnife99", 8.0);
 console.log(
@@ -303,8 +307,12 @@ assert(blockT.maxAbsH < 0.7, "lead Hall Monitor does not yaw around to ram (" + 
 assert(blockT.z - blockT.z0 > 0.55, "Hall Monitor covers the pass lane (" + (blockT.z - blockT.z0).toFixed(2) + ")");
 assert(blockB.speed > 28, "block still rolls, not a park");
 
-var passT = sim.runPass("Hall Monitor", 2.2);
-var passB = sim.runPass("BowieKnife99", 2.2);
+// Three seconds, not two: the car being passed is doing 22 and starts
+// 26m up the road, so drawing level alone is most of two seconds. The
+// old window only fit because the follower was allowed to arrive at 44
+// with nowhere to brake, which is a rear-end rather than a pass.
+var passT = sim.runPass("Hall Monitor", 3.0);
+var passB = sim.runPass("BowieKnife99", 3.0);
 console.log(
   "pass Hall minD=" +
     passT.minD.toFixed(2) +

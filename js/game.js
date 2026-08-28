@@ -6793,6 +6793,14 @@
     var fx = Math.cos(r.heading);
     var fz = Math.sin(r.heading);
     var floor = p && p.hunter ? 0.6 : 2.2;
+    // How late this driver leaves it behind a car. Braver drivers run
+    // closer before they lift, committing to a pass buys more still, and
+    // Bowie leaves it later than anyone — which is most of what makes him
+    // frightening in a mirror rather than just quick on an empty lap.
+    var nerve = Math.max(2.6, brakeDecelAt(r.speed));
+    nerve *= 1 + 0.45 * (p && p.aggro != null ? p.aggro : 0.5);
+    if (passing) nerve *= 1.3;
+    if (p && p.hunter) nerve *= 1.45;
     var lim = want;
     eachRival(r, function (o) {
       if (o.pitServicing) return;
@@ -6804,9 +6812,15 @@
       // Off to one side is a car we are going around, not one in the way.
       if (Math.abs(lat) > 2.6) return;
       var gap = fwd - MESH_NOSE - MESH_TAIL;
-      if (gap > 26) return;
+      if (gap > 40) return;
       var theirs = Math.max(0, o.speed || 0);
-      var close = theirs + Math.max(0, gap - floor) * (passing ? 1.35 : 0.95);
+      // What speed can this car still get down from inside the gap it
+      // has? Same sum as braking for a corner, and the honest one. The
+      // proportional term this replaces wanted forty metres of room to
+      // shed ten of speed and was given five, so the field rear-ended
+      // the queue into turn one and shunted each other off the road.
+      var room = Math.max(0, gap - floor);
+      var close = Math.sqrt(theirs * theirs + 2 * nerve * room);
       if (close < lim) lim = close;
     });
     return lim;
@@ -7247,7 +7261,11 @@
       want = wayOff ? 10 : 14;
       if (proj.dist > 10) want = 8;
       if (blocked) want = Math.min(want, 6);
-      var mustRev = blocked || wrongWay || stuckT > 1.8;
+      // Reverse is for scenery. Backing out of a queue only shunts
+      // whoever is behind and leaves this car across the road, so a
+      // standstill in traffic waits it out — the 5.5s reset is still
+      // there if the pack really has deadlocked.
+      var mustRev = blocked || wrongWay || (stuckT > 1.8 && !jam);
       if (r.speed > 7 && mustRev) {
         // Too fast to select reverse — stop first, still steering back.
         steer = recoverSteer(r, tx, tz, false);
@@ -7305,11 +7323,16 @@
     poseCar(r);
   }
 
+  // Bodywork, not centres. Two cars nose to tail sit 5.7m apart, so the
+  // old 4.5m test called a car that was being rear-ended clear road: it
+  // read as stuck on scenery, selected reverse, and backed itself off
+  // the island while the pack kept shunting it.
   function jammedByTraffic(r) {
+    if ((r.aiHitT || 0) > 0) return true;
     var jam = false;
     eachRival(r, function (o) {
       if (jam) return;
-      if (Math.hypot(o.x - r.x, o.z - r.z) < 4.5) jam = true;
+      if (Math.hypot(o.x - r.x, o.z - r.z) < MESH_NOSE + MESH_TAIL + 2.4) jam = true;
     });
     return jam;
   }
