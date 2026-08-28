@@ -5321,6 +5321,12 @@
     r.launchArmed = false;
     r.aiT = 0;
     r.aiStuck = 0;
+    // Watchdog state, or the first frame of a new race inherits the last
+    // one's trouble and a car on the grid recovers from nothing.
+    r.aiStuckT = 0;
+    r.aiRevT = 0;
+    r.aiWrongT = 0;
+    r.aiProgS = null;
     r.pitExitT = 0;
     r.hitYawT = 0;
     r.kerbBump = 0;
@@ -7280,11 +7286,23 @@
     var blocked = !inPit && noseBlocked(r);
     var wayOff = !inPit && (proj.grass || proj.dist > ASPHALT + RUNOFF - 0.25);
     var wide = !inPit && proj.dist > ASPHALT + 0.45;
-    var wrongWay = !inPit && Math.cos(aiWrap(r.heading - proj.h)) < -0.25;
+    // A car needs the better part of a second to turn round, so one
+    // frame of "you are facing backwards" is the projection changing its
+    // mind about which bit of ribbon this is, not the car spinning.
+    // Campus's kink passes within three metres of its own exit road,
+    // pointing the other way, and nothing stops a player drawing the
+    // same thing: taking the first frame at its word sent healthy cars
+    // at the crossover into reverse, and reverse is what cost them the
+    // reset. A real spin holds the reading for far longer than this.
+    r.aiWrongT = !inPit && Math.cos(aiWrap(r.heading - proj.h)) < -0.25 ? (r.aiWrongT || 0) + dt : 0;
+    var wrongWay = r.aiWrongT > 0.4;
     // Progress along the ribbon, wrapped, so crossing the line is not
     // mistaken for going backwards. raceProg() only steps on a scored
     // lap, which used to make the whole grid reset on lap one.
     var jam = jammedByTraffic(r);
+    // Back on the tarmac, pointing the right way, nothing in front:
+    // whatever went wrong is over and the only thing left to do is drive.
+    var recovered = !inPit && !blocked && !wrongWay && !wayOff && proj.dist < ASPHALT - 1;
     var moved = raceDeltaS(r.s, r.aiProgS);
     if (r.aiProgS == null || inPit) {
       r.aiProgS = r.s;
@@ -7296,6 +7314,13 @@
     } else if (moved > 3 || Math.abs(moved) > 60) {
       r.aiProgS = r.s;
       r.aiStuckT = 0;
+    } else if (recovered && !jam && r.speed > 2) {
+      // Recovering, not stuck. The timer only clears on three metres of
+      // ribbon, and a car that has just turned itself round cannot find
+      // three metres in the second it has left — so it was being picked
+      // up and put back mid-recovery, on the road, pointing the right
+      // way, with the road ahead of it empty.
+      r.aiStuckT = Math.max(0, (r.aiStuckT || 0) - dt);
     } else {
       // Sitting behind a stopped car is traffic, not being stuck. Count
       // it slowly so a real deadlock still escalates but a queue does
@@ -7328,8 +7353,12 @@
       // Reverse is for scenery. Backing out of a queue only shunts
       // whoever is behind and leaves this car across the road, so a
       // standstill in traffic waits it out — the 5.5s reset is still
-      // there if the pack really has deadlocked.
-      var mustRev = blocked || wrongWay || (stuckT > 1.8 && !jam);
+      // there if the pack really has deadlocked. And a car that has
+      // already recovered does not reverse at all: reverse cannot make
+      // the forward progress the stuck timer wants, so asking for it
+      // there was a loop whose only exit was the reset.
+      var mustRev = blocked || wrongWay || (stuckT > 1.8 && !jam && !recovered);
+      if (recovered) r.aiRevT = 0;
       if (r.speed > 7 && mustRev) {
         // Too fast to select reverse — stop first, still steering back.
         steer = recoverSteer(r, tx, tz, false);
@@ -7411,6 +7440,7 @@
     r.slide = 0;
     r.aiStuckT = 0;
     r.aiRevT = 0;
+    r.aiWrongT = 0;
     r.aiProgS = r.s;
     r.aiResets = (r.aiResets || 0) + 1;
   }
