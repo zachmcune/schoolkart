@@ -2,6 +2,7 @@
 "use strict";
 
 var harness = require("./ai-sim.js");
+var BOARDS = require("../tools/boards.js");
 var src = harness.src;
 var sim = harness.buildSim();
 
@@ -547,6 +548,17 @@ circuits.custom = raceField("editor loop", function () {
   sim.autoClosePath();
   sim.sealCustom();
   sim.placeWalls();
+});
+// The same again, but through the editor's own encoder and decoder, so
+// what gets raced is the string a player would paste rather than a shape
+// we drew that resembles one. board-min is the smallest loop the editor
+// will accept — four corners, no straight, a 276m lap — which puts the
+// whole field nose to tail with nowhere to go for the entire race.
+Object.keys(BOARDS).forEach(function (id) {
+  var code = sim.encodeMap(BOARDS[id]());
+  circuits[id] = raceField(id, function () {
+    assert(sim.buildCustomCode(code), id + " is not a closed board: " + code);
+  });
 });
 // 200 KPH is the whole point of the ceiling, and the needle reads world
 // units times 3.15, so it has to bite in the sim and not just the HUD.

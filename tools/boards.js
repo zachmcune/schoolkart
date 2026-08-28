@@ -37,8 +37,19 @@ function row(y, x0, x1, kinds) {
 }
 
 module.exports = {
-  // The smallest board worth racing: a 4x3 rectangle of 90s. Short lap,
-  // so the field is never spread out and traffic is constant.
+  // The smallest thing the editor will accept: four corners, no straight
+  // at all, and a 276m lap. Seven cars on that is nose to tail for the
+  // whole race, and there is nowhere for a bot in trouble to go.
+  "board-min": function () {
+    return [
+      { t: "r", x: 2, y: 2, r: 0 },
+      { t: "r", x: 3, y: 2, r: 1 },
+      { t: "r", x: 3, y: 3, r: 2 },
+      { t: "r", x: 2, y: 3, r: 3 },
+    ];
+  },
+  // The smallest board with straights in it: a 4x3 rectangle of 90s.
+  // Short lap, so the field is never spread out and traffic is constant.
   "board-rect": function () {
     return ring(1, 1, 4, 3, [{ t: "F", x: 2, y: 1, r: 0 }, { t: "s", x: 3, y: 1, r: 0 }], [
       { t: "s", x: 3, y: 3, r: 0 },
