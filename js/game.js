@@ -6906,19 +6906,67 @@
     return clear;
   }
 
-  function passSide(r, prey) {
+  // Where is this car sitting across the road, signed the same way as
+  // the racing line's own offset. The steering builds its target as
+  // centerline + normal * off, so measure against the same normal.
+  function ribbonOff(o) {
+    var pj = projectTrackNear(o.x, o.z, o.s, o.roadY);
+    return -(o.x - pj.x) * Math.sin(pj.h) + (o.z - pj.z) * Math.cos(pj.h);
+  }
+
+  // How far off centre a passing car may sit. The road is wider than
+  // this, but the racing line only ever swings RACE_MAX_OFF, so tarmac
+  // further out than a car's width beyond that is road you can be on
+  // rather than road you can race on: a bot parked out there through a
+  // tight corner is slower than the car it is trying to pass, and it is
+  // sitting exactly where that car's exit is about to arrive.
+  var LANE_MAX = RACE_MAX_OFF + 1.4;
+
+  // What a passing car asks for, as opposed to SIDE_ROOM, which is what
+  // it will settle for. Side by side at fifty, a metre of margin between
+  // bodywork is not much, and the pair only has to breathe over a kerb
+  // to be touching — asking for the minimum meant the fast open boards
+  // traded one grind for another.
+  var PASS_ROOM = SIDE_ROOM + 0.5;
+
+  // A pass needs a lane, and a lane is a piece of road beside the car
+  // being passed. This used to be a fixed step off the racing line,
+  // which is the same place as the prey whenever the prey happened to be
+  // running that side of the road — most of any corner. Bowie would pick
+  // the inside of a hairpin, aim at the exact tarmac the car ahead was
+  // already using, and grind along its door until one of them lifted: on
+  // the short editor boards he collected more contact than anyone on the
+  // grid and finished behind drivers he was half a second a lap slower.
+  //
+  // So measure the prey, ask for room beside it, and only take a side
+  // that is both on the road and empty. No lane means no move — sit in
+  // the tow and wait for one, which is what the quick drivers in the
+  // field were already doing to him.
+  function passLane(r, prey) {
+    var theirs = ribbonOff(prey.r);
+    var edge = Math.min(ASPHALT - 2.15, LANE_MAX);
+    var inside = _scan.inside || 0;
+    var held = r.aiPassSide || 0;
+    var order;
     // Commit to a side and stay there. Re-deciding every frame is how
     // a bot ends up dithering behind a car it is quicker than.
-    var held = r.aiPassSide || 0;
-    if (held && (r.aiCommit || 0) > 0) return held;
-    var inside = _scan.inside || 0;
-    var side;
-    if (_scan.dTight < 58 && inside) side = prey.lat * inside <= 0.7 ? inside : -inside;
-    else if (Math.abs(prey.lat) > 0.35) side = prey.lat >= 0 ? -1 : 1;
-    else side = inside || -1;
-    r.aiPassSide = side;
-    r.aiCommit = 1.2;
-    return side;
+    if (held && (r.aiCommit || 0) > 0) order = [held];
+    else if (inside) order = [inside, -inside];
+    else order = [theirs >= 0 ? -1 : 1, theirs >= 0 ? 1 : -1];
+    var i;
+    for (i = 0; i < order.length; i++) {
+      var side = order[i];
+      var lane = clamp(theirs + side * PASS_ROOM, -edge, edge);
+      // Whatever the road left after the clamp has to still be a lane.
+      if (Math.abs(lane - theirs) < SIDE_ROOM) continue;
+      if (!laneClear(r, side)) continue;
+      r.aiPassSide = side;
+      if (!((r.aiCommit || 0) > 0)) r.aiCommit = 1.2;
+      return lane;
+    }
+    r.aiPassSide = 0;
+    r.aiCommit = 0;
+    return null;
   }
 
   function planHunt(r, p, want) {
@@ -6981,14 +7029,11 @@
       // Only pull out if the lane is actually free and we are quick
       // enough to use it. Two bots diving for one gap is a crash.
       if (prey.fwd <= 22 && aggro > 0.15) {
-        var side = passSide(r, prey);
-        if (laneClear(r, side)) {
+        var lane = passLane(r, prey);
+        if (lane != null) {
           _hunt.pass = true;
-          _hunt.cover = side * 3.1;
+          _hunt.cover = lane;
           _hunt.want = Math.min(SPEED_LIMIT, Math.max(_hunt.want, (prey.r.speed || 0) + 6));
-        } else {
-          r.aiPassSide = 0;
-          r.aiCommit = 0;
         }
       }
     }
