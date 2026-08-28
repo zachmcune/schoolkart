@@ -496,9 +496,9 @@ assertFight(sweepR, "custom-right-sweeper");
 // one of them showed up as reverse time and resets, never as a slow lap.
 var FIELD = ["BowieKnife99", "Hall Monitor", "Sub Teacher", "Library Kid", "Band Kid", "Lab Partner", "Detention"];
 
-function raceBuiltin(id, label) {
-  sim.buildBuiltin(id);
+function raceField(label, lay) {
   sim.setSeed(1);
+  lay();
   var len = sim.trackLen();
   var field = sim.runField(FIELD, 620, { s: len - 6 });
   var rev = 0;
@@ -515,15 +515,38 @@ function raceBuiltin(id, label) {
     if (f.finishTime > slowest) slowest = f.finishTime;
   }
   assert(resets === 0, label + ": " + resets + " cars had to be put back on the road");
-  assert(rev < 4, label + ": " + rev.toFixed(1) + "s spent reversing out of trouble");
-  assert(stops <= 2, label + ": someone boxed " + stops + " times");
+  assert(rev < 2, label + ": " + rev.toFixed(1) + "s spent reversing out of trouble");
+  assert(stops <= 1, label + ": someone boxed " + stops + " times");
   assert(slowest < 400, label + ": last car took " + slowest.toFixed(0) + "s");
   return { len: Math.round(len), last: Math.round(slowest), win: field[0].name };
 }
 
 var circuits = {};
 ["harbor", "park", "desert", "forest"].forEach(function (id) {
-  circuits[id] = raceBuiltin(id, id);
+  circuits[id] = raceField(id, function () {
+    sim.buildBuiltin(id);
+  });
+});
+// And on boards nobody shipped. A player-drawn loop gets no hand-tuned
+// racing line, no kerb list and no authored pit road, so if the brain
+// only works because someone measured Campus, this is where it shows.
+circuits.custom = raceField("editor loop", function () {
+  sim.resetPathCursor();
+  sim.clearPit();
+  sim.pathLine(300, "start");
+  sim.pathArc(12, 88, "chicane");
+  sim.pathLine(40, "chicane");
+  sim.pathArc(9, -100, "chicane");
+  sim.pathLine(12, "chicane");
+  sim.pathArc(13, 60, "chicane");
+  sim.pathLine(200, "short");
+  sim.pathArc(11, 176, "hairpin");
+  sim.pathLine(120, "short");
+  sim.pathArc(22, -90, "the90");
+  sim.pathLine(60, "short");
+  sim.autoClosePath();
+  sim.sealCustom();
+  sim.placeWalls();
 });
 // 200 KPH is the whole point of the ceiling, and the needle reads world
 // units times 3.15, so it has to bite in the sim and not just the HUD.
