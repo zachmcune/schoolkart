@@ -141,6 +141,29 @@ textarea {
   color: #fff;
 }
 
+.apex-chip {
+  display: block;
+  margin: 5px 0 0 auto;
+  border: 1px solid rgba(46, 200, 195, 0.45);
+  background: #1a120e;
+  color: #7cffd4;
+  font: 700 12px/1 "Trebuchet MS", sans-serif;
+  letter-spacing: 0.08em;
+  padding: 4px 7px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.apex-chip.assist-on {
+  border-color: #2ec8c3;
+  color: #7cffd4;
+}
+
+.apex-chip.assist-off {
+  opacity: 0.5;
+  color: #f4efe6;
+}
+
 .bars {
   min-width: 280px;
   background: var(--panel);
