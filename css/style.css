@@ -128,11 +128,18 @@ textarea {
 
 .speed-box {
   min-width: 110px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
   text-align: right;
   background: var(--panel);
   border: 2px solid rgba(46, 200, 195, 0.4);
   padding: 6px 12px 8px;
   border-radius: 8px;
+}
+
+.speed-read {
+  min-width: 72px;
 }
 
 #speed {
@@ -143,15 +150,17 @@ textarea {
 
 .apex-chip {
   display: block;
-  margin: 5px 0 0 auto;
+  pointer-events: auto;
+  flex: 0 0 auto;
   border: 1px solid rgba(46, 200, 195, 0.45);
   background: #1a120e;
   color: #7cffd4;
-  font: 700 12px/1 "Trebuchet MS", sans-serif;
+  font: 700 13px/1 "Trebuchet MS", sans-serif;
   letter-spacing: 0.08em;
-  padding: 4px 7px;
+  padding: 6px 8px;
   border-radius: 5px;
   cursor: pointer;
+  white-space: nowrap;
 }
 
 .apex-chip.assist-on {

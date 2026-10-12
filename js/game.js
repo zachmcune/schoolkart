@@ -3050,9 +3050,9 @@
     });
     var i;
     for (i = 0; i < 3; i++) {
-      var bar = new THREE.Mesh(new THREE.PlaneGeometry(6.4 - i * 0.75, 0.9), mat);
+      var bar = new THREE.Mesh(new THREE.PlaneGeometry(7.4 - i * 0.85, 1.25), mat);
       bar.rotation.x = -Math.PI * 0.5;
-      bar.position.set(1.35 + i * 1.2, 0.1, 0);
+      bar.position.set(1.5 + i * 1.35, 0.14, 0);
       g.add(bar);
     }
     g.userData.mat = mat;
@@ -8151,7 +8151,7 @@
     if (kind === "spark") p.mesh.scale.set(0.72, 0.07, 1);
     else if (kind === "streak") p.mesh.scale.set(1.55, 0.1, 1);
     else if (kind === "slip") p.mesh.scale.set(0.62, 0.2, 1);
-    else if (kind === "lockup") p.mesh.scale.set(1.05, 0.72, 1);
+    else if (kind === "lockup") p.mesh.scale.set(1.55, 1.05, 1);
     else if (kind === "puff") p.mesh.scale.set(1.35, 1.05, 1);
     else p.mesh.scale.set(1.5, 1.15, 1);
   }
@@ -8205,13 +8205,13 @@
     } else {
       r.spinFx = false;
     }
-    if (r.locked && spd > 2) {
+    if (r.locked && spd > 0.6) {
       if (r.fxT < 0.07) return;
       r.fxT = 0;
       var lr = wheelWorld(r, -1, -1);
       var ll = wheelWorld(r, -1, 1);
-      spawnFx("lockup", lr.x, 0.16, lr.z, back * 3.4, 0.55, side * 1.1);
-      spawnFx("lockup", ll.x, 0.16, ll.z, back * 3.4, 0.55, side * -1.1);
+      spawnFx("lockup", lr.x, 0.2, lr.z, back * 2.8, 0.85, side * 1.4);
+      spawnFx("lockup", ll.x, 0.2, ll.z, back * 2.8, 0.85, side * -1.4);
       return;
     }
     if (r.fxT < 0.16) return;

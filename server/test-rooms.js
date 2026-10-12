@@ -277,6 +277,8 @@ waitHealth()
                   assert(css.indexOf("palette-slot") !== -1, "piece tray slots");
                   assert(css.indexOf("overflow-y: auto") !== -1, "title menu scrolls on Chromebook/phone");
                   assert(css.indexOf(".apex-chip") !== -1, "target-speed chip sits by the speedo");
+                  assert(css.indexOf(".speed-read") !== -1, "chip sits left of the KPH readout");
+                  assert(css.indexOf("pointer-events: auto") !== -1, "chip is clickable under a pointer-events-none HUD");
                   assert(css.indexOf("race-portrait") !== -1, "portrait race hides the vertical driving view");
                   assert(css.indexOf("html.race-portrait #rotate-hint.hidden") !== -1, "display:none cannot hide the sideways gate");
                   assert(css.indexOf("html.race-live #rotate-hint") !== -1, "tall race-live window forces the gate");
