@@ -63,7 +63,7 @@ var code = [
   "var MAX_SPEED = 48;",
   "var SPEED_LIMIT = MAX_SPEED;",
   "var ACCEL = 16;",
-  "var BRAKE_DECEL = 20;",
+  "var BRAKE = { BASE: 14, AERO: 30, RAMP: 0.1, LOCK_V: 30, LOCK_HOLD: 0.6, LOCK_DECEL: 0.7, LOCK_STEER: 0.3, LOCK_WEAR: 2.8, BOARDS: [150, 100, 50], ASSIST: true };",
   "var COAST = 5;",
   "var REVERSE_ACCEL = 18;",
   "var REVERSE_MAX = 12;",
@@ -183,6 +183,13 @@ var code = [
   sliceFn("sampleWheelKerbs"),
   sliceFn("wheelWorld"),
   sliceFn("hitCarFeel"),
+  sliceFn("brakeDecelMax"),
+  sliceFn("brakeDist"),
+  sliceFn("wrapTrackS"),
+  sliceFn("deltaTrackS"),
+  sliceFn("isMajorName"),
+  sliceFn("cornerApexV"),
+  sliceFn("majorCorners"),
   sliceFn("applyMotion"),
   sliceFn("isDriveableLoop"),
   src.match(/var LAP_ORIGIN = \{[^}]*\};/)[0],
@@ -243,6 +250,10 @@ var code = [
   "  chicanePts: chicanePts,",
   "  projectTrack: projectTrack,",
   "  applyMotion: applyMotion,",
+  "  brakeDecelMax: brakeDecelMax,",
+  "  brakeDist: brakeDist,",
+  "  majorCorners: majorCorners,",
+  "  BRAKE: BRAKE,",
   "  updateLaps: updateLaps,",
   "  inPitGrab: inPitGrab,",
   "  inPitLane: inPitLane,",
@@ -365,6 +376,8 @@ function blankCar(x, z, h, spd) {
     fuel: 100,
     tires: 100,
     brakeHold: 0,
+    brakeHeld: 0,
+    locked: false,
     launchT: 0,
     launchMul: 1,
     lap: 1,
@@ -1567,7 +1580,9 @@ proveTiltFeel();
 assert(src.indexOf("var MAX_SPEED = 200") !== -1, "cars wind out to 200");
 assert(src.indexOf("var ACCEL = 5") !== -1, "wind-up is slow (arcade, not a snap)");
 assert(src.indexOf("var COAST = 2") !== -1, "coast bleeds speed");
-assert(src.indexOf("var BRAKE_DECEL = 6") !== -1, "Space is a planned squeeze");
+assert(src.indexOf("BASE: 14") !== -1 && src.indexOf("AERO: 30") !== -1, "Space is a planned aero squeeze");
+assert(src.indexOf("RAMP: 0.1") !== -1, "brake input ramps in 0.10s");
+assert(src.indexOf("function placeBrakeBoards") !== -1, "3/2/1 boards before major corners");
 assert(src.indexOf("var MAX_LAT = 28") !== -1, "custom 90s are not glued to hide a spin");
 assert(src.indexOf("function inChicaneS") !== -1, "chicane S is the S, not the approach slab");
 assert(src.indexOf('info.name === "hairpin" || info.name === "chicane"') === -1, "name alone does not lock A/D on hairpin/chicane");
@@ -1608,7 +1623,63 @@ var biteLo = blankCar(0, -80, 0, 16);
 biteLo.brakeHold = 1;
 sim.applyMotion(biteLo, 0, false, true, false, 1 / 60, true);
 var dropLo = 16 - biteLo.speed;
-assert(dropHi < dropLo, "Space is weaker at high speed and bites when slow");
+assert(dropHi > dropLo, "Space is strongest at top speed and weaker when slow");
+
+function liveBrakeStopM() {
+  var BASE = 14;
+  var AERO = 30;
+  var VMAX = 200;
+  var V0 = 200 / 3.15;
+  var b = AERO / (VMAX * VMAX);
+  return (0.5 / b) * Math.log((BASE + b * V0 * V0) / BASE);
+}
+var liveStop = liveBrakeStopM();
+assert(liveStop >= 120 && liveStop <= 160, "live top-speed Space stop is 120-160 m, d=" + liveStop.toFixed(1));
+
+var rampCar = blankCar(0, -80, 0, 40);
+sim.applyMotion(rampCar, 0, false, true, false, 0.05, true);
+assert(rampCar.brakeHold > 0.4 && rampCar.brakeHold < 0.6, "brake input is halfway at 0.05s, hold=" + rampCar.brakeHold.toFixed(2));
+sim.applyMotion(rampCar, 0, false, true, false, 0.06, true);
+assert(rampCar.brakeHold === 1, "brake input is full by 0.11s");
+
+var lockCar = blankCar(0, -80, 0, 20);
+lockCar.brakeHold = 1;
+lockCar.brakeHeld = 0.7;
+var lockH = lockCar.heading;
+sim.applyMotion(lockCar, 1, false, true, false, 1 / 60, true);
+assert(lockCar.locked, "full Space below 30 after 0.6s locks");
+var lockYaw = Math.abs(lockCar.heading - lockH);
+var freeCar = blankCar(0, -80, 0, 20);
+freeCar.brakeHold = 1;
+freeCar.brakeHeld = 0.2;
+var freeH = freeCar.heading;
+sim.applyMotion(freeCar, 1, false, true, false, 1 / 60, true);
+assert(!freeCar.locked, "short hold does not lock");
+var freeYaw = Math.abs(freeCar.heading - freeH);
+assert(lockYaw < freeYaw * 0.45, "lockup understeers, lock=" + lockYaw.toFixed(4) + " free=" + freeYaw.toFixed(4));
+var lockDrop = 20 - lockCar.speed;
+var freeDrop = 20 - freeCar.speed;
+assert(lockDrop < freeDrop * 0.85, "lockup kills bite, lock=" + lockDrop.toFixed(3) + " free=" + freeDrop.toFixed(3));
+sim.applyMotion(lockCar, 1, false, false, false, 1 / 60, true);
+assert(!lockCar.locked, "releasing Space restores the car");
+var restCar = blankCar(0, -80, 0, 20);
+var restH = restCar.heading;
+sim.applyMotion(restCar, 1, true, false, false, 1 / 60, true);
+var afterH = lockCar.heading;
+sim.applyMotion(lockCar, 1, true, false, false, 1 / 60, true);
+assert(Math.abs(lockCar.heading - afterH) > Math.abs(restCar.heading - restH) * 0.7, "steer returns after release");
+
+var fastLock = blankCar(0, -80, 0, 40);
+fastLock.brakeHold = 1;
+fastLock.brakeHeld = 1;
+sim.applyMotion(fastLock, 1, false, true, false, 1 / 60, true);
+assert(!fastLock.locked, "no lockup above LOCK_V");
+
+sim.lockRacePath("");
+var majors = sim.majorCorners();
+assert(majors.length >= 4, "Campus Loop has major corners for boards, n=" + majors.length);
+assert(majors[0].name === "the90" && majors.some(function (c) { return c.name === "hairpin"; }), "boards cover the 90 and the 180");
+assert(src.indexOf("150, 100, 50") !== -1, "boards sit at 150 / 100 / 50");
 
 function firstNamedS(name, maxR) {
   var s;

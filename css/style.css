@@ -128,6 +128,9 @@ textarea {
 
 .speed-box {
   min-width: 110px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
   text-align: right;
   background: var(--panel);
   border: 2px solid rgba(46, 200, 195, 0.4);
@@ -135,10 +138,39 @@ textarea {
   border-radius: 8px;
 }
 
+.speed-read {
+  min-width: 72px;
+}
+
 #speed {
   font-size: 40px;
   line-height: 0.95;
   color: #fff;
+}
+
+.apex-chip {
+  display: block;
+  pointer-events: auto;
+  flex: 0 0 auto;
+  border: 1px solid rgba(46, 200, 195, 0.45);
+  background: #1a120e;
+  color: #7cffd4;
+  font: 700 13px/1 "Trebuchet MS", sans-serif;
+  letter-spacing: 0.08em;
+  padding: 6px 8px;
+  border-radius: 5px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.apex-chip.assist-on {
+  border-color: #2ec8c3;
+  color: #7cffd4;
+}
+
+.apex-chip.assist-off {
+  opacity: 0.5;
+  color: #f4efe6;
 }
 
 .bars {

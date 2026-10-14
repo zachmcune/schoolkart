@@ -115,7 +115,8 @@ waitHealth()
         assert(html.indexOf('rel="manifest"') !== -1, "web app manifest link");
         assert(html.indexOf("apple-mobile-web-app-capable") !== -1, "iOS home screen capable");
         assert(html.indexOf('apple-mobile-web-app-title" content="SchoolKart"') !== -1, "iOS title");
-        assert(html.indexOf('SK_BUILD = "mp99"') !== -1, "cache bump mp99");
+        assert(html.indexOf('SK_BUILD = "mp100"') !== -1, "cache bump mp100");
+        assert(html.indexOf('id="apex-chip"') !== -1, "corner target chip near the speedo");
         assert(html.indexOf("pause-screen") !== -1, "pause overlay");
         assert(html.indexOf("btn-menu") !== -1, "in-race menu button");
         assert(html.indexOf("btn-pause-all") !== -1, "host pause everyone");
@@ -158,7 +159,7 @@ waitHealth()
           .then(function (sr) {
             return sr.text().then(function (sw) {
               assert(sr.status === 200, "sw 200");
-              assert(sw.indexOf('BUILD = "mp99"') !== -1, "SW build matches cache");
+              assert(sw.indexOf('BUILD = "mp100"') !== -1, "SW build matches cache");
               assert(/cache:\s*"no-store"/.test(sw), "network-first no-store");
               assert(sw.indexOf("websocket") !== -1, "SW leaves websocket alone");
             });
@@ -248,7 +249,9 @@ waitHealth()
                   assert(/else if \(!\(r\.hitYawT > 0\)\) \{\s*r\.speed \*= 0\.82/.test(js), "pinned graze does not restack speed dumps");
                   assert(js.indexOf("ribbonFitsFootprint") !== -1 && js.indexOf("ribbonsStack") !== -1, "modules fit; chicane S does not stack");
                   assert(js.indexOf("var ACCEL = 5") !== -1 && js.indexOf("var COAST = 2") !== -1, "slow wind-up; coast bleeds");
-                  assert(js.indexOf("var BRAKE_DECEL = 6") !== -1, "Space is a planned squeeze for the 180");
+                  assert(js.indexOf("BASE: 14") !== -1 && js.indexOf("AERO: 30") !== -1, "aero brake tunables");
+                  assert(js.indexOf("function placeBrakeBoards") !== -1, "3/2/1 boards on Campus Loop");
+                  assert(js.indexOf("LOCK_V: 30") !== -1 && js.indexOf("kind === \"lockup\"") !== -1, "lockup smoke and pedal hold");
                   assert(js.indexOf("function inChicaneS") !== -1, "chicane S is the S, not the approach");
                   assert(js.indexOf("inChicaneS(info) && r.speed") === -1, "S never speed-dumps or steer-locks");
                   assert(js.indexOf('info.name === "hairpin" || info.name === "chicane"') === -1, "name alone does not lock A/D before the S");
@@ -273,6 +276,9 @@ waitHealth()
                   assert(css.indexOf("tile-rot-handle") !== -1, "fat rotate handle style");
                   assert(css.indexOf("palette-slot") !== -1, "piece tray slots");
                   assert(css.indexOf("overflow-y: auto") !== -1, "title menu scrolls on Chromebook/phone");
+                  assert(css.indexOf(".apex-chip") !== -1, "target-speed chip sits by the speedo");
+                  assert(css.indexOf(".speed-read") !== -1, "chip sits left of the KPH readout");
+                  assert(css.indexOf("pointer-events: auto") !== -1, "chip is clickable under a pointer-events-none HUD");
                   assert(css.indexOf("race-portrait") !== -1, "portrait race hides the vertical driving view");
                   assert(css.indexOf("html.race-portrait #rotate-hint.hidden") !== -1, "display:none cannot hide the sideways gate");
                   assert(css.indexOf("html.race-live #rotate-hint") !== -1, "tall race-live window forces the gate");

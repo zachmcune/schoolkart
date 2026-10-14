@@ -35,7 +35,22 @@
   var TOP_KPH = 200;
   var SPEED_LIMIT = TOP_KPH / KPH_PER_UNIT;
   var ACCEL = 5; // ~40s wind-out to max (was 16 / ~3s at 48)
-  var BRAKE_DECEL = 6; // squeeze: weaker at wind-out, full bite when slow (hairpin)
+  // Slice 1: F1-shaped brakes. Strongest at top speed (aero), weaker
+  // when slow. vMax is the handling reference (MAX_SPEED 200), so a
+  // pinned Space from race pace (~63 u/s / 200 kph) stops in ~130 m
+  // and the 150 / 100 / 50 boards line up.
+  var BRAKE = {
+    BASE: 14,
+    AERO: 30,
+    RAMP: 0.1,
+    LOCK_V: 30,
+    LOCK_HOLD: 0.6,
+    LOCK_DECEL: 0.7,
+    LOCK_STEER: 0.3,
+    LOCK_WEAR: 2.8,
+    BOARDS: [150, 100, 50],
+    ASSIST: true,
+  };
   var COAST = 2;
   var REVERSE_ACCEL = 7;
   var REVERSE_MAX = 12;
@@ -259,6 +274,12 @@
     if (isFinite(pb) && pb >= 0 && pb <= 0xffffff) playerBody = pb | 0;
     if (isFinite(pw) && pw >= 0 && pw <= 0xffffff) playerWing = pw | 0;
   } catch (e0) {}
+  var brakeAssistOn = BRAKE.ASSIST !== false;
+  try {
+    if (localStorage.getItem("sk_brake_assist") === "0") brakeAssistOn = false;
+  } catch (eAssist) {}
+  var brakeMarker = null;
+  var BRAKE_CORNERS = [];
   var state = "title";
   var startPhase = "prestart";
   var startT = 0;
@@ -373,6 +394,7 @@
     lap: document.getElementById("lap"),
     time: document.getElementById("time"),
     speed: document.getElementById("speed"),
+    apexChip: document.getElementById("apex-chip"),
     fuelFill: document.getElementById("fuel-fill"),
     tireFill: document.getElementById("tire-fill"),
     fuelNum: document.getElementById("fuel-num"),
@@ -2994,6 +3016,139 @@
     }
   }
 
+  function brakeBoardPlane(num) {
+    var c = document.createElement("canvas");
+    c.width = 256;
+    c.height = 256;
+    var ctx = c.getContext("2d");
+    ctx.fillStyle = "#1a120e";
+    ctx.fillRect(0, 0, 256, 256);
+    ctx.fillStyle = "#f4d03a";
+    ctx.fillRect(12, 12, 232, 232);
+    ctx.save();
+    ctx.translate(256, 0);
+    ctx.scale(-1, 1);
+    ctx.fillStyle = "#1a120e";
+    ctx.font = "bold 168px Trebuchet MS, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(String(num), 128, 138);
+    ctx.restore();
+    return new THREE.Mesh(
+      new THREE.PlaneGeometry(4.8, 4.8),
+      new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(c), side: THREE.DoubleSide })
+    );
+  }
+
+  function makeBrakeMarker() {
+    var g = new THREE.Group();
+    var mat = new THREE.MeshBasicMaterial({
+      color: 0xf4efe6,
+      transparent: true,
+      opacity: 0.9,
+      side: THREE.DoubleSide,
+    });
+    var i;
+    for (i = 0; i < 3; i++) {
+      var bar = new THREE.Mesh(new THREE.PlaneGeometry(7.4 - i * 0.85, 1.25), mat);
+      bar.rotation.x = -Math.PI * 0.5;
+      bar.position.set(1.5 + i * 1.35, 0.14, 0);
+      g.add(bar);
+    }
+    g.userData.mat = mat;
+    g.visible = false;
+    trackRoot.add(g);
+    brakeMarker = g;
+  }
+
+  function placeBrakeBoards() {
+    BRAKE_CORNERS = majorCorners();
+    var nums = [3, 2, 1];
+    var i;
+    var j;
+    for (i = 0; i < BRAKE_CORNERS.length; i++) {
+      var c = BRAKE_CORNERS[i];
+      var prev = BRAKE_CORNERS[(i - 1 + BRAKE_CORNERS.length) % BRAKE_CORNERS.length];
+      var gap = BRAKE_CORNERS.length < 2 ? 800 : deltaTrackS(prev.s, c.s);
+      for (j = 0; j < BRAKE.BOARDS.length; j++) {
+        var dist = BRAKE.BOARDS[j];
+        if (dist + 12 > gap) continue;
+        var bs = wrapTrackS(c.s - dist);
+        var at = centerlinePoint(bs);
+        if (isMajorName(at.name) && at.name !== c.name) continue;
+        var side = c.left >= 0 ? -1 : 1;
+        if (!c.left) side = 1;
+        var nx = -Math.sin(at.h);
+        var nz = Math.cos(at.h);
+        var off = ASPHALT + RUNOFF + 1.15;
+        var x = at.x + nx * off * side;
+        var z = at.z + nz * off * side;
+        var y0 = at.y || 0;
+        addBox(x, y0 + 1.6, z, 0.3, 3.2, 0.3, 0x2a2018, trackRoot);
+        var panel = brakeBoardPlane(nums[j]);
+        panel.position.set(x, y0 + 3.65, z);
+        panel.rotation.y = -(at.h + Math.PI) + side * 0.24;
+        trackRoot.add(panel);
+      }
+    }
+    makeBrakeMarker();
+  }
+
+  function nextCornerFrom(s) {
+    if (!BRAKE_CORNERS.length) BRAKE_CORNERS = majorCorners();
+    if (!BRAKE_CORNERS.length) return null;
+    var best = BRAKE_CORNERS[0];
+    var bestD = 1e9;
+    var i;
+    for (i = 0; i < BRAKE_CORNERS.length; i++) {
+      var d = deltaTrackS(s, BRAKE_CORNERS[i].s);
+      if (d < 6) continue;
+      if (d < bestD) {
+        bestD = d;
+        best = BRAKE_CORNERS[i];
+      }
+    }
+    return best;
+  }
+
+  function setBrakeAssist(on) {
+    brakeAssistOn = !!on;
+    try {
+      localStorage.setItem("sk_brake_assist", brakeAssistOn ? "1" : "0");
+    } catch (eA) {}
+    if (hud.apexChip) {
+      hud.apexChip.classList.toggle("assist-on", brakeAssistOn);
+      hud.apexChip.classList.toggle("assist-off", !brakeAssistOn);
+      hud.apexChip.title = brakeAssistOn
+        ? "Brake assist on — tap to hide the on-road mark"
+        : "Brake assist off — tap to show the on-road mark";
+    }
+  }
+
+  function updateBrakeAssist() {
+    var racing = state === "racing" || state === "start";
+    var next = racing ? nextCornerFrom(player.s || 0) : null;
+    if (hud.apexChip) {
+      if (next) hud.apexChip.textContent = "T" + next.n + " · " + next.kph;
+      else hud.apexChip.textContent = brakeAssistOn ? "ASSIST ON" : "ASSIST OFF";
+      hud.apexChip.classList.toggle("assist-on", brakeAssistOn);
+      hud.apexChip.classList.toggle("assist-off", !brakeAssistOn);
+    }
+    if (!brakeMarker) return;
+    if (!brakeAssistOn || !next) {
+      brakeMarker.visible = false;
+      return;
+    }
+    var need = brakeDist(player.speed, next.apex);
+    if (need < 8) need = 8;
+    var p = centerlinePoint(wrapTrackS(next.s - need));
+    brakeMarker.position.set(p.x, (p.y || 0) + 0.08, p.z);
+    brakeMarker.rotation.y = -p.h;
+    var hot = deltaTrackS(player.s || 0, next.s) <= need + 4;
+    brakeMarker.userData.mat.color.setHex(hot ? 0xff2a44 : 0xf4efe6);
+    brakeMarker.visible = true;
+  }
+
   function addTrackMesh() {
     gantryReds = [];
     gantryBlues = [];
@@ -3144,6 +3299,7 @@
     for (fn = 0; fn < KERB_NAMES.length; fn++) {
       flagOn(KERB_NAMES[fn], FLAG_TITLE[KERB_NAMES[fn]] || KERB_NAMES[fn].toUpperCase(), fn % 2 ? 1 : -1);
     }
+    placeBrakeBoards();
 
     for (var st = 0; st < stampTrees.length; st++) {
       var tree = stampTrees[st];
@@ -5122,6 +5278,8 @@
       lastS: null,
       lapDist: null,
       brakeHold: 0,
+      brakeHeld: 0,
+      locked: false,
       finished: false,
       finishTime: 0,
     };
@@ -5309,6 +5467,8 @@
     r.burnMin = 0;
     r.burnMark = null;
     r.brakeHold = 0;
+    r.brakeHeld = 0;
+    r.locked = false;
     r.finished = false;
     r.finishTime = 0;
     r.wantPit = false;
@@ -5635,6 +5795,76 @@
     return { count: count, depth: depth };
   }
 
+  function brakeDecelMax(v) {
+    var u = clamp(Math.abs(v) / MAX_SPEED, 0, 1);
+    return BRAKE.BASE + BRAKE.AERO * u * u;
+  }
+
+  function brakeDist(vNow, vApex) {
+    var a = BRAKE.BASE;
+    var c = BRAKE.AERO;
+    var v0 = Math.abs(vNow);
+    var v1 = Math.max(0, vApex);
+    if (v0 <= v1 + 0.05) return 0;
+    if (c < 0.05) return (v0 * v0 - v1 * v1) / (2 * Math.max(0.8, a));
+    var b = c / (MAX_SPEED * MAX_SPEED);
+    return (0.5 / b) * Math.log((a + b * v0 * v0) / Math.max(0.2, a + b * v1 * v1));
+  }
+
+  function wrapTrackS(s) {
+    if (!(TRACK_LEN > 0)) return 0;
+    s = s % TRACK_LEN;
+    if (s < 0) s += TRACK_LEN;
+    return s;
+  }
+
+  function deltaTrackS(from, to) {
+    return wrapTrackS(to - from);
+  }
+
+  function isMajorName(name) {
+    var k = cornerKind(name);
+    return k === "the90" || k === "chicane" || k === "hairpin" || k === "sweeper";
+  }
+
+  function cornerApexV(name, radius) {
+    var k = cornerKind(name);
+    if (k === "hairpin") return 16.5;
+    if (k === "chicane") return 21;
+    if (k === "the90") return 23;
+    if (k === "sweeper") return Math.min(SPEED_LIMIT * 0.72, Math.max(32, (radius || 40) * 0.55));
+    return 24;
+  }
+
+  function majorCorners() {
+    var out = [];
+    var i;
+    var prev = "";
+    var n = 0;
+    for (i = 0; i < PATH.length; i++) {
+      var name = PATH[i].name || "";
+      if (isMajorName(name) && name !== prev) {
+        n += 1;
+        var left = 0;
+        if (PATH[i].type === "arc") left = PATH[i].a1 >= PATH[i].a0 ? 1 : -1;
+        var rad = PATH[i].r || 18;
+        var apex = cornerApexV(name, rad);
+        out.push({
+          n: n,
+          name: name,
+          kind: cornerKind(name),
+          s: PATH[i].startS,
+          r: rad,
+          left: left,
+          apex: apex,
+          kph: Math.max(40, Math.round((apex * KPH_PER_UNIT) / 5) * 5),
+        });
+      }
+      prev = name;
+    }
+    return out;
+  }
+
   function applyMotion(r, steer, throttle, brake, reverse, dt, isPlayer) {
     if (!isFinite(r.speed)) r.speed = 0;
     if (!isFinite(r.slide)) r.slide = 0;
@@ -5683,32 +5913,55 @@
     if (Math.abs(r.speed) > 16) r.unweld = false;
     if ((throttle || reverse) && (parked || r.unweld)) {
       r.brakeHold = 0;
+      r.brakeHeld = 0;
+      r.locked = false;
       if (throttle) r.speed += accel * dt;
       else r.speed -= REVERSE_ACCEL * dt;
     } else if (brake) {
-      r.brakeHold = Math.min(1, (r.brakeHold || 0) + dt / 0.2);
-      var v01 = clamp(Math.abs(r.speed) / MAX_SPEED, 0, 1);
-      // Modulate: tap/wind-out is a squeeze. Hairpin speed still bites.
-      var decel = BRAKE_DECEL * (0.4 + 0.6 * r.brakeHold) * (1.16 - 0.5 * v01);
+      r.brakeHold = Math.min(1, (r.brakeHold || 0) + dt / BRAKE.RAMP);
+      r.brakeHeld = (r.brakeHeld || 0) + dt;
+      var decel = brakeDecelMax(r.speed) * r.brakeHold;
+      // Skill: hit Space hard early, ease off as you slow. Holding to
+      // the apex (full pedal, already slow) locks and understeers.
+      var locked =
+        r.brakeHold >= 1 &&
+        Math.abs(r.speed) < BRAKE.LOCK_V &&
+        r.brakeHeld > BRAKE.LOCK_HOLD;
+      r.locked = locked;
+      if (locked) {
+        decel *= BRAKE.LOCK_DECEL;
+        steer *= BRAKE.LOCK_STEER;
+        r.tires -= BRAKE.LOCK_WEAR * dt;
+      }
       if (r.speed > 0) r.speed -= decel * dt;
       else if (r.speed < 0) r.speed += decel * dt;
       if (Math.abs(r.speed) < 0.35) r.speed = 0;
     } else if (throttle) {
       r.brakeHold = 0;
+      r.brakeHeld = 0;
+      r.locked = false;
       r.speed += accel * dt;
     } else if (reverse) {
       r.brakeHold = 0;
+      r.brakeHeld = 0;
+      r.locked = false;
       r.speed -= REVERSE_ACCEL * dt;
     } else if (r.speed > 0) {
       r.brakeHold = 0;
+      r.brakeHeld = 0;
+      r.locked = false;
       r.speed -= COAST * dt;
       if (r.speed < 0) r.speed = 0;
     } else if (r.speed < 0) {
       r.brakeHold = 0;
+      r.brakeHeld = 0;
+      r.locked = false;
       r.speed += COAST * dt;
       if (r.speed > 0) r.speed = 0;
     } else {
       r.brakeHold = 0;
+      r.brakeHeld = 0;
+      r.locked = false;
     }
 
     if (info.grass) {
@@ -6086,11 +6339,8 @@
   }
 
   function brakeDecelAt(v) {
-    // What applyMotion really delivers with the brake pinned. The old
-    // brain assumed BRAKE_DECEL * 0.62 and so lifted half a straight
-    // early for every corner on every map.
-    var v01 = clamp(Math.abs(v) / MAX_SPEED, 0, 1);
-    return BRAKE_DECEL * (1.16 - 0.5 * v01);
+    // What applyMotion really delivers with the brake pinned (no lockup).
+    return brakeDecelMax(v);
   }
 
   function apexFromRadius(radius, tireFeel, margin) {
@@ -7491,12 +7741,17 @@
     }
     if (!recover && !(p.hunter && hunt.on)) steer = avoidRams(r, steer);
 
-    // Committed brake zones. applyMotion ramps brake bite over 0.2s, so
+    // Committed brake zones. applyMotion ramps bite over BRAKE.RAMP, so
     // chattering the pedal is the slowest possible way to slow down.
     var over = r.speed - want;
     if (over > 0.8) r.aiBrake = 1;
     else if (over < -0.15) r.aiBrake = 0;
     var brake = !reverse && !!r.aiBrake && r.speed > 1;
+    // Ease off as you slow — holding to the apex locks and understeers.
+    if (brake && r.speed < BRAKE.LOCK_V && (r.brakeHeld || 0) > 0.42) {
+      brake = false;
+      r.aiBrake = 0;
+    }
     var throttle = !reverse && !brake && r.speed < want - 0.12;
     if (hunt.on && hunt.noLift && !recover) {
       throttle = !reverse;
@@ -7861,12 +8116,22 @@
     fxN += 1;
     p.kind = kind;
     p.life =
-      kind === "spark" ? 0.11 : kind === "slip" ? 0.18 : kind === "streak" ? 0.2 : kind === "puff" ? 0.34 : 0.36;
+      kind === "spark"
+        ? 0.11
+        : kind === "slip"
+          ? 0.18
+          : kind === "streak"
+            ? 0.2
+            : kind === "lockup"
+              ? 0.22
+              : kind === "puff"
+                ? 0.34
+                : 0.36;
     p.max = p.life;
     p.vx = vx || 0;
     p.vy = vy || 0;
     p.vz = vz || 0;
-    p.grow = kind === "puff" || kind === "burst" ? 1.4 : 0;
+    p.grow = kind === "puff" || kind === "burst" || kind === "lockup" ? 1.6 : 0;
     p.mesh.position.set(x, y, z);
     p.mesh.visible = true;
     var col =
@@ -7876,14 +8141,17 @@
           ? 0xf4efe6
           : kind === "streak"
             ? 0x8a8a88
-            : kind === "puff"
-              ? 0xcbb79a
-              : 0xb08958;
+            : kind === "lockup"
+              ? 0xd8eeff
+              : kind === "puff"
+                ? 0xcbb79a
+                : 0xb08958;
     p.mesh.material.color.setHex(col);
-    p.mesh.material.opacity = kind === "spark" ? 1 : 0.82;
+    p.mesh.material.opacity = kind === "spark" ? 1 : kind === "lockup" ? 0.9 : 0.82;
     if (kind === "spark") p.mesh.scale.set(0.72, 0.07, 1);
     else if (kind === "streak") p.mesh.scale.set(1.55, 0.1, 1);
     else if (kind === "slip") p.mesh.scale.set(0.62, 0.2, 1);
+    else if (kind === "lockup") p.mesh.scale.set(1.55, 1.05, 1);
     else if (kind === "puff") p.mesh.scale.set(1.35, 1.05, 1);
     else p.mesh.scale.set(1.5, 1.15, 1);
   }
@@ -7937,6 +8205,15 @@
     } else {
       r.spinFx = false;
     }
+    if (r.locked && spd > 0.6) {
+      if (r.fxT < 0.07) return;
+      r.fxT = 0;
+      var lr = wheelWorld(r, -1, -1);
+      var ll = wheelWorld(r, -1, 1);
+      spawnFx("lockup", lr.x, 0.2, lr.z, back * 2.8, 0.85, side * 1.4);
+      spawnFx("lockup", ll.x, 0.2, ll.z, back * 2.8, 0.85, side * -1.4);
+      return;
+    }
     if (r.fxT < 0.16) return;
     r.fxT = 0;
     if (worn) {
@@ -7970,7 +8247,7 @@
       p.mesh.position.x += p.vx * dt;
       p.mesh.position.y += p.vy * dt;
       p.mesh.position.z += p.vz * dt;
-      if (p.kind === "puff" || p.kind === "burst") {
+      if (p.kind === "puff" || p.kind === "burst" || p.kind === "lockup") {
         p.mesh.scale.x = Math.min(p.mesh.scale.x * (1 + p.grow * dt), 2.1);
         p.mesh.scale.y = Math.min(p.mesh.scale.y * (1 + p.grow * dt), 1.8);
       }
@@ -8396,6 +8673,7 @@
     _hudX = player.x;
     _hudZ = player.z;
     if (hud.speed) hud.speed.textContent = String(motionKph(player, moved, lastDt));
+    updateBrakeAssist();
     if (hud.lap) hud.lap.textContent = player.lap + "/" + LAPS;
     if (hud.time) hud.time.textContent = formatTime(raceTime);
     var fuel = clamp(player.fuel, 0, 100);
@@ -10421,6 +10699,13 @@
   initFx();
   bindMobile();
   paintGarage();
+  if (hud.apexChip) {
+    setBrakeAssist(brakeAssistOn);
+    hud.apexChip.addEventListener("click", function (e) {
+      e.preventDefault();
+      setBrakeAssist(!brakeAssistOn);
+    });
+  }
   persistPaint();
   try {
     var savedTrack = localStorage.getItem("sk_track") || "";
