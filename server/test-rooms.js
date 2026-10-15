@@ -115,8 +115,12 @@ waitHealth()
         assert(html.indexOf('rel="manifest"') !== -1, "web app manifest link");
         assert(html.indexOf("apple-mobile-web-app-capable") !== -1, "iOS home screen capable");
         assert(html.indexOf('apple-mobile-web-app-title" content="SchoolKart"') !== -1, "iOS title");
-        assert(html.indexOf('SK_BUILD = "mp100"') !== -1, "cache bump mp100");
+        assert(html.indexOf('SK_BUILD = "mp103"') !== -1, "cache bump mp103");
         assert(html.indexOf('id="apex-chip"') !== -1, "corner target chip near the speedo");
+        assert(html.indexOf('id="grip-meter"') !== -1, "grip ring around the speedo");
+        assert(html.indexOf('id="feel-pop"') !== -1, "CLEAN EXIT / sector callout");
+        assert(html.indexOf('id="temp-fill"') !== -1 && html.indexOf('id="mass-fill"') !== -1, "tire temp and fuel mass HUD");
+        assert(html.indexOf('id="boost-chip"') === -1 && html.indexOf("Shift BOOST") === -1, "BOOST chip and hint are gone");
         assert(html.indexOf("pause-screen") !== -1, "pause overlay");
         assert(html.indexOf("btn-menu") !== -1, "in-race menu button");
         assert(html.indexOf("btn-pause-all") !== -1, "host pause everyone");
@@ -159,7 +163,7 @@ waitHealth()
           .then(function (sr) {
             return sr.text().then(function (sw) {
               assert(sr.status === 200, "sw 200");
-              assert(sw.indexOf('BUILD = "mp100"') !== -1, "SW build matches cache");
+              assert(sw.indexOf('BUILD = "mp103"') !== -1, "SW build matches cache");
               assert(/cache:\s*"no-store"/.test(sw), "network-first no-store");
               assert(sw.indexOf("websocket") !== -1, "SW leaves websocket alone");
             });
@@ -250,6 +254,14 @@ waitHealth()
                   assert(js.indexOf("ribbonFitsFootprint") !== -1 && js.indexOf("ribbonsStack") !== -1, "modules fit; chicane S does not stack");
                   assert(js.indexOf("var ACCEL = 5") !== -1 && js.indexOf("var COAST = 2") !== -1, "slow wind-up; coast bleeds");
                   assert(js.indexOf("BASE: 14") !== -1 && js.indexOf("AERO: 30") !== -1, "aero brake tunables");
+                  assert(js.indexOf("MECH_GRIP: 1.4") !== -1 && js.indexOf("AERO_GRIP: 2.6") !== -1, "aero grip tunables");
+                  assert(js.indexOf("THROTTLE.SPIN_HOLD") !== -1 && js.indexOf("THROTTLE.RAMP") !== -1, "throttle ramp and exit spin");
+                  assert(js.indexOf("KERB_GRIP: 0.92") !== -1 && js.indexOf("GRASS_THROT: 0.5") !== -1, "kerb grip and grass throttle");
+                  assert(js.indexOf("CLEAN EXIT") !== -1 && js.indexOf("function noteTrackLimits") !== -1, "track limits and exit pops");
+                  assert(js.indexOf("RUBBER.COLD") !== -1 && js.indexOf("MASS.FULL") !== -1, "tire temp and fuel mass tunables");
+                  assert(js.indexOf("BOOST_GAP") === -1 && js.indexOf("function boostTick") === -1, "BOOST mechanic is gone");
+                  assert(js.indexOf("HIT.TAP") !== -1 && js.indexOf("HIT.RAM_SPEED") !== -1, "tap/ram/shove tunables");
+                  assert(js.indexOf("function maxLatAccel") !== -1 && js.indexOf("function gripApexV") !== -1, "lateral grip budget");
                   assert(js.indexOf("function placeBrakeBoards") !== -1, "3/2/1 boards on Campus Loop");
                   assert(js.indexOf("LOCK_V: 30") !== -1 && js.indexOf("kind === \"lockup\"") !== -1, "lockup smoke and pedal hold");
                   assert(js.indexOf("function inChicaneS") !== -1, "chicane S is the S, not the approach");
@@ -277,6 +289,7 @@ waitHealth()
                   assert(css.indexOf("palette-slot") !== -1, "piece tray slots");
                   assert(css.indexOf("overflow-y: auto") !== -1, "title menu scrolls on Chromebook/phone");
                   assert(css.indexOf(".apex-chip") !== -1, "target-speed chip sits by the speedo");
+                  assert(css.indexOf(".grip-meter") !== -1 && css.indexOf(".grip-arc") !== -1, "grip ring sits around the speedo");
                   assert(css.indexOf(".speed-read") !== -1, "chip sits left of the KPH readout");
                   assert(css.indexOf("pointer-events: auto") !== -1, "chip is clickable under a pointer-events-none HUD");
                   assert(css.indexOf("race-portrait") !== -1, "portrait race hides the vertical driving view");

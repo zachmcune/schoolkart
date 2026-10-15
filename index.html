@@ -6,7 +6,7 @@
   <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <!-- sk-build mp100: F1 speed-dependent braking + 3/2/1 boards -->
+  <!-- sk-build mp103: F1 handling slices 2-7 (grip, spin, limits, rubber, hits) -->
   <meta name="theme-color" content="#1a120e" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -16,7 +16,7 @@
   <link rel="manifest" href="manifest.json" />
   <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png" />
   <link rel="apple-touch-icon" href="apple-touch-icon.png" />
-  <link rel="stylesheet" href="css/style.css?v=mp100" />
+  <link rel="stylesheet" href="css/style.css?v=mp103" />
 </head>
 <body>
   <div id="game">
@@ -41,8 +41,16 @@
         <div class="speed-box">
           <button type="button" id="apex-chip" class="apex-chip assist-on" title="Brake assist on — tap to hide the on-road mark">ASSIST ON</button>
           <div class="speed-read">
-            <span id="speed">0</span>
-            <span class="unit">KPH</span>
+            <div class="grip-meter" id="grip-meter">
+              <svg viewBox="0 0 40 40" aria-hidden="true">
+                <circle class="grip-track" cx="20" cy="20" r="17" fill="none" stroke-width="3"></circle>
+                <circle id="grip-arc" class="grip-arc" cx="20" cy="20" r="17" fill="none" stroke-width="3" stroke-dasharray="106.8" stroke-dashoffset="106.8" transform="rotate(-90 20 20)"></circle>
+              </svg>
+              <div class="grip-num">
+                <span id="speed">0</span>
+                <span class="unit">KPH</span>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -55,9 +63,19 @@
             <span id="fuel-num">100</span>
           </div>
           <div class="bar-row">
+            <span class="bar-label">MASS</span>
+            <div class="bar"><i id="mass-fill"></i></div>
+            <span id="mass-num">HEAVY</span>
+          </div>
+          <div class="bar-row">
             <span class="bar-label">TIRES</span>
             <div class="bar"><i id="tire-fill"></i></div>
             <span id="tire-num">100</span>
+          </div>
+          <div class="bar-row">
+            <span class="bar-label">TEMP</span>
+            <div class="bar"><i id="temp-fill"></i></div>
+            <span id="temp-num">COLD</span>
           </div>
         </div>
         <div class="hint">W gas · Space brake · S reverse · peel LEFT into the pits — halfway grabs you</div>
@@ -87,6 +105,7 @@
     <div id="callouts">
       <div id="pitting" class="banner hidden">PITTING</div>
       <div id="warn" class="banner warn hidden"></div>
+      <div id="feel-pop" class="feel-pop hidden"></div>
     </div>
 
     <div id="title-screen" class="screen">
@@ -244,6 +263,7 @@
       <p class="result-time" id="finish-time">0:00.00</p>
       <p class="result-line" id="finish-pit">Pit stop: no</p>
       <p class="result-line" id="finish-place"></p>
+      <p class="result-line" id="finish-cuts"></p>
       <div class="lobby-row">
         <button type="button" class="lobby-btn solo" id="btn-finish-again">Race again</button>
         <button type="button" class="lobby-btn" id="btn-finish-leave">Leave</button>
@@ -288,7 +308,7 @@
   </div>
 
   <script>
-    window.SK_BUILD = "mp100";
+    window.SK_BUILD = "mp103";
     try {
       if (window.caches) {
         caches.keys().then(function (keys) {
@@ -299,7 +319,7 @@
       }
     } catch (e) {}
     if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.register("sw.js?v=mp100").catch(function () {});
+      navigator.serviceWorker.register("sw.js?v=mp103").catch(function () {});
     }
   </script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.160.1/build/three.min.js"></script>
@@ -308,8 +328,8 @@
       document.write('<script src="https://unpkg.com/three@0.160.1/build/three.min.js"><\/script>');
     }
   </script>
-  <script src="js/config.js?v=mp100"></script>
-  <script src="js/net.js?v=mp100"></script>
-  <script src="js/game.js?v=mp100"></script>
+  <script src="js/config.js?v=mp103"></script>
+  <script src="js/net.js?v=mp103"></script>
+  <script src="js/game.js?v=mp103"></script>
 </body>
 </html>

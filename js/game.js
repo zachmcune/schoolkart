@@ -51,12 +51,111 @@
     BOARDS: [150, 100, 50],
     ASSIST: true,
   };
+  // Slice 2: corners are a lateral grip budget, not magic yaw.
+  // maxLatAccel = (MECH_GRIP + AERO_GRIP * (v/vMax)^2) * G * tires * surface.
+  // G is in game units so Campus hairpin r≈11 needs ~70–90 kph, 90s
+  // ~110–130, chicane a lift, sweeper near-flat on fresh tires.
+  var HANDLING = {
+    MECH_GRIP: 1.4,
+    AERO_GRIP: 2.6,
+    G: 32.4,
+    STEER_IN: 0.12,
+    STEER_OUT: 0.08,
+    TRAIL_MAX: 0.48,
+    TRAIL_GAIN: 1.1,
+    PUSH_BRAKE: 0.85,
+    PUSH_GRIP: 0.72,
+    OVER_SLIDE: 1.3,
+    SLIDE: 16,
+    SLIDE_WIDE: 28,
+    SCRUB: 6.5,
+    WEAR: 3.4,
+    WASH: 0.42,
+  };
+  // Slice 3: throttle ramps, and full W + full steer off an apex
+  // fishtails. Hold it and you spin ~1.2s — no teleport reset.
+  // Straighten then W is the fast exit.
+  var THROTTLE = {
+    RAMP: 0.16,
+    DROP: 0.1,
+    EXIT_STEER: 0.72,
+    EXIT_PICK: 2,
+    FISH: 22,
+    FISH_YAW: 1.15,
+    SPIN_IN: 0.32,
+    SPIN_HOLD: 1.2,
+    SPIN_YAW: 2.35,
+    SPIN_DUMP: 12,
+    WEAR: 2.6,
+  };
+  // Slice 4: kerbs, grass, track limits, and the pop-up calls.
+  // Grass keeps the crawl-back lock (GRASS_MAX) and also halves throttle
+  // with the existing dump. Three four-wheel cuts add 3s at the flag.
+  var LIMITS = {
+    GRASS_THROT: 0.5,
+    GRASS_GRIP: 0.5,
+    KERB_GRIP: 0.92,
+    KERB_WIGGLE: 14,
+    CUTS: 3,
+    CUT_PENALTY: 3,
+    CUT_HOLD: 0.12,
+    LATE_BOARD: 50,
+    LATE_GAIN: 0.12,
+  };
+  // Slice 5: arcade tire temp/wear + fuel mass. Not a full sim, not a
+  // third compound. Lap 1 starts cold. Sliding heats and wears; past
+  // ~70% wear the cliff hits. Full tank is 25% heavier.
+  var RUBBER = {
+    COLD: 42,
+    IDEAL_LO: 78,
+    IDEAL_HI: 102,
+    HEAT_SLIDE: 22,
+    HEAT_DRIVE: 3.4,
+    COOL: 5.5,
+    COLD_GRIP: 0.88,
+    HOT_GRIP: 0.93,
+    CLIFF: 0.7,
+    CLIFF_GRIP: 0.55,
+  };
+  var MASS = {
+    FULL: 0.25,
+    OVERLAP: 1.8,
+  };
+  // Slice 6: tow and dirty air.
+  // Tow is metres-behind on a straight. Dirty air is grip in a corner.
+  var SLIP = {
+    TOW_M: 25,
+    TOW_ACCEL: 1.14,
+    DIRTY_M: 18,
+    DIRTY_GRIP: 0.82,
+  };
+  // Slice 7: tap / ram / shove. Numbers live here so the 3/3 stay
+  // deterministic. Add Bowie still parks in the mate box beside the host.
+  var HIT = {
+    TAP: 8,
+    TAP_SLIDE: 0.16,
+    TAP_YAW: 0.004,
+    RAM_SPEED: 0.68,
+    RAM_YAW: 0.028,
+    RAM_SLIDE: 0.28,
+    SHOVE_SPEED: 0.78,
+    SHOVE_SLIDE: 0.08,
+    SHOVE_YAW: 0.002,
+    SIDE_IMPACT: 15,
+    SIDE_HIP: 0.35,
+    SIDE_SPEED: 0.62,
+    SIDE_YAW: 0.022,
+    SIDE_SLIDE: 0.28,
+    BUMP_SPEED: 0.85,
+    BUMP_SLIDE: 0.1,
+    BUMP_YAW: 0.005,
+  };
   var COAST = 2;
   var REVERSE_ACCEL = 7;
   var REVERSE_MAX = 12;
   var LIMP_SPEED = 13;
   var LIMP_ACCEL = 2;
-  var STEER_RATE = 2.35;
+  var STEER_RATE = 2.8;
   var MAX_LAT = 28;
   var TILT_DEAD = 4;
   var TILT_SPAN = 18;
@@ -395,12 +494,20 @@
     time: document.getElementById("time"),
     speed: document.getElementById("speed"),
     apexChip: document.getElementById("apex-chip"),
+    gripMeter: document.getElementById("grip-meter"),
+    gripArc: document.getElementById("grip-arc"),
     fuelFill: document.getElementById("fuel-fill"),
     tireFill: document.getElementById("tire-fill"),
     fuelNum: document.getElementById("fuel-num"),
     tireNum: document.getElementById("tire-num"),
+    massFill: document.getElementById("mass-fill"),
+    massNum: document.getElementById("mass-num"),
+    tempFill: document.getElementById("temp-fill"),
+    tempNum: document.getElementById("temp-num"),
     pitting: document.getElementById("pitting"),
     warn: document.getElementById("warn"),
+    feelPop: document.getElementById("feel-pop"),
+    finishCuts: document.getElementById("finish-cuts"),
     title: document.getElementById("title-screen"),
     countdown: document.getElementById("countdown"),
     startMsg: document.getElementById("start-msg"),
@@ -5241,6 +5348,7 @@
     g.userData.wheels = wheels;
     g.userData.bodyMat = body;
     g.userData.wingMat = wing;
+    g.userData.tireMat = rubber;
     return g;
   }
 
@@ -5280,6 +5388,23 @@
       brakeHold: 0,
       brakeHeld: 0,
       locked: false,
+      steerHold: 0,
+      throtHold: 0,
+      gripLoad: 0,
+      sliding: false,
+      spinT: 0,
+      spinDir: 1,
+      spinArm: 0,
+      apexSlow: null,
+      tireTemp: RUBBER.COLD,
+      towMul: 1,
+      dirtyMul: 1,
+      offCuts: 0,
+      offAll: false,
+      offHold: 0,
+      feelPop: "",
+      feelKind: "",
+      feelT: 0,
       finished: false,
       finishTime: 0,
     };
@@ -5469,6 +5594,30 @@
     r.brakeHold = 0;
     r.brakeHeld = 0;
     r.locked = false;
+    r.steerHold = 0;
+    r.throtHold = 0;
+    r.gripLoad = 0;
+    r.sliding = false;
+    r.spinT = 0;
+    r.spinDir = 1;
+    r.spinArm = 0;
+    r.apexSlow = null;
+    r.tireTemp = RUBBER.COLD;
+    r.towMul = 1;
+    r.dirtyMul = 1;
+    r.offCuts = 0;
+    r.offAll = false;
+    r.offHold = 0;
+    r.feelPop = "";
+    r.feelKind = "";
+    r.feelT = 0;
+    r.exitWatch = false;
+    r.lateArmed = false;
+    r.latePending = false;
+    r.secI = null;
+    r.secClock = 0;
+    r.secLast = null;
+    r.secBest = null;
     r.finished = false;
     r.finishTime = 0;
     r.wantPit = false;
@@ -5667,7 +5816,7 @@
     r.lap += 1;
     if (r.lap > LAPS) {
       r.finished = true;
-      r.finishTime = raceTime;
+      r.finishTime = raceTime + trackLimitPenalty(r);
       r.lap = LAPS;
     }
   }
@@ -5734,7 +5883,7 @@
       r.lap += 1;
       if (r.lap > LAPS) {
         r.finished = true;
-        r.finishTime = raceTime;
+        r.finishTime = raceTime + trackLimitPenalty(r);
         r.lap = LAPS;
       }
     }
@@ -5827,13 +5976,46 @@
     return k === "the90" || k === "chicane" || k === "hairpin" || k === "sweeper";
   }
 
+  function handlingVMax() {
+    return SPEED_LIMIT > 1 ? SPEED_LIMIT : MAX_SPEED;
+  }
+
+  function maxLatAccel(v, tireGrip, surfaceMul) {
+    var vmax = handlingVMax();
+    var u = clamp(Math.abs(v) / vmax, 0, 1);
+    var g = (HANDLING.MECH_GRIP + HANDLING.AERO_GRIP * u * u) * HANDLING.G;
+    return g * (tireGrip > 0 ? tireGrip : 1) * (surfaceMul > 0 ? surfaceMul : 1);
+  }
+
+  function gripApexV(radius, tireGrip, surfaceMul) {
+    if (!(radius > 1)) return SPEED_LIMIT;
+    var ts = (tireGrip > 0 ? tireGrip : 1) * (surfaceMul > 0 ? surfaceMul : 1);
+    var vmax = handlingVMax();
+    var a0 = HANDLING.MECH_GRIP * HANDLING.G * ts;
+    var k = (HANDLING.AERO_GRIP * HANDLING.G * ts) / (vmax * vmax);
+    var den = 1 - radius * k;
+    if (den < 0.08) return SPEED_LIMIT;
+    var v = Math.sqrt(Math.max(4, (radius * a0) / den));
+    if (v > SPEED_LIMIT) v = SPEED_LIMIT;
+    if (v < 8) v = 8;
+    return v;
+  }
+
+  function lineRadiusFor(name, radius) {
+    var k = cornerKind(name);
+    var r = radius > 0 ? radius : 18;
+    if (k === "hairpin") return r + ASPHALT * 0.12;
+    if (k === "the90") return r + ASPHALT * 0.7;
+    if (k === "chicane") return r + ASPHALT * 0.22;
+    if (k === "sweeper") return r + ASPHALT * 0.4;
+    return r + ASPHALT * 0.35;
+  }
+
   function cornerApexV(name, radius) {
     var k = cornerKind(name);
-    if (k === "hairpin") return 16.5;
-    if (k === "chicane") return 21;
-    if (k === "the90") return 23;
-    if (k === "sweeper") return Math.min(SPEED_LIMIT * 0.72, Math.max(32, (radius || 40) * 0.55));
-    return 24;
+    var v = gripApexV(lineRadiusFor(name, radius), 1, 1);
+    var margin = k === "sweeper" ? 0.97 : k === "hairpin" ? 0.9 : k === "chicane" ? 0.88 : 0.92;
+    return v * margin;
   }
 
   function majorCorners() {
@@ -5848,6 +6030,10 @@
         var left = 0;
         if (PATH[i].type === "arc") left = PATH[i].a1 >= PATH[i].a0 ? 1 : -1;
         var rad = PATH[i].r || 18;
+        var j;
+        for (j = i + 1; j < PATH.length && (PATH[j].name || "") === name; j++) {
+          if (PATH[j].type === "arc" && PATH[j].r > 0 && PATH[j].r < rad) rad = PATH[j].r;
+        }
         var apex = cornerApexV(name, rad);
         out.push({
           n: n,
@@ -5865,6 +6051,232 @@
     return out;
   }
 
+  function sampleWheelsOff(r) {
+    var spots = [
+      [-1, -1],
+      [-1, 1],
+      [1, -1],
+      [1, 1],
+    ];
+    var off = 0;
+    var wi;
+    for (wi = 0; wi < spots.length; wi++) {
+      var w = wheelWorld(r, spots[wi][0], spots[wi][1]);
+      var winfo = projectTrack(w.x, w.z);
+      if (pitClaims(w.x, w.z)) continue;
+      if (!winfo.onAsphalt && !winfo.kerb) off += 1;
+    }
+    return off;
+  }
+
+  function trackLimitPenalty(r) {
+    return (r && (r.offCuts || 0) >= LIMITS.CUTS) ? LIMITS.CUT_PENALTY : 0;
+  }
+
+  function popFeel(r, text, kind) {
+    if (!r) return;
+    r.feelPop = text;
+    r.feelKind = kind || "";
+    r.feelT = 1.55;
+  }
+
+  function noteTrackLimits(r, dt) {
+    if (!r || r.finished) return;
+    if (r.pitServicing || inPitLane(r) || inPitGrab(r)) {
+      r.offAll = false;
+      r.offHold = 0;
+      return;
+    }
+    var off = sampleWheelsOff(r);
+    if (off >= 4) {
+      r.offHold = (r.offHold || 0) + dt;
+      if (!r.offAll && r.offHold >= LIMITS.CUT_HOLD) {
+        r.offAll = true;
+        r.offCuts = (r.offCuts || 0) + 1;
+        if (r.kind === "player") popFeel(r, "TRACK LIMIT " + r.offCuts + "/" + LIMITS.CUTS, "warn");
+      }
+    } else {
+      r.offAll = false;
+      r.offHold = 0;
+    }
+  }
+
+  function distToMajor(s) {
+    if (!(TRACK_LEN > 8) || !PATH.length) return 1e9;
+    var i;
+    var best = 1e9;
+    for (i = 0; i < PATH.length; i++) {
+      var name = PATH[i].name || "";
+      if (!isMajorName(name)) continue;
+      var start = PATH[i].startS || 0;
+      var d = start - s;
+      if (d <= 4) d += TRACK_LEN;
+      if (d < best) best = d;
+    }
+    return best;
+  }
+
+  function noteSectors(r, dt, info) {
+    if (!r || !(TRACK_LEN > 80)) return;
+    var origin = lapOriginS();
+    var cur = (info && info.s != null ? info.s : r.s || 0) - origin;
+    if (cur < 0) cur += TRACK_LEN;
+    var len = TRACK_LEN / 3;
+    var idx = Math.floor(cur / Math.max(8, len));
+    if (idx > 2) idx = 2;
+    if (idx < 0) idx = 0;
+    if (r.secI == null) {
+      r.secI = idx;
+      r.secClock = 0;
+      r.secLast = [null, null, null];
+      r.secBest = [null, null, null];
+      return;
+    }
+    r.secClock = (r.secClock || 0) + dt;
+    if (idx === r.secI) return;
+    var prev = r.secI;
+    var t = r.secClock;
+    if (!r.secLast) r.secLast = [null, null, null];
+    if (!r.secBest) r.secBest = [null, null, null];
+    var last = r.secLast[prev];
+    var best = r.secBest[prev];
+    var kind = "";
+    if (best == null || t < best - 0.001) {
+      kind = "purple";
+      r.secBest[prev] = t;
+    } else if (last != null && t < last - 0.001) {
+      kind = "green";
+    }
+    r.secLast[prev] = t;
+    if (kind) popFeel(r, "S" + (prev + 1) + " " + t.toFixed(2), kind);
+    r.secI = idx;
+    r.secClock = 0;
+  }
+
+  function noteRaceFeel(r, throttle, brake, dt) {
+    if (!r || r.finished) return;
+    if ((r.feelT || 0) > 0) {
+      r.feelT -= dt;
+      if (r.feelT < 0) r.feelT = 0;
+    }
+    if (state !== "racing") return;
+    var info = projectTrackNear(r.x, r.z, r.s, r.roadY);
+    var major = isMajorName(info.name) && !info.grass;
+    if (r.exitWatch && !major && !info.grass && throttle && !brake && Math.abs(r.slide || 0) < 1.15 && !(r.spinT > 0) && !r.sliding) {
+      if (r.latePending) {
+        popFeel(r, "LATE BRAKE +" + (r.lateGain || LIMITS.LATE_GAIN).toFixed(2), "late");
+        r.latePending = false;
+      } else {
+        popFeel(r, "CLEAN EXIT", "good");
+      }
+      r.exitWatch = false;
+    }
+    if (major) r.exitWatch = true;
+    if (brake && !(r.brakeHeld > dt + 0.02) && !r.lateArmed) {
+      var d = distToMajor(info.s);
+      if (d > 8 && d < LIMITS.LATE_BOARD) {
+        r.lateArmed = true;
+        r.latePending = true;
+        r.lateGain = LIMITS.LATE_GAIN;
+      }
+    }
+    if (!brake) r.lateArmed = false;
+    noteSectors(r, dt, info);
+  }
+
+  function carMassMul(r) {
+    return 1 + MASS.FULL * clamp((r.fuel || 0) / 100, 0, 1);
+  }
+
+  function rubberIdeal() {
+    return (RUBBER.IDEAL_LO + RUBBER.IDEAL_HI) * 0.5;
+  }
+
+  function rubberGrip(r) {
+    var temp = r.tireTemp != null ? r.tireTemp : rubberIdeal();
+    var tempMul = 1;
+    if (temp < RUBBER.IDEAL_LO) {
+      var coldU = (RUBBER.IDEAL_LO - temp) / Math.max(1, RUBBER.IDEAL_LO - RUBBER.COLD);
+      tempMul = 1 - clamp(coldU, 0, 1) * (1 - RUBBER.COLD_GRIP);
+    } else if (temp > RUBBER.IDEAL_HI) {
+      var hotU = clamp((temp - RUBBER.IDEAL_HI) / 36, 0, 1);
+      tempMul = 1 - hotU * (1 - RUBBER.HOT_GRIP);
+    }
+    var wear = 1 - clamp((r.tires || 100) / 100, 0, 1);
+    var wearMul = 1;
+    if (wear > RUBBER.CLIFF) {
+      var cliffU = (wear - RUBBER.CLIFF) / Math.max(0.05, 1 - RUBBER.CLIFF);
+      wearMul = 1 - clamp(cliffU, 0, 1) * (1 - RUBBER.CLIFF_GRIP);
+    }
+    return tempMul * wearMul;
+  }
+
+  function tickTireTemp(r, dt, throttle, roll, isPlayer) {
+    if (!isPlayer) return;
+    if (r.tireTemp == null) r.tireTemp = rubberIdeal();
+    var heat = 0;
+    if (throttle && roll > 4) heat += RUBBER.HEAT_DRIVE * clamp(roll / Math.max(12, handlingVMax()), 0.2, 1);
+    var load = r.gripLoad || 0;
+    if (
+      r.sliding ||
+      Math.abs(r.slide || 0) > 0.5 ||
+      load > 0.55 ||
+      (Math.abs(r.steerHold || 0) > 0.7 && roll > 16)
+    ) {
+      var scrub = clamp(Math.max(Math.abs(r.slide) / 8, load, 0.4), 0.45, 1.6);
+      heat += RUBBER.HEAT_SLIDE * scrub;
+    }
+    if (heat > 0.4) r.tireTemp += heat * dt;
+    else r.tireTemp -= RUBBER.COOL * dt;
+    if (r.tireTemp < 20) r.tireTemp = 20;
+    if (r.tireTemp > 140) r.tireTemp = 140;
+    if (r.tires < TIRE_FLOOR) r.tires = TIRE_FLOOR;
+  }
+
+  function rubberLabel(temp) {
+    if (temp < RUBBER.IDEAL_LO) return "COLD";
+    if (temp > RUBBER.IDEAL_HI) return "HOT";
+    return "WARM";
+  }
+
+  function draftFromGap(r, gapM, onStraight, inCorner) {
+    r.towMul = 1;
+    r.dirtyMul = 1;
+    if (!(gapM > 0.4)) return;
+    if (onStraight && gapM <= SLIP.TOW_M) r.towMul = SLIP.TOW_ACCEL;
+    if (inCorner && gapM <= SLIP.DIRTY_M) r.dirtyMul = SLIP.DIRTY_GRIP;
+  }
+
+  function gapAheadM(r) {
+    if (!r) return 0;
+    var best = 1e9;
+    eachRival(r, function (o) {
+      if (o.pitServicing) return;
+      var g = trackGap(r, o);
+      if (g > 0.5 && g < best) best = g;
+    });
+    return best < 1e8 ? best : 0;
+  }
+
+  function updateSlip(r) {
+    if (!r) return;
+    var info = projectTrackNear(r.x, r.z, r.s, r.roadY);
+    var straight = onLongStraight(info.s);
+    var corner = isMajorName(info.name) && !straight;
+    var gapM = gapAheadM(r);
+    draftFromGap(r, gapM, straight, corner);
+  }
+
+  function paintTireHeat(r) {
+    var mat = r.mesh && r.mesh.userData && r.mesh.userData.tireMat;
+    if (!mat || !mat.color || typeof mat.color.setHex !== "function") return;
+    var wear = 1 - clamp((r.tires || 100) / 100, 0, 1);
+    var temp = r.tireTemp != null ? r.tireTemp : rubberIdeal();
+    if (wear > RUBBER.CLIFF || temp > RUBBER.IDEAL_HI + 6) mat.color.setHex(0x9a1c1c);
+    else if (temp < RUBBER.IDEAL_LO) mat.color.setHex(0x2a3344);
+    else mat.color.setHex(0x1a1a1a);
+  }
+
   function applyMotion(r, steer, throttle, brake, reverse, dt, isPlayer) {
     if (!isFinite(r.speed)) r.speed = 0;
     if (!isFinite(r.slide)) r.slide = 0;
@@ -5873,14 +6285,37 @@
     var onKerb = info.kerb || wheelKerb.count > 0;
     var kerbDepth = wheelKerb.depth;
     if (!kerbDepth && info.kerb) kerbDepth = kerbDepthAt(info);
-    var surface = info.grass ? 0.5 : onKerb ? 0.9 : 1;
+    var surface = info.grass ? LIMITS.GRASS_GRIP : onKerb ? LIMITS.KERB_GRIP : 1;
     var tire = clamp(r.tires / 100, 0, 1);
     // Tires = sloppy handling on asphalt, never a speed cap. Grass keeps
     // enough steer to crawl back to the pit even when the rears are gone.
     var tireFeel = info.grass ? 0.85 : 0.38 + 0.62 * tire;
+    if (isPlayer) tireFeel *= rubberGrip(r);
+    var aeroFeel = tireFeel;
+    if ((r.dirtyMul || 1) < 1) aeroFeel *= r.dirtyMul;
     var empty = r.fuel <= 0;
     var maxV = empty ? LIMP_SPEED : SPEED_LIMIT;
     var accel = empty ? LIMP_ACCEL : ACCEL;
+    // Fuel mass is a player-car feel. Bots keep the baked profile, or
+    // a full tank makes them miss every apex they planned.
+    var mass = isPlayer ? carMassMul(r) : 1;
+    accel /= mass;
+    if ((r.towMul || 1) > 1 && !info.grass) accel *= r.towMul;
+    var parkedNow = Math.abs(r.speed) <= 0.35;
+    var throt = r.throtHold || 0;
+    if (throttle && !reverse && (!brake || parkedNow)) {
+      throt = Math.min(1, throt + dt / Math.max(0.04, THROTTLE.RAMP));
+    } else {
+      throt = Math.max(0, throt - dt / Math.max(0.04, THROTTLE.DROP));
+    }
+    r.throtHold = throt;
+    // Ramp is traction off an apex, not a dead getaway. Parked W still
+    // launches (unweld / lights-out) and keeps full bite until the
+    // standstill flag clears; rolling W bites over THROTTLE.RAMP.
+    if (!parkedNow && !r.unweld) accel *= throt > 0.02 ? throt : 0;
+    // Half-throttle is the racing penalty. Crawl-back to the ribbon
+    // keeps full bite up to GRASS_MAX so a dump is still recoverable.
+    if (info.grass && !reverse && Math.abs(r.speed) > GRASS_MAX) accel *= LIMITS.GRASS_THROT;
     if (isPlayer && state === "racing" && raceTime > GETAWAY_T) {
       launchT = 0;
       launchMul = 1;
@@ -5902,6 +6337,7 @@
       var burn = RACE.burn > 0 ? RACE.burn : 1;
       r.fuel -= IDLE_FUEL * burn * dt;
       if (throttle && !empty && r.speed >= 0) r.fuel -= THROTTLE_FUEL * burn * dt;
+      if (throttle && brake && !empty) r.fuel -= THROTTLE_FUEL * MASS.OVERLAP * burn * dt;
       if (r.fuel < 0) r.fuel = 0;
     }
 
@@ -5920,7 +6356,7 @@
     } else if (brake) {
       r.brakeHold = Math.min(1, (r.brakeHold || 0) + dt / BRAKE.RAMP);
       r.brakeHeld = (r.brakeHeld || 0) + dt;
-      var decel = brakeDecelMax(r.speed) * r.brakeHold;
+      var decel = (brakeDecelMax(r.speed) * r.brakeHold) / mass;
       // Skill: hit Space hard early, ease off as you slow. Holding to
       // the apex (full pedal, already slow) locks and understeers.
       var locked =
@@ -5930,7 +6366,6 @@
       r.locked = locked;
       if (locked) {
         decel *= BRAKE.LOCK_DECEL;
-        steer *= BRAKE.LOCK_STEER;
         r.tires -= BRAKE.LOCK_WEAR * dt;
       }
       if (r.speed > 0) r.speed -= decel * dt;
@@ -5985,26 +6420,105 @@
     // wash out — max W cannot snap a 90. Reverse uses |speed|.
     var roll = Math.abs(r.speed);
     var bite = roll < 0.35 ? 0 : clamp(roll / 9, 0.5, 1);
-    var wash = 1 - 0.7 * speed01;
+    var wash = 1 - HANDLING.WASH * clamp(roll / handlingVMax(), 0, 1);
     var yawFromSpeed = bite * wash;
-    var maxYaw = STEER_RATE * yawFromSpeed * tireFeel * surface;
-    var latDemand = Math.abs(steer) * Math.abs(r.speed) * 0.155;
-    var maxLat = MAX_LAT * tireFeel * surface;
-    if (!info.grass && (info.name === "hairpin" || info.name === "source" || info.name === "t1") && r.speed > 17) {
-      var hpOver = (r.speed - 17) / 14;
-      r.slide += (steer !== 0 ? steer : 1) * hpOver * 22 * dt;
-      if (hpOver > 0.3) r.tires -= 2.8 * dt * hpOver;
+    var targetSteer = clamp(steer, -1, 1);
+    var sh = r.steerHold || 0;
+    var toward = targetSteer * sh >= 0 && Math.abs(targetSteer) > Math.abs(sh);
+    var tau = toward ? HANDLING.STEER_IN : HANDLING.STEER_OUT;
+    var ds = targetSteer - sh;
+    var maxStep = dt / Math.max(0.02, tau);
+    if (ds > maxStep) ds = maxStep;
+    if (ds < -maxStep) ds = -maxStep;
+    r.steerHold = sh + ds;
+    var wheel = r.steerHold;
+    var wantYaw = STEER_RATE * yawFromSpeed * Math.abs(wheel) * tireFeel * surface;
+    if (wheel < 0) wantYaw = -wantYaw;
+    if (r.speed < 0) wantYaw = -wantYaw;
+    // Light trail-brake: slightly sharper rotation. Full pedal + full
+    // wheel is a push (understeer) even before lockup.
+    var hold = r.brakeHold || 0;
+    if (hold > 0.12 && hold < HANDLING.TRAIL_MAX && !r.locked && Math.abs(wheel) > 0.25) {
+      wantYaw *= HANDLING.TRAIL_GAIN;
     }
-    // The S never dumps or crushes A/D. Too fast is a mistimed line:
-    // yaw rate cannot follow the kinks, so you run wide. Space is still
-    // how you make time to turn. inChicaneS is identity, not a lock.
-    if (latDemand > maxLat && Math.abs(steer) > 0.05) {
-      var slip = (latDemand - maxLat) / Math.max(6, maxLat);
-      maxYaw *= 1 / (1 + slip * 2.1);
-      r.slide += steer * slip * 12 * dt;
-      r.tires -= 3.6 * dt * (0.4 + slip);
-    } else if (Math.abs(steer) > 0.45 && r.speed > 22) {
+    if (r.locked) wantYaw *= BRAKE.LOCK_STEER;
+    var gripMul = hold >= HANDLING.PUSH_BRAKE && Math.abs(wheel) > 0.7 && !r.locked ? HANDLING.PUSH_GRIP : 1;
+    var aLat = maxLatAccel(r.speed, aeroFeel, surface) * gripMul;
+    var latDemand = Math.abs(wantYaw) * roll;
+    var load = aLat > 0.4 ? latDemand / aLat : 0;
+    r.gripLoad = load;
+    var yaw = wantYaw;
+    r.sliding = false;
+    if (roll > 0.35 && latDemand > aLat) {
+      yaw = (wantYaw < 0 ? -1 : 1) * (aLat / roll);
+      var extra = load;
+      var outSign = wantYaw > 0 ? -1 : 1;
+      if (r.speed < 0) outSign = -outSign;
+      r.slide += outSign * HANDLING.SLIDE * (extra - 0.15) * dt;
+      r.speed -= HANDLING.SCRUB * (extra - 1) * dt * Math.max(0.4, speed01);
+      if (r.speed < 0 && !reverse) r.speed = 0;
+      r.tires -= HANDLING.WEAR * extra * dt;
+      r.sliding = extra > 1.02;
+      if (extra > HANDLING.OVER_SLIDE && roll > 18) {
+        r.slide += outSign * HANDLING.SLIDE_WIDE * (extra - HANDLING.OVER_SLIDE) * dt;
+      }
+    } else if (Math.abs(wheel) > 0.45 && roll > 22) {
       r.tires -= 0.85 * dt * speed01;
+    }
+    // Slice 3: power-on oversteer after an apex. Mid-corner T# hold
+    // (speed not picking up) stays a grip-budget problem. Pegged W+A
+    // while accelerating off the slow point fishtails; hold it and
+    // spinT runs ~1.2s with no teleport.
+    if (isMajorName(info.name) && !info.grass) {
+      if (r.apexSlow == null || roll < r.apexSlow) r.apexSlow = roll;
+      r.apexHold = 1.5;
+    } else {
+      r.apexHold = (r.apexHold || 0) - dt;
+      if (r.apexHold <= 0) {
+        r.apexSlow = null;
+        r.apexHold = 0;
+      }
+    }
+    var pickingUp =
+      throttle &&
+      !brake &&
+      !reverse &&
+      r.apexSlow != null &&
+      roll > r.apexSlow + THROTTLE.EXIT_PICK;
+    var exitRisk = 0;
+    if (pickingUp && throt > 0.7 && Math.abs(wheel) > THROTTLE.EXIT_STEER && roll > 6 && roll < handlingVMax() * 0.62) {
+      exitRisk = (Math.abs(wheel) - THROTTLE.EXIT_STEER) / Math.max(0.08, 1 - THROTTLE.EXIT_STEER);
+      if (exitRisk > 1) exitRisk = 1;
+      exitRisk *= throt;
+    }
+    if ((r.spinT || 0) > 0) {
+      r.spinT -= dt;
+      if (r.spinT < 0) r.spinT = 0;
+      yaw = (r.spinDir || 1) * THROTTLE.SPIN_YAW;
+      r.sliding = true;
+      r.gripLoad = Math.max(r.gripLoad || 0, 1.25);
+      r.speed -= THROTTLE.SPIN_DUMP * dt;
+      if (r.speed < 3.5 && !reverse) r.speed = 3.5;
+      r.slide += (r.spinDir || 1) * THROTTLE.FISH * 1.4 * dt;
+      r.tires -= THROTTLE.WEAR * 1.6 * dt;
+    } else if (exitRisk > 0.08) {
+      var inSign = wheel > 0 ? 1 : -1;
+      var fish = exitRisk * exitRisk;
+      r.slide += -inSign * THROTTLE.FISH * fish * dt;
+      yaw += inSign * THROTTLE.FISH_YAW * fish;
+      r.speed -= 5.5 * fish * dt;
+      if (r.speed < 0 && !reverse) r.speed = 0;
+      r.tires -= THROTTLE.WEAR * fish * dt;
+      r.sliding = fish > 0.28;
+      r.gripLoad = Math.max(r.gripLoad || 0, 0.7 + fish * 0.6);
+      r.spinArm = (r.spinArm || 0) + dt * fish;
+      r.spinDir = inSign;
+      if (r.spinArm > THROTTLE.SPIN_IN && fish > 0.45) {
+        r.spinT = THROTTLE.SPIN_HOLD;
+        r.spinArm = 0;
+      }
+    } else {
+      r.spinArm = Math.max(0, (r.spinArm || 0) - dt * 2.4);
     }
     if (r.tires < TIRE_FLOOR) r.tires = TIRE_FLOOR;
     if (tire < 0.45) r.slide += (Math.random() - 0.5) * 4.2 * dt;
@@ -6014,7 +6528,7 @@
     if (onKerb && kerbDepth > 0) {
       var dive = Math.abs(r.speed) / 36;
       var wob = kerbDepth * dive;
-      r.slide += Math.sin((raceTime + r.x * 0.05) * 28) * 14 * wob * dt;
+      r.slide += Math.sin((raceTime + r.x * 0.05) * 28) * LIMITS.KERB_WIGGLE * wob * dt;
       r.heading += Math.sin((raceTime + r.z * 0.04) * 17) * 0.7 * wob * dt;
       var wheelFrac = wheelKerb.count / 4;
       r.tires -= (1.2 + 2.4 * wheelFrac) * dt * speed01 * kerbDepth;
@@ -6023,7 +6537,7 @@
     var bumpEase = 1 - Math.pow(0.08, dt);
     r.kerbBump = (r.kerbBump || 0) + (bumpTarget - (r.kerbBump || 0)) * bumpEase;
 
-    r.heading += steer * maxYaw * dt * (r.speed < 0 ? -1 : 1);
+    r.heading += yaw * dt;
     r.x += Math.cos(r.heading) * r.speed * dt;
     r.z += Math.sin(r.heading) * r.speed * dt;
     r.x += -Math.sin(r.heading) * r.slide * dt;
@@ -6039,12 +6553,16 @@
     var wheels = r.mesh.userData.wheels;
     if (wheels) {
       var spin = r.speed * dt * 2.4;
-      var turn = steerWheelYaw(steer);
+      var turn = steerWheelYaw(r.steerHold != null ? r.steerHold : steer);
       for (var i = 0; i < wheels.length; i++) {
         wheels[i].spinner.rotation.z -= spin;
         wheels[i].holder.rotation.y = wheels[i].front ? turn : 0;
       }
     }
+    tickTireTemp(r, dt, throttle, roll, isPlayer);
+    paintTireHeat(r);
+    noteTrackLimits(r, dt);
+    noteRaceFeel(r, throttle, brake, dt);
   }
 
   function steerWheelYaw(steer) {
@@ -6344,15 +6862,11 @@
   }
 
   function apexFromRadius(radius, tireFeel, margin) {
-    // Solve v = radius * yaw(v) against applyMotion's own yaw model,
-    //   yaw = STEER_RATE * (1 - 0.7 * v / MAX_SPEED) * tireFeel
-    // so a corner speed is a fact about the car and the arc, not a
-    // hand-tuned number that only fits one circuit.
+    // Same grip budget applyMotion uses: v^2 / r <= maxLatAccel(v).
     if (!(radius > 0)) return SPEED_LIMIT;
     if (!(tireFeel > 0)) tireFeel = 1;
     if (!(margin > 0)) margin = AI_GRIP;
-    var k = STEER_RATE * tireFeel * margin;
-    var v = (radius * k) / (1 + (0.7 * radius * k) / MAX_SPEED);
+    var v = gripApexV(radius, tireFeel, 1) * margin;
     if (v > SPEED_LIMIT) v = SPEED_LIMIT;
     if (v < 11) v = 11;
     return v;
@@ -6360,12 +6874,9 @@
 
   function apexLimit(lineR, centerR, name, tireFeel) {
     var v = apexFromRadius(lineR, tireFeel, AI_GRIP);
-    // applyMotion injects slide on hairpin-named arcs above 17, so a
-    // tight 180 has to be slower than pure yaw allows. Scaled by radius
-    // so a fat editor-tile hairpin still gets carried.
     if (cornerKind(name) === "hairpin") {
       var rad = centerR > 0 && centerR < 400 ? centerR : lineR;
-      var hp = 17 + Math.max(0, rad - 12) * 0.35;
+      var hp = gripApexV(rad, tireFeel, 1) * 0.9;
       if (v > hp) v = hp;
     }
     return v;
@@ -7403,6 +7914,7 @@
       coolDown(r, dt);
       return;
     }
+    updateSlip(r);
     var p = aiOf(r);
     if (!r.launchArmed) applyCpuLaunch(r, p);
     var proj = projectTrackNear(r.x, r.z, r.s, r.roadY);
@@ -7415,6 +7927,7 @@
       if (r.pitTimer >= PIT_HOLD) {
         r.fuel = 100;
         r.tires = 100;
+        r.tireTemp = (RUBBER.IDEAL_LO + RUBBER.IDEAL_HI) * 0.5;
         r.burnRefuel = true;
         r.didPit = true;
         r.wantPit = false;
@@ -7627,11 +8140,13 @@
     // slide term so a car that starts washing out catches itself.
     var desiredH = Math.atan2(tz - r.z, tx - r.x);
     var err = aiWrap(desiredH - r.heading);
-    var yawNow =
+    var yawNow = Math.min(
       STEER_RATE *
-      clamp(Math.abs(r.speed) / 9, 0.5, 1) *
-      (1 - 0.7 * clamp(Math.abs(r.speed) / MAX_SPEED, 0, 1)) *
-      tireFeelOf(tire01);
+        clamp(Math.abs(r.speed) / 9, 0.5, 1) *
+        (1 - HANDLING.WASH * clamp(Math.abs(r.speed) / handlingVMax(), 0, 1)) *
+        tireFeelOf(tire01),
+      maxLatAccel(r.speed, tireFeelOf(tire01), 1) / Math.max(6, Math.abs(r.speed))
+    );
     var ff = 0;
     if (yawNow > 0.05 && !hunt.on && !peeling) {
       ff = clamp((r.speed * raceAt(r.s + look * 0.5).kap) / yawNow, -1, 1);
@@ -7831,35 +8346,35 @@
     r.speed = vx * c + vz * s;
     r.slide = -vx * s + vz * c;
     if (tail > 0.25 && hip > 0.28) {
-      if (impact < 8) {
-        r.slide += dir * clamp(impact * 0.16, 0.35, 2.2);
-        r.heading += dir * clamp(impact * 0.004, 0.006, 0.045);
+      if (impact < HIT.TAP) {
+        r.slide += dir * clamp(impact * HIT.TAP_SLIDE, 0.35, 2.2);
+        r.heading += dir * clamp(impact * HIT.TAP_YAW, 0.006, 0.045);
         r.hitYawT = 0.08;
         return;
       }
-      r.speed *= 0.68;
-      r.heading += dir * clamp(impact * 0.028 * (0.45 + hip), 0.2, 0.85);
-      r.slide += dir * clamp(impact * 0.28, 4, 14);
+      r.speed *= HIT.RAM_SPEED;
+      r.heading += dir * clamp(impact * HIT.RAM_YAW * (0.45 + hip), 0.2, 0.85);
+      r.slide += dir * clamp(impact * HIT.RAM_SLIDE, 4, 14);
       r.hitYawT = 0.32;
       return;
     }
     if (nose > 0.5) {
-      r.speed *= 0.78;
-      r.slide += dir * clamp(impact * 0.08, 0, 2.2);
-      r.heading += dir * clamp(impact * 0.002, 0, 0.03);
+      r.speed *= HIT.SHOVE_SPEED;
+      r.slide += dir * clamp(impact * HIT.SHOVE_SLIDE, 0, 2.2);
+      r.heading += dir * clamp(impact * HIT.SHOVE_YAW, 0, 0.03);
       r.hitYawT = 0.1;
       return;
     }
-    if (impact > 15 && hip > 0.35) {
-      r.speed *= 0.62;
-      r.heading += dir * clamp(impact * 0.022, 0.18, 0.7);
-      r.slide += dir * clamp(impact * 0.28, 4, 12);
+    if (impact > HIT.SIDE_IMPACT && hip > HIT.SIDE_HIP) {
+      r.speed *= HIT.SIDE_SPEED;
+      r.heading += dir * clamp(impact * HIT.SIDE_YAW, 0.18, 0.7);
+      r.slide += dir * clamp(impact * HIT.SIDE_SLIDE, 4, 12);
       r.hitYawT = 0.32;
       return;
     }
-    r.speed *= 0.85;
-    r.slide += dir * clamp(impact * 0.1, 0, 2.8);
-    r.heading += dir * clamp(impact * 0.005, 0, 0.05);
+    r.speed *= HIT.BUMP_SPEED;
+    r.slide += dir * clamp(impact * HIT.BUMP_SLIDE, 0, 2.8);
+    r.heading += dir * clamp(impact * HIT.BUMP_YAW, 0, 0.05);
     r.hitYawT = 0.1;
   }
 
@@ -8193,7 +8708,7 @@
     var sl = Math.abs(r.slide);
     var steer = inp ? inp.steer : 0;
     var worn = r.tires < 42 && spd > 8;
-    var spinning = sl > 5.2;
+    var spinning = sl > 5.2 || (r.spinT || 0) > 0;
     var hard = Math.abs(steer) > 0.55 && spd > 20 && sl > 0.85;
     var back = -Math.cos(r.heading);
     var side = -Math.sin(r.heading);
@@ -8212,6 +8727,13 @@
       var ll = wheelWorld(r, -1, 1);
       spawnFx("lockup", lr.x, 0.2, lr.z, back * 2.8, 0.85, side * 1.4);
       spawnFx("lockup", ll.x, 0.2, ll.z, back * 2.8, 0.85, side * -1.4);
+      return;
+    }
+    if (r.sliding && spd > 2) {
+      if (r.fxT < 0.08) return;
+      r.fxT = 0;
+      var sr = wheelWorld(r, 1, steer >= 0 ? 1 : -1);
+      spawnFx("slip", sr.x, 0.16, sr.z, back * 2.6, 0.22, side * 2.2);
       return;
     }
     if (r.fxT < 0.16) return;
@@ -8642,6 +9164,13 @@
       var ord = place + (place === 1 ? "st" : place === 2 ? "nd" : place === 3 ? "rd" : "th");
       hud.finishPlace.textContent = ord + " · vs 7 CPUs";
     }
+    if (hud.finishCuts) {
+      var cuts = player.offCuts || 0;
+      var pen = trackLimitPenalty(player);
+      if (cuts >= LIMITS.CUTS) hud.finishCuts.textContent = "Track limits: " + cuts + " cuts · +" + pen.toFixed(0) + "s";
+      else if (cuts) hud.finishCuts.textContent = "Track limits: " + cuts + (cuts === 1 ? " cut" : " cuts");
+      else hud.finishCuts.textContent = "";
+    }
   }
 
   function speedKph(r) {
@@ -8673,21 +9202,51 @@
     _hudX = player.x;
     _hudZ = player.z;
     if (hud.speed) hud.speed.textContent = String(motionKph(player, moved, lastDt));
+    if (hud.gripMeter && hud.gripArc) {
+      var load = clamp(player.gripLoad || 0, 0, 1.35);
+      var circ = 106.8;
+      hud.gripArc.style.strokeDashoffset = String(circ * (1 - clamp(load, 0, 1)));
+      hud.gripMeter.classList.remove("grip-yellow", "grip-red");
+      if (player.sliding || load > 1) hud.gripMeter.classList.add("grip-red");
+      else if (load >= 0.8) hud.gripMeter.classList.add("grip-yellow");
+    }
     updateBrakeAssist();
     if (hud.lap) hud.lap.textContent = player.lap + "/" + LAPS;
     if (hud.time) hud.time.textContent = formatTime(raceTime);
     var fuel = clamp(player.fuel, 0, 100);
     var tires = clamp(player.tires, 0, 100);
+    var temp = player.tireTemp != null ? player.tireTemp : rubberIdeal();
+    var massMul = carMassMul(player);
     if (hud.fuelFill) {
       hud.fuelFill.style.transform = "scaleX(" + fuel / 100 + ")";
       hud.fuelFill.style.background = fuel < 28 ? "linear-gradient(90deg,#7a1010,#ff4d4d)" : "";
     }
+    if (hud.massFill) {
+      hud.massFill.style.transform = "scaleX(" + clamp((massMul - 1) / MASS.FULL, 0, 1) + ")";
+    }
+    if (hud.massNum) hud.massNum.textContent = fuel > 78 ? "HEAVY" : fuel < 42 ? "LIGHT" : "MID";
     if (hud.tireFill) {
       hud.tireFill.style.transform = "scaleX(" + tires / 100 + ")";
-      hud.tireFill.style.background = tires < 40 ? "linear-gradient(90deg,#8a5a10,#ffd36a)" : "";
+      var wearFrac = 1 - tires / 100;
+      hud.tireFill.style.background =
+        wearFrac > RUBBER.CLIFF || temp > RUBBER.IDEAL_HI
+          ? "linear-gradient(90deg,#7a1010,#ff4d4d)"
+          : tires < 40
+            ? "linear-gradient(90deg,#8a5a10,#ffd36a)"
+            : "";
+    }
+    if (hud.tempFill) {
+      hud.tempFill.style.transform = "scaleX(" + clamp((temp - 20) / 120, 0, 1) + ")";
+      hud.tempFill.style.background =
+        temp > RUBBER.IDEAL_HI
+          ? "linear-gradient(90deg,#7a1010,#ff4d4d)"
+          : temp < RUBBER.IDEAL_LO
+            ? "linear-gradient(90deg,#3a4a88,#7ab0ff)"
+            : "linear-gradient(90deg,#148f8c,#7cffd4)";
     }
     if (hud.fuelNum) hud.fuelNum.textContent = String(Math.round(fuel));
     if (hud.tireNum) hud.tireNum.textContent = String(Math.round(tires));
+    if (hud.tempNum) hud.tempNum.textContent = rubberLabel(temp);
     paintRevs();
 
     // PIT LANE banner is the halfway LEFT box only. The peel mouth
@@ -8725,6 +9284,11 @@
       hud.warn.classList.toggle("late", lateJoinT > 0);
       hud.warn.classList.toggle("launch", launchCallT > 0 && launchCall !== "DUMP");
       hud.warn.classList.toggle("dump", launchCallT > 0 && launchCall === "DUMP");
+    }
+    if (hud.feelPop) {
+      var feelOn = (player.feelT || 0) > 0 && player.feelPop;
+      hud.feelPop.className = "feel-pop" + (player.feelKind ? " " + player.feelKind : "") + (feelOn ? "" : " hidden");
+      if (feelOn) hud.feelPop.textContent = player.feelPop;
     }
     paintMini();
     paintRaceNames();
@@ -9449,6 +10013,7 @@
       raceTime += simDt;
       revs = 0;
       var input = playerInput();
+      updateSlip(player);
       if (inPitLane(player) || inPitGrab(player) || pitServicing) {
         pitAwayT = 0;
       } else {
@@ -9471,6 +10036,7 @@
         if (pitTimer >= PIT_HOLD) {
           player.fuel = 100;
           player.tires = 100;
+          player.tireTemp = (RUBBER.IDEAL_LO + RUBBER.IDEAL_HI) * 0.5;
           didPit = true;
           pitUsedVisit = true;
           pitServicing = false;
