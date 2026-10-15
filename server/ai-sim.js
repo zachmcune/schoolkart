@@ -67,6 +67,7 @@ var code = [
   sliceAssign("RUBBER"),
   sliceAssign("MASS"),
   sliceAssign("SLIP"),
+  sliceAssign("HIT"),
   "var COAST = 2;",
   "var REVERSE_ACCEL = 7;",
   "var REVERSE_MAX = 12;",

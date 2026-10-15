@@ -133,6 +133,27 @@
     DIRTY_M: 18,
     DIRTY_GRIP: 0.82,
   };
+  // Slice 7: tap / ram / shove. Numbers live here so the 3/3 stay
+  // deterministic. Add Bowie still parks in the mate box beside the host.
+  var HIT = {
+    TAP: 8,
+    TAP_SLIDE: 0.16,
+    TAP_YAW: 0.004,
+    RAM_SPEED: 0.68,
+    RAM_YAW: 0.028,
+    RAM_SLIDE: 0.28,
+    SHOVE_SPEED: 0.78,
+    SHOVE_SLIDE: 0.08,
+    SHOVE_YAW: 0.002,
+    SIDE_IMPACT: 15,
+    SIDE_HIP: 0.35,
+    SIDE_SPEED: 0.62,
+    SIDE_YAW: 0.022,
+    SIDE_SLIDE: 0.28,
+    BUMP_SPEED: 0.85,
+    BUMP_SLIDE: 0.1,
+    BUMP_YAW: 0.005,
+  };
   var COAST = 2;
   var REVERSE_ACCEL = 7;
   var REVERSE_MAX = 12;
@@ -8349,35 +8370,35 @@
     r.speed = vx * c + vz * s;
     r.slide = -vx * s + vz * c;
     if (tail > 0.25 && hip > 0.28) {
-      if (impact < 8) {
-        r.slide += dir * clamp(impact * 0.16, 0.35, 2.2);
-        r.heading += dir * clamp(impact * 0.004, 0.006, 0.045);
+      if (impact < HIT.TAP) {
+        r.slide += dir * clamp(impact * HIT.TAP_SLIDE, 0.35, 2.2);
+        r.heading += dir * clamp(impact * HIT.TAP_YAW, 0.006, 0.045);
         r.hitYawT = 0.08;
         return;
       }
-      r.speed *= 0.68;
-      r.heading += dir * clamp(impact * 0.028 * (0.45 + hip), 0.2, 0.85);
-      r.slide += dir * clamp(impact * 0.28, 4, 14);
+      r.speed *= HIT.RAM_SPEED;
+      r.heading += dir * clamp(impact * HIT.RAM_YAW * (0.45 + hip), 0.2, 0.85);
+      r.slide += dir * clamp(impact * HIT.RAM_SLIDE, 4, 14);
       r.hitYawT = 0.32;
       return;
     }
     if (nose > 0.5) {
-      r.speed *= 0.78;
-      r.slide += dir * clamp(impact * 0.08, 0, 2.2);
-      r.heading += dir * clamp(impact * 0.002, 0, 0.03);
+      r.speed *= HIT.SHOVE_SPEED;
+      r.slide += dir * clamp(impact * HIT.SHOVE_SLIDE, 0, 2.2);
+      r.heading += dir * clamp(impact * HIT.SHOVE_YAW, 0, 0.03);
       r.hitYawT = 0.1;
       return;
     }
-    if (impact > 15 && hip > 0.35) {
-      r.speed *= 0.62;
-      r.heading += dir * clamp(impact * 0.022, 0.18, 0.7);
-      r.slide += dir * clamp(impact * 0.28, 4, 12);
+    if (impact > HIT.SIDE_IMPACT && hip > HIT.SIDE_HIP) {
+      r.speed *= HIT.SIDE_SPEED;
+      r.heading += dir * clamp(impact * HIT.SIDE_YAW, 0.18, 0.7);
+      r.slide += dir * clamp(impact * HIT.SIDE_SLIDE, 4, 12);
       r.hitYawT = 0.32;
       return;
     }
-    r.speed *= 0.85;
-    r.slide += dir * clamp(impact * 0.1, 0, 2.8);
-    r.heading += dir * clamp(impact * 0.005, 0, 0.05);
+    r.speed *= HIT.BUMP_SPEED;
+    r.slide += dir * clamp(impact * HIT.BUMP_SLIDE, 0, 2.8);
+    r.heading += dir * clamp(impact * HIT.BUMP_YAW, 0, 0.05);
     r.hitYawT = 0.1;
   }
 

@@ -261,6 +261,7 @@ waitHealth()
                   assert(js.indexOf("RUBBER.COLD") !== -1 && js.indexOf("MASS.FULL") !== -1, "tire temp and fuel mass tunables");
                   assert(js.indexOf("BOOST_GAP") !== -1 && js.indexOf("function boostTick") !== -1, "BOOST is gap-armed");
                   assert(js.indexOf("DRS") === -1, "BOOST is not named DRS");
+                  assert(js.indexOf("HIT.TAP") !== -1 && js.indexOf("HIT.RAM_SPEED") !== -1, "tap/ram/shove tunables");
                   assert(js.indexOf("function maxLatAccel") !== -1 && js.indexOf("function gripApexV") !== -1, "lateral grip budget");
                   assert(js.indexOf("function placeBrakeBoards") !== -1, "3/2/1 boards on Campus Loop");
                   assert(js.indexOf("LOCK_V: 30") !== -1 && js.indexOf("kind === \"lockup\"") !== -1, "lockup smoke and pedal hold");

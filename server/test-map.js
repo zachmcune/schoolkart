@@ -87,6 +87,7 @@ var code = [
   sliceAssign("RUBBER"),
   sliceAssign("MASS"),
   sliceAssign("SLIP"),
+  sliceAssign("HIT"),
   "var COAST = 5;",
   "var REVERSE_ACCEL = 18;",
   "var REVERSE_MAX = 12;",
@@ -305,6 +306,7 @@ var code = [
   "  rubberGrip: rubberGrip,",
   "  rubberIdeal: rubberIdeal,",
   "  SLIP: SLIP,",
+  "  HIT: HIT,",
   "  draftFromGap: draftFromGap,",
   "  boostTick: boostTick,",
   "  sampleWheelsOff: sampleWheelsOff,",
@@ -1668,6 +1670,8 @@ assert(src.indexOf("FULL: 0.25") !== -1, "full tank is 25% heavier");
 assert(src.indexOf("TOW_M: 25") !== -1 && src.indexOf("DIRTY_GRIP: 0.82") !== -1, "tow and dirty air tunables");
 assert(src.indexOf("BOOST_GAP: 1.0") !== -1 && src.indexOf("BOOST_TOP: 0.06") !== -1, "BOOST is +6% and gap-armed");
 assert(src.indexOf("DRS") === -1, "BOOST is the original name, not DRS");
+assert(src.indexOf("HIT.TAP") !== -1 && src.indexOf("HIT.RAM_SPEED") !== -1, "tap/ram/shove live in HIT");
+assert(src.indexOf("x: -6 - Math.floor(i / 2) * 8") !== -1, "Add Bowie parks beside the host");
 assert(src.indexOf("function maxLatAccel") !== -1, "yaw is capped by lateral grip");
 assert(src.indexOf("var MAX_LAT = 28") !== -1, "custom 90s are not glued to hide a spin");
 assert(src.indexOf("function inChicaneS") !== -1, "chicane S is the S, not the approach slab");
@@ -3274,6 +3278,12 @@ function proveCarHits() {
   sim.hitCarFeel(qRam, hx * 14, hz * 14, qnx, qnz, 18);
   var qSpin = Math.abs(angDiff(qRam.heading, hRam));
   assert(qSpin > 0.18 && qSpin > qWiggle * 2, "rear-quarter ram spins, dH=" + qSpin.toFixed(4));
+  var atk = blankCar(p.x, p.z, p.h, 28);
+  atk.fuel = 100;
+  atk.tires = 100;
+  var atk0 = atk.speed;
+  sim.hitCarFeel(atk, hx * 22, hz * 22, -qnx, -qnz, 18);
+  assert(atk.speed < atk0 - 2, "ram attacker loses speed, spd=" + atk.speed.toFixed(2));
   var face = blankCar(p.x, p.z, p.h, 22);
   face.fuel = 100;
   face.tires = 100;
@@ -3282,6 +3292,13 @@ function proveCarHits() {
   sim.hitCarFeel(face, hx * 10, hz * 10, -hx, -hz, 16);
   assert(Math.abs(angDiff(face.heading, hF)) < 0.06, "front hit shoves, does not spin");
   assert(face.speed < spd0, "front hit dumps speed");
+  var a = blankCar(p.x, p.z, p.h, 16);
+  var b = blankCar(p.x, p.z, p.h, 16);
+  a.fuel = b.fuel = 100;
+  a.tires = b.tires = 100;
+  sim.hitCarFeel(a, hx * 14, hz * 14, qnx, qnz, 18);
+  sim.hitCarFeel(b, hx * 14, hz * 14, qnx, qnz, 18);
+  assert(Math.abs(a.heading - b.heading) < 1e-9 && Math.abs(a.speed - b.speed) < 1e-9, "ram feel is deterministic 3/3");
 }
 
 function proveTileIcons() {
