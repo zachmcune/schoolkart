@@ -323,6 +323,24 @@ textarea {
   text-align: center;
 }
 
+.boost-chip {
+  margin-top: 6px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font: 700 12px/1 "Trebuchet MS", sans-serif;
+  letter-spacing: 0.14em;
+  text-align: center;
+  color: #ffe566;
+  border: 1px solid rgba(255, 229, 102, 0.45);
+  background: rgba(26, 18, 14, 0.82);
+}
+
+.boost-chip.on {
+  color: #1a120e;
+  background: #ffe566;
+  border-color: #ffe566;
+}
+
 .feel-pop {
   padding: 8px 18px;
   border-radius: 6px;

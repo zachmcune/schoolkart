@@ -120,6 +120,7 @@ waitHealth()
         assert(html.indexOf('id="grip-meter"') !== -1, "grip ring around the speedo");
         assert(html.indexOf('id="feel-pop"') !== -1, "CLEAN EXIT / sector callout");
         assert(html.indexOf('id="temp-fill"') !== -1 && html.indexOf('id="mass-fill"') !== -1, "tire temp and fuel mass HUD");
+        assert(html.indexOf('id="boost-chip"') !== -1 && html.indexOf("Shift BOOST") !== -1, "BOOST chip and hint");
         assert(html.indexOf("pause-screen") !== -1, "pause overlay");
         assert(html.indexOf("btn-menu") !== -1, "in-race menu button");
         assert(html.indexOf("btn-pause-all") !== -1, "host pause everyone");
@@ -258,6 +259,8 @@ waitHealth()
                   assert(js.indexOf("KERB_GRIP: 0.92") !== -1 && js.indexOf("GRASS_THROT: 0.5") !== -1, "kerb grip and grass throttle");
                   assert(js.indexOf("CLEAN EXIT") !== -1 && js.indexOf("function noteTrackLimits") !== -1, "track limits and exit pops");
                   assert(js.indexOf("RUBBER.COLD") !== -1 && js.indexOf("MASS.FULL") !== -1, "tire temp and fuel mass tunables");
+                  assert(js.indexOf("BOOST_GAP") !== -1 && js.indexOf("function boostTick") !== -1, "BOOST is gap-armed");
+                  assert(js.indexOf("DRS") === -1, "BOOST is not named DRS");
                   assert(js.indexOf("function maxLatAccel") !== -1 && js.indexOf("function gripApexV") !== -1, "lateral grip budget");
                   assert(js.indexOf("function placeBrakeBoards") !== -1, "3/2/1 boards on Campus Loop");
                   assert(js.indexOf("LOCK_V: 30") !== -1 && js.indexOf("kind === \"lockup\"") !== -1, "lockup smoke and pedal hold");

@@ -86,6 +86,7 @@ var code = [
   sliceAssign("LIMITS"),
   sliceAssign("RUBBER"),
   sliceAssign("MASS"),
+  sliceAssign("SLIP"),
   "var COAST = 5;",
   "var REVERSE_ACCEL = 18;",
   "var REVERSE_MAX = 12;",
@@ -229,6 +230,8 @@ var code = [
   sliceFn("tickTireTemp"),
   sliceFn("rubberLabel"),
   sliceFn("paintTireHeat"),
+  sliceFn("draftFromGap"),
+  sliceFn("boostTick"),
   sliceFn("applyMotion"),
   sliceFn("isDriveableLoop"),
   src.match(/var LAP_ORIGIN = \{[^}]*\};/)[0],
@@ -301,6 +304,9 @@ var code = [
   "  carMassMul: carMassMul,",
   "  rubberGrip: rubberGrip,",
   "  rubberIdeal: rubberIdeal,",
+  "  SLIP: SLIP,",
+  "  draftFromGap: draftFromGap,",
+  "  boostTick: boostTick,",
   "  sampleWheelsOff: sampleWheelsOff,",
   "  trackLimitPenalty: trackLimitPenalty,",
   "  noteTrackLimits: noteTrackLimits,",
@@ -1659,6 +1665,9 @@ assert(src.indexOf("CLEAN EXIT") !== -1 && src.indexOf("LATE BRAKE +") !== -1, "
 assert(src.indexOf("CUTS: 3") !== -1 && src.indexOf("CUT_PENALTY: 3") !== -1, "three four-wheel cuts add 3s");
 assert(src.indexOf("COLD: 42") !== -1 && src.indexOf("CLIFF: 0.7") !== -1, "tires start cold and cliff after 70% wear");
 assert(src.indexOf("FULL: 0.25") !== -1, "full tank is 25% heavier");
+assert(src.indexOf("TOW_M: 25") !== -1 && src.indexOf("DIRTY_GRIP: 0.82") !== -1, "tow and dirty air tunables");
+assert(src.indexOf("BOOST_GAP: 1.0") !== -1 && src.indexOf("BOOST_TOP: 0.06") !== -1, "BOOST is +6% and gap-armed");
+assert(src.indexOf("DRS") === -1, "BOOST is the original name, not DRS");
 assert(src.indexOf("function maxLatAccel") !== -1, "yaw is capped by lateral grip");
 assert(src.indexOf("var MAX_LAT = 28") !== -1, "custom 90s are not glued to hide a spin");
 assert(src.indexOf("function inChicaneS") !== -1, "chicane S is the S, not the approach slab");
@@ -2218,6 +2227,63 @@ function proveRubberMass() {
   assert(lift.fuel > hold.fuel + 0.08, "lift-before-brake saves fuel, lift=" + lift.fuel.toFixed(2) + " hold=" + hold.fuel.toFixed(2));
 }
 proveRubberMass();
+
+function proveSlipBoost() {
+  sim.lockRacePath("");
+  var start = sim.centerlinePoint(40);
+  var naked = blankCar(start.x, start.z, start.h, 20);
+  naked.fuel = 100;
+  naked.tires = 100;
+  naked.throtHold = 1;
+  var draft = blankCar(start.x, start.z, start.h, 20);
+  draft.fuel = 100;
+  draft.tires = 100;
+  draft.throtHold = 1;
+  sim.draftFromGap(draft, 18, true, false);
+  assert(draft.towMul > 1, "within 25m on a straight is a tow");
+  var t;
+  for (t = 0; t < 0.8; t += 1 / 60) {
+    sim.applyMotion(naked, 0, true, false, false, 1 / 60, true);
+    sim.applyMotion(draft, 0, true, false, false, 1 / 60, true);
+  }
+  assert(draft.speed > naked.speed + 0.4, "tow winds faster, draft=" + draft.speed.toFixed(2) + " naked=" + naked.speed.toFixed(2));
+
+  var clean = blankCar(start.x, start.z, start.h, 24);
+  clean.fuel = 100;
+  clean.tires = 100;
+  clean.steerHold = 1;
+  var dirty = blankCar(start.x, start.z, start.h, 24);
+  dirty.fuel = 100;
+  dirty.tires = 100;
+  dirty.steerHold = 1;
+  sim.draftFromGap(dirty, 12, false, true);
+  assert(dirty.dirtyMul < 1, "in a corner the tow is dirty air");
+  sim.applyMotion(clean, 1, true, false, false, 1 / 60, true);
+  sim.applyMotion(dirty, 1, true, false, false, 1 / 60, true);
+  assert(dirty.gripLoad > clean.gripLoad * 1.05, "dirty air loads the grip ring earlier, dirty=" + dirty.gripLoad.toFixed(2) + " clean=" + clean.gripLoad.toFixed(2));
+
+  var b = blankCar(start.x, start.z, start.h, 40);
+  b.fuel = 100;
+  b.tires = 100;
+  sim.boostTick(b, 0.8, true, false, false);
+  assert(b.boostArmed, "gap under 1.0s on a straight arms BOOST");
+  sim.boostTick(b, 0.8, true, false, true);
+  assert(b.boostOn, "Shift in the zone turns BOOST on");
+  var cap = blankCar(start.x, start.z, start.h, 47);
+  cap.fuel = 100;
+  cap.tires = 100;
+  cap.throtHold = 1;
+  cap.boostOn = true;
+  sim.applyMotion(cap, 0, true, false, false, 0.2, true);
+  assert(cap.speed > 48, "BOOST raises top speed ~6%, spd=" + cap.speed.toFixed(2));
+  sim.applyMotion(cap, 0, false, true, false, 1 / 60, true);
+  assert(!cap.boostOn, "brake disarms BOOST");
+  sim.boostTick(b, 0.8, false, false, true);
+  assert(!b.boostArmed && !b.boostOn, "leaving the straight drops BOOST");
+  sim.draftFromGap(b, 40, true, false);
+  assert(b.towMul === 1, "tow is metres-behind, not a place bonus");
+}
+proveSlipBoost();
 
 var hs = firstNamedS("hairpin");
 var hpPt = sim.centerlinePoint(hs + 6);
