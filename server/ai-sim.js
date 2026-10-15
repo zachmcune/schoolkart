@@ -329,7 +329,6 @@ var code = [
   sliceFn("jammedByTraffic"),
   sliceFn("resetOnLine"),
   sliceFn("draftFromGap"),
-  sliceFn("boostTick"),
   sliceFn("gapAheadM"),
   sliceFn("updateSlip"),
   sliceFn("updateCpu"),

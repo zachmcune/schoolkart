@@ -232,7 +232,6 @@ var code = [
   sliceFn("rubberLabel"),
   sliceFn("paintTireHeat"),
   sliceFn("draftFromGap"),
-  sliceFn("boostTick"),
   sliceFn("applyMotion"),
   sliceFn("isDriveableLoop"),
   src.match(/var LAP_ORIGIN = \{[^}]*\};/)[0],
@@ -308,7 +307,6 @@ var code = [
   "  SLIP: SLIP,",
   "  HIT: HIT,",
   "  draftFromGap: draftFromGap,",
-  "  boostTick: boostTick,",
   "  sampleWheelsOff: sampleWheelsOff,",
   "  trackLimitPenalty: trackLimitPenalty,",
   "  noteTrackLimits: noteTrackLimits,",
@@ -1668,8 +1666,7 @@ assert(src.indexOf("CUTS: 3") !== -1 && src.indexOf("CUT_PENALTY: 3") !== -1, "t
 assert(src.indexOf("COLD: 42") !== -1 && src.indexOf("CLIFF: 0.7") !== -1, "tires start cold and cliff after 70% wear");
 assert(src.indexOf("FULL: 0.25") !== -1, "full tank is 25% heavier");
 assert(src.indexOf("TOW_M: 25") !== -1 && src.indexOf("DIRTY_GRIP: 0.82") !== -1, "tow and dirty air tunables");
-assert(src.indexOf("BOOST_GAP: 1.0") !== -1 && src.indexOf("BOOST_TOP: 0.06") !== -1, "BOOST is +6% and gap-armed");
-assert(src.indexOf("DRS") === -1, "BOOST is the original name, not DRS");
+assert(src.indexOf("BOOST_GAP") === -1 && src.indexOf("function boostTick") === -1, "BOOST mechanic is gone");
 assert(src.indexOf("HIT.TAP") !== -1 && src.indexOf("HIT.RAM_SPEED") !== -1, "tap/ram/shove live in HIT");
 assert(src.indexOf("x: -6 - Math.floor(i / 2) * 8") !== -1, "Add Bowie parks beside the host");
 assert(src.indexOf("function maxLatAccel") !== -1, "yaw is capped by lateral grip");
@@ -2232,7 +2229,7 @@ function proveRubberMass() {
 }
 proveRubberMass();
 
-function proveSlipBoost() {
+function proveSlip() {
   sim.lockRacePath("");
   var start = sim.centerlinePoint(40);
   var naked = blankCar(start.x, start.z, start.h, 20);
@@ -2269,25 +2266,10 @@ function proveSlipBoost() {
   var b = blankCar(start.x, start.z, start.h, 40);
   b.fuel = 100;
   b.tires = 100;
-  sim.boostTick(b, 0.8, true, false, false);
-  assert(b.boostArmed, "gap under 1.0s on a straight arms BOOST");
-  sim.boostTick(b, 0.8, true, false, true);
-  assert(b.boostOn, "Shift in the zone turns BOOST on");
-  var cap = blankCar(start.x, start.z, start.h, 47);
-  cap.fuel = 100;
-  cap.tires = 100;
-  cap.throtHold = 1;
-  cap.boostOn = true;
-  sim.applyMotion(cap, 0, true, false, false, 0.2, true);
-  assert(cap.speed > 48, "BOOST raises top speed ~6%, spd=" + cap.speed.toFixed(2));
-  sim.applyMotion(cap, 0, false, true, false, 1 / 60, true);
-  assert(!cap.boostOn, "brake disarms BOOST");
-  sim.boostTick(b, 0.8, false, false, true);
-  assert(!b.boostArmed && !b.boostOn, "leaving the straight drops BOOST");
   sim.draftFromGap(b, 40, true, false);
   assert(b.towMul === 1, "tow is metres-behind, not a place bonus");
 }
-proveSlipBoost();
+proveSlip();
 
 var hs = firstNamedS("hairpin");
 var hpPt = sim.centerlinePoint(hs + 6);

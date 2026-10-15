@@ -121,15 +121,11 @@
     FULL: 0.25,
     OVERLAP: 1.8,
   };
-  // Slice 6: tow, dirty air, BOOST (original name).
+  // Slice 6: tow and dirty air.
   // Tow is metres-behind on a straight. Dirty air is grip in a corner.
-  // BOOST arms from a time gap, not grid place.
   var SLIP = {
     TOW_M: 25,
     TOW_ACCEL: 1.14,
-    BOOST_GAP: 1.0,
-    BOOST_TOP: 0.06,
-    BOOST_DRAG: 0.2,
     DIRTY_M: 18,
     DIRTY_GRIP: 0.82,
   };
@@ -500,7 +496,6 @@
     apexChip: document.getElementById("apex-chip"),
     gripMeter: document.getElementById("grip-meter"),
     gripArc: document.getElementById("grip-arc"),
-    boostChip: document.getElementById("boost-chip"),
     fuelFill: document.getElementById("fuel-fill"),
     tireFill: document.getElementById("tire-fill"),
     fuelNum: document.getElementById("fuel-num"),
@@ -5404,8 +5399,6 @@
       tireTemp: RUBBER.COLD,
       towMul: 1,
       dirtyMul: 1,
-      boostOn: false,
-      boostArmed: false,
       offCuts: 0,
       offAll: false,
       offHold: 0,
@@ -5612,8 +5605,6 @@
     r.tireTemp = RUBBER.COLD;
     r.towMul = 1;
     r.dirtyMul = 1;
-    r.boostOn = false;
-    r.boostArmed = false;
     r.offCuts = 0;
     r.offAll = false;
     r.offHold = 0;
@@ -6256,16 +6247,6 @@
     if (inCorner && gapM <= SLIP.DIRTY_M) r.dirtyMul = SLIP.DIRTY_GRIP;
   }
 
-  function boostTick(r, gapT, onStraight, brake, wantBoost) {
-    if (onStraight && gapT > 0 && gapT < SLIP.BOOST_GAP) r.boostArmed = true;
-    if (!onStraight) {
-      r.boostArmed = false;
-      r.boostOn = false;
-    }
-    if (brake) r.boostOn = false;
-    else if (wantBoost && r.boostArmed && onStraight) r.boostOn = true;
-  }
-
   function gapAheadM(r) {
     if (!r) return 0;
     var best = 1e9;
@@ -6277,15 +6258,13 @@
     return best < 1e8 ? best : 0;
   }
 
-  function updateSlip(r, wantBoost, brake) {
+  function updateSlip(r) {
     if (!r) return;
     var info = projectTrackNear(r.x, r.z, r.s, r.roadY);
     var straight = onLongStraight(info.s);
     var corner = isMajorName(info.name) && !straight;
     var gapM = gapAheadM(r);
     draftFromGap(r, gapM, straight, corner);
-    var gapT = gapM > 0 ? gapM / Math.max(8, Math.abs(r.speed) || 8) : 99;
-    boostTick(r, gapT, straight, !!brake, !!wantBoost);
   }
 
   function paintTireHeat(r) {
@@ -6316,14 +6295,12 @@
     if ((r.dirtyMul || 1) < 1) aeroFeel *= r.dirtyMul;
     var empty = r.fuel <= 0;
     var maxV = empty ? LIMP_SPEED : SPEED_LIMIT;
-    if (r.boostOn) maxV *= 1 + SLIP.BOOST_TOP;
     var accel = empty ? LIMP_ACCEL : ACCEL;
     // Fuel mass is a player-car feel. Bots keep the baked profile, or
     // a full tank makes them miss every apex they planned.
     var mass = isPlayer ? carMassMul(r) : 1;
     accel /= mass;
     if ((r.towMul || 1) > 1 && !info.grass) accel *= r.towMul;
-    if (r.boostOn) accel *= 1 + SLIP.BOOST_TOP * 0.5;
     var parkedNow = Math.abs(r.speed) <= 0.35;
     var throt = r.throtHold || 0;
     if (throttle && !reverse && (!brake || parkedNow)) {
@@ -6377,7 +6354,6 @@
       if (throttle) r.speed += accel * dt;
       else r.speed -= REVERSE_ACCEL * dt;
     } else if (brake) {
-      r.boostOn = false;
       r.brakeHold = Math.min(1, (r.brakeHold || 0) + dt / BRAKE.RAMP);
       r.brakeHeld = (r.brakeHeld || 0) + dt;
       var decel = (brakeDecelMax(r.speed) * r.brakeHold) / mass;
@@ -6409,7 +6385,7 @@
       r.brakeHold = 0;
       r.brakeHeld = 0;
       r.locked = false;
-      r.speed -= COAST * (r.boostOn ? 1 - SLIP.BOOST_DRAG : 1) * dt;
+      r.speed -= COAST * dt;
       if (r.speed < 0) r.speed = 0;
     } else if (r.speed < 0) {
       r.brakeHold = 0;
@@ -7938,7 +7914,7 @@
       coolDown(r, dt);
       return;
     }
-    updateSlip(r, false, false);
+    updateSlip(r);
     var p = aiOf(r);
     if (!r.launchArmed) applyCpuLaunch(r, p);
     var proj = projectTrackNear(r.x, r.z, r.s, r.roadY);
@@ -8828,7 +8804,7 @@
 
   function playerInput() {
     if (menuOpen || worldFrozen() || portraitRaceBlock()) {
-      return { steer: 0, throttle: false, reverse: false, brake: false, boost: false };
+      return { steer: 0, throttle: false, reverse: false, brake: false };
     }
     var up = !!(drive.up || keys.ArrowUp || keys.KeyW);
     var down = !!(drive.down || keys.ArrowDown || keys.KeyS);
@@ -8846,7 +8822,6 @@
         throttle: !!up,
         reverse: !!down,
         brake: brake,
-        boost: !!(keys.ShiftLeft || keys.ShiftRight),
       };
     }
     var keySteer = !!(left || right);
@@ -8855,7 +8830,6 @@
       throttle: !!(up || touchCtl.gas),
       reverse: !!(down || touchCtl.rev),
       brake: brake,
-      boost: !!(keys.ShiftLeft || keys.ShiftRight),
     };
   }
 
@@ -9310,12 +9284,6 @@
       hud.warn.classList.toggle("late", lateJoinT > 0);
       hud.warn.classList.toggle("launch", launchCallT > 0 && launchCall !== "DUMP");
       hud.warn.classList.toggle("dump", launchCallT > 0 && launchCall === "DUMP");
-    }
-    if (hud.boostChip) {
-      var boostShow = !!(player.boostArmed || player.boostOn);
-      hud.boostChip.classList.toggle("hidden", !boostShow);
-      hud.boostChip.classList.toggle("on", !!player.boostOn);
-      hud.boostChip.textContent = player.boostOn ? "BOOST ON" : "BOOST";
     }
     if (hud.feelPop) {
       var feelOn = (player.feelT || 0) > 0 && player.feelPop;
@@ -10045,7 +10013,7 @@
       raceTime += simDt;
       revs = 0;
       var input = playerInput();
-      updateSlip(player, input.boost, input.brake);
+      updateSlip(player);
       if (inPitLane(player) || inPitGrab(player) || pitServicing) {
         pitAwayT = 0;
       } else {

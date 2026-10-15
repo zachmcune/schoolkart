@@ -6,7 +6,7 @@
   <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <!-- sk-build mp102: F1 handling slices 2-7 (grip, spin, limits, rubber, BOOST, hits) -->
+  <!-- sk-build mp103: F1 handling slices 2-7 (grip, spin, limits, rubber, hits) -->
   <meta name="theme-color" content="#1a120e" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -16,7 +16,7 @@
   <link rel="manifest" href="manifest.json" />
   <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png" />
   <link rel="apple-touch-icon" href="apple-touch-icon.png" />
-  <link rel="stylesheet" href="css/style.css?v=mp102" />
+  <link rel="stylesheet" href="css/style.css?v=mp103" />
 </head>
 <body>
   <div id="game">
@@ -51,7 +51,6 @@
                 <span class="unit">KPH</span>
               </div>
             </div>
-            <div id="boost-chip" class="boost-chip hidden">BOOST</div>
           </div>
         </div>
       </div>
@@ -79,7 +78,7 @@
             <span id="temp-num">COLD</span>
           </div>
         </div>
-        <div class="hint">W gas · Space brake · S reverse · Shift BOOST · peel LEFT into the pits — halfway grabs you</div>
+        <div class="hint">W gas · Space brake · S reverse · peel LEFT into the pits — halfway grabs you</div>
       </div>
       <canvas id="minimap" class="minimap" width="168" height="168"></canvas>
       <ul id="race-names" class="race-names"></ul>
@@ -309,7 +308,7 @@
   </div>
 
   <script>
-    window.SK_BUILD = "mp102";
+    window.SK_BUILD = "mp103";
     try {
       if (window.caches) {
         caches.keys().then(function (keys) {
@@ -320,7 +319,7 @@
       }
     } catch (e) {}
     if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.register("sw.js?v=mp102").catch(function () {});
+      navigator.serviceWorker.register("sw.js?v=mp103").catch(function () {});
     }
   </script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.160.1/build/three.min.js"></script>
@@ -329,8 +328,8 @@
       document.write('<script src="https://unpkg.com/three@0.160.1/build/three.min.js"><\/script>');
     }
   </script>
-  <script src="js/config.js?v=mp102"></script>
-  <script src="js/net.js?v=mp102"></script>
-  <script src="js/game.js?v=mp102"></script>
+  <script src="js/config.js?v=mp103"></script>
+  <script src="js/net.js?v=mp103"></script>
+  <script src="js/game.js?v=mp103"></script>
 </body>
 </html>
