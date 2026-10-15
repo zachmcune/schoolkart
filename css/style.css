@@ -248,6 +248,14 @@ textarea {
   background: linear-gradient(90deg, #c4842a, var(--gold));
 }
 
+#mass-fill {
+  background: linear-gradient(90deg, #5a4a38, #d4c4b0);
+}
+
+#temp-fill {
+  background: linear-gradient(90deg, #3a4a88, #7ab0ff);
+}
+
 #fuel-num,
 #tire-num {
   font-size: 13px;

@@ -84,6 +84,8 @@ var code = [
   "var HANDLING = { MECH_GRIP: 1.4, AERO_GRIP: 2.6, G: 32.4, STEER_IN: 0.12, STEER_OUT: 0.08, TRAIL_MAX: 0.48, TRAIL_GAIN: 1.1, PUSH_BRAKE: 0.85, PUSH_GRIP: 0.72, OVER_SLIDE: 1.3, SLIDE: 16, SLIDE_WIDE: 28, SCRUB: 6.5, WEAR: 3.4, WASH: 0.42 };",
   sliceAssign("THROTTLE"),
   sliceAssign("LIMITS"),
+  sliceAssign("RUBBER"),
+  sliceAssign("MASS"),
   "var COAST = 5;",
   "var REVERSE_ACCEL = 18;",
   "var REVERSE_MAX = 12;",
@@ -221,6 +223,12 @@ var code = [
   sliceFn("distToMajor"),
   sliceFn("noteSectors"),
   sliceFn("noteRaceFeel"),
+  sliceFn("carMassMul"),
+  sliceFn("rubberIdeal"),
+  sliceFn("rubberGrip"),
+  sliceFn("tickTireTemp"),
+  sliceFn("rubberLabel"),
+  sliceFn("paintTireHeat"),
   sliceFn("applyMotion"),
   sliceFn("isDriveableLoop"),
   src.match(/var LAP_ORIGIN = \{[^}]*\};/)[0],
@@ -288,6 +296,11 @@ var code = [
   "  HANDLING: HANDLING,",
   "  THROTTLE: THROTTLE,",
   "  LIMITS: LIMITS,",
+  "  RUBBER: RUBBER,",
+  "  MASS: MASS,",
+  "  carMassMul: carMassMul,",
+  "  rubberGrip: rubberGrip,",
+  "  rubberIdeal: rubberIdeal,",
   "  sampleWheelsOff: sampleWheelsOff,",
   "  trackLimitPenalty: trackLimitPenalty,",
   "  noteTrackLimits: noteTrackLimits,",
@@ -1644,6 +1657,8 @@ assert(src.indexOf("THROTTLE.RAMP") !== -1 && src.indexOf("THROTTLE.SPIN_HOLD") 
 assert(src.indexOf("KERB_GRIP: 0.92") !== -1 && src.indexOf("GRASS_THROT: 0.5") !== -1, "kerbs 0.92 and grass half-throttle");
 assert(src.indexOf("CLEAN EXIT") !== -1 && src.indexOf("LATE BRAKE +") !== -1, "CLEAN EXIT and LATE BRAKE pops");
 assert(src.indexOf("CUTS: 3") !== -1 && src.indexOf("CUT_PENALTY: 3") !== -1, "three four-wheel cuts add 3s");
+assert(src.indexOf("COLD: 42") !== -1 && src.indexOf("CLIFF: 0.7") !== -1, "tires start cold and cliff after 70% wear");
+assert(src.indexOf("FULL: 0.25") !== -1, "full tank is 25% heavier");
 assert(src.indexOf("function maxLatAccel") !== -1, "yaw is capped by lateral grip");
 assert(src.indexOf("var MAX_LAT = 28") !== -1, "custom 90s are not glued to hide a spin");
 assert(src.indexOf("function inChicaneS") !== -1, "chicane S is the S, not the approach slab");
@@ -1658,7 +1673,7 @@ function tickFeel(car, steer, gas, brake, seconds) {
 
 var wind = blankCar(0, -80, 0, 0);
 tickFeel(wind, 0, true, false, 2);
-assert(wind.speed > 26 && wind.speed < 36, "2s of W is still winding up, speed=" + wind.speed.toFixed(1));
+assert(wind.speed > 24 && wind.speed < 36, "2s of W is still winding up, speed=" + wind.speed.toFixed(1));
 tickFeel(wind, 0, true, false, 1.2);
 assert(wind.speed > 40, "still reaches race pace, speed=" + wind.speed.toFixed(1));
 
@@ -2077,6 +2092,132 @@ function proveLimitsFeel() {
   assert(sec.feelKind === "green", "faster than last but not best is green, kind=" + sec.feelKind);
 }
 proveLimitsFeel();
+
+function proveRubberMass() {
+  sim.lockRacePath("");
+  var start = sim.centerlinePoint(40);
+  var heavy = blankCar(start.x, start.z, start.h, 16);
+  heavy.fuel = 100;
+  heavy.tires = 100;
+  heavy.tireTemp = sim.rubberIdeal();
+  heavy.throtHold = 1;
+  var light = blankCar(start.x, start.z, start.h, 16);
+  light.fuel = 20;
+  light.tires = 100;
+  light.tireTemp = sim.rubberIdeal();
+  light.throtHold = 1;
+  var t;
+  for (t = 0; t < 1; t += 1 / 60) {
+    sim.applyMotion(heavy, 0, true, false, false, 1 / 60, true);
+    sim.applyMotion(light, 0, true, false, false, 1 / 60, true);
+  }
+  assert(light.speed > heavy.speed + 0.6, "full tank is heavier so slower to wind, light=" + light.speed.toFixed(2) + " heavy=" + heavy.speed.toFixed(2));
+  var hBr = blankCar(start.x, start.z, start.h, 40);
+  hBr.fuel = 100;
+  hBr.tires = 100;
+  hBr.tireTemp = sim.rubberIdeal();
+  hBr.brakeHold = 1;
+  var lBr = blankCar(start.x, start.z, start.h, 40);
+  lBr.fuel = 20;
+  lBr.tires = 100;
+  lBr.tireTemp = sim.rubberIdeal();
+  lBr.brakeHold = 1;
+  sim.applyMotion(hBr, 0, false, true, false, 0.2, true);
+  sim.applyMotion(lBr, 0, false, true, false, 0.2, true);
+  assert(lBr.speed < hBr.speed - 0.4, "full tank brakes slower, light=" + lBr.speed.toFixed(2) + " heavy=" + hBr.speed.toFixed(2));
+  var tank = blankCar(start.x, start.z, start.h, 16);
+  tank.fuel = 100;
+  assert(Math.abs(sim.carMassMul(tank) - 1.25) < 0.001, "full tank mass mul is +25%");
+
+  function yawAt(temp, tires, fuel) {
+    var p = sim.centerlinePoint(firstNamedS("hairpin") + 6);
+    var car = blankCar(p.x, p.z, p.h, 26);
+    car.fuel = fuel;
+    car.tires = tires;
+    car.tireTemp = temp;
+    car.steerHold = 1;
+    var h0 = car.heading;
+    sim.applyMotion(car, 1, true, false, false, 1 / 60, true);
+    return Math.abs(angDiff(car.heading, h0));
+  }
+  var yawWarm = yawAt(sim.rubberIdeal(), 100, 100);
+  var yawCold = yawAt(sim.RUBBER.COLD, 100, 100);
+  var yawWorn = yawAt(sim.rubberIdeal(), 24, 100);
+  var yawPit = yawAt(sim.rubberIdeal(), 100, 55);
+  assert(yawWarm > yawCold * 1.05, "cold tires turn less, warm=" + yawWarm.toFixed(4) + " cold=" + yawCold.toFixed(4));
+  assert(yawWarm > yawWorn * 1.08, "wear cliff after ~70% kills yaw, warm=" + yawWarm.toFixed(4) + " worn=" + yawWorn.toFixed(4));
+  assert(yawPit >= yawWarm * 0.98 && yawPit > yawCold, "after pit warm tires turn; less fuel does not hurt yaw");
+
+  function coverHairpin(temp, tires, fuel) {
+    var p = sim.centerlinePoint(firstNamedS("hairpin") + 6);
+    var car = blankCar(p.x, p.z, p.h, 28);
+    car.fuel = fuel;
+    car.tires = tires;
+    car.tireTemp = temp;
+    car.steerHold = 1;
+    var travelled = 0;
+    var last = sim.projectTrack(car.x, car.z).s;
+    var u;
+    for (u = 0; u < 0.7; u += 1 / 60) {
+      var line = sim.projectTrack(car.x, car.z);
+      var look = sim.centerlinePoint(line.s + 10);
+      var err = angDiff(look.h, car.heading);
+      var st = err * 1.9;
+      if (st > 1) st = 1;
+      if (st < -1) st = -1;
+      sim.applyMotion(car, st, true, false, false, 1 / 60, true);
+      var now = sim.projectTrack(car.x, car.z).s;
+      var ds = now - last;
+      if (ds < -sim.TRACK_LEN * 0.5) ds += sim.TRACK_LEN;
+      if (ds > 0 && ds < 22) travelled += ds;
+      last = now;
+    }
+    return { go: travelled, off: sim.projectTrack(car.x, car.z).dist };
+  }
+  var coldGo = coverHairpin(sim.RUBBER.COLD, 100, 100);
+  var warmGo = coverHairpin(sim.rubberIdeal(), 100, 100);
+  assert(
+    warmGo.go > coldGo.go + 0.4 || coldGo.off > warmGo.off + 0.6,
+    "cold lap-1 is slower/wider through the 180, warm=" + warmGo.go.toFixed(1) + " cold=" + coldGo.go.toFixed(1)
+  );
+  var pitGo = coverHairpin(sim.rubberIdeal(), 100, 55);
+  assert(pitGo.go > coldGo.go + 0.3 || coldGo.off > pitGo.off + 0.4, "after pit (warm, less fuel) beats lap-1 cold");
+
+  var hp = sim.centerlinePoint(firstNamedS("hairpin") + 6);
+  var slide = blankCar(hp.x, hp.z, hp.h, 40);
+  slide.fuel = 100;
+  slide.tires = 100;
+  slide.tireTemp = 70;
+  slide.steerHold = 1;
+  var temp0 = slide.tireTemp;
+  for (t = 0; t < 0.7; t += 1 / 60) {
+    var line = sim.projectTrack(slide.x, slide.z);
+    var look = sim.centerlinePoint(line.s + 12);
+    var err = angDiff(look.h, slide.heading);
+    var st = err * 1.8;
+    if (st > 1) st = 1;
+    if (st < -1) st = -1;
+    sim.applyMotion(slide, st, true, false, false, 1 / 60, true);
+  }
+  assert(slide.tireTemp > temp0 + 4, "sliding heats the tires, t=" + slide.tireTemp.toFixed(1));
+  assert(src.indexOf("HANDLING.WEAR") !== -1, "sliding still wears from the grip budget");
+
+  var hold = blankCar(start.x, start.z, start.h, 36);
+  hold.fuel = 80;
+  hold.tires = 100;
+  hold.tireTemp = sim.rubberIdeal();
+  hold.throtHold = 1;
+  var lift = blankCar(start.x, start.z, start.h, 36);
+  lift.fuel = 80;
+  lift.tires = 100;
+  lift.tireTemp = sim.rubberIdeal();
+  for (t = 0; t < 0.8; t += 1 / 60) {
+    sim.applyMotion(hold, 0, true, true, false, 1 / 60, true);
+    sim.applyMotion(lift, 0, false, true, false, 1 / 60, true);
+  }
+  assert(lift.fuel > hold.fuel + 0.08, "lift-before-brake saves fuel, lift=" + lift.fuel.toFixed(2) + " hold=" + hold.fuel.toFixed(2));
+}
+proveRubberMass();
 
 var hs = firstNamedS("hairpin");
 var hpPt = sim.centerlinePoint(hs + 6);

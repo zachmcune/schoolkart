@@ -102,6 +102,25 @@
     LATE_BOARD: 50,
     LATE_GAIN: 0.12,
   };
+  // Slice 5: arcade tire temp/wear + fuel mass. Not a full sim, not a
+  // third compound. Lap 1 starts cold. Sliding heats and wears; past
+  // ~70% wear the cliff hits. Full tank is 25% heavier.
+  var RUBBER = {
+    COLD: 42,
+    IDEAL_LO: 78,
+    IDEAL_HI: 102,
+    HEAT_SLIDE: 22,
+    HEAT_DRIVE: 3.4,
+    COOL: 5.5,
+    COLD_GRIP: 0.88,
+    HOT_GRIP: 0.93,
+    CLIFF: 0.7,
+    CLIFF_GRIP: 0.55,
+  };
+  var MASS = {
+    FULL: 0.25,
+    OVERLAP: 1.8,
+  };
   var COAST = 2;
   var REVERSE_ACCEL = 7;
   var REVERSE_MAX = 12;
@@ -452,6 +471,10 @@
     tireFill: document.getElementById("tire-fill"),
     fuelNum: document.getElementById("fuel-num"),
     tireNum: document.getElementById("tire-num"),
+    massFill: document.getElementById("mass-fill"),
+    massNum: document.getElementById("mass-num"),
+    tempFill: document.getElementById("temp-fill"),
+    tempNum: document.getElementById("temp-num"),
     pitting: document.getElementById("pitting"),
     warn: document.getElementById("warn"),
     feelPop: document.getElementById("feel-pop"),
@@ -5296,6 +5319,7 @@
     g.userData.wheels = wheels;
     g.userData.bodyMat = body;
     g.userData.wingMat = wing;
+    g.userData.tireMat = rubber;
     return g;
   }
 
@@ -5343,6 +5367,7 @@
       spinDir: 1,
       spinArm: 0,
       apexSlow: null,
+      tireTemp: RUBBER.COLD,
       offCuts: 0,
       offAll: false,
       offHold: 0,
@@ -5546,6 +5571,7 @@
     r.spinDir = 1;
     r.spinArm = 0;
     r.apexSlow = null;
+    r.tireTemp = RUBBER.COLD;
     r.offCuts = 0;
     r.offAll = false;
     r.offHold = 0;
@@ -6125,6 +6151,71 @@
     noteSectors(r, dt, info);
   }
 
+  function carMassMul(r) {
+    return 1 + MASS.FULL * clamp((r.fuel || 0) / 100, 0, 1);
+  }
+
+  function rubberIdeal() {
+    return (RUBBER.IDEAL_LO + RUBBER.IDEAL_HI) * 0.5;
+  }
+
+  function rubberGrip(r) {
+    var temp = r.tireTemp != null ? r.tireTemp : rubberIdeal();
+    var tempMul = 1;
+    if (temp < RUBBER.IDEAL_LO) {
+      var coldU = (RUBBER.IDEAL_LO - temp) / Math.max(1, RUBBER.IDEAL_LO - RUBBER.COLD);
+      tempMul = 1 - clamp(coldU, 0, 1) * (1 - RUBBER.COLD_GRIP);
+    } else if (temp > RUBBER.IDEAL_HI) {
+      var hotU = clamp((temp - RUBBER.IDEAL_HI) / 36, 0, 1);
+      tempMul = 1 - hotU * (1 - RUBBER.HOT_GRIP);
+    }
+    var wear = 1 - clamp((r.tires || 100) / 100, 0, 1);
+    var wearMul = 1;
+    if (wear > RUBBER.CLIFF) {
+      var cliffU = (wear - RUBBER.CLIFF) / Math.max(0.05, 1 - RUBBER.CLIFF);
+      wearMul = 1 - clamp(cliffU, 0, 1) * (1 - RUBBER.CLIFF_GRIP);
+    }
+    return tempMul * wearMul;
+  }
+
+  function tickTireTemp(r, dt, throttle, roll, isPlayer) {
+    if (!isPlayer) return;
+    if (r.tireTemp == null) r.tireTemp = rubberIdeal();
+    var heat = 0;
+    if (throttle && roll > 4) heat += RUBBER.HEAT_DRIVE * clamp(roll / Math.max(12, handlingVMax()), 0.2, 1);
+    var load = r.gripLoad || 0;
+    if (
+      r.sliding ||
+      Math.abs(r.slide || 0) > 0.5 ||
+      load > 0.55 ||
+      (Math.abs(r.steerHold || 0) > 0.7 && roll > 16)
+    ) {
+      var scrub = clamp(Math.max(Math.abs(r.slide) / 8, load, 0.4), 0.45, 1.6);
+      heat += RUBBER.HEAT_SLIDE * scrub;
+    }
+    if (heat > 0.4) r.tireTemp += heat * dt;
+    else r.tireTemp -= RUBBER.COOL * dt;
+    if (r.tireTemp < 20) r.tireTemp = 20;
+    if (r.tireTemp > 140) r.tireTemp = 140;
+    if (r.tires < TIRE_FLOOR) r.tires = TIRE_FLOOR;
+  }
+
+  function rubberLabel(temp) {
+    if (temp < RUBBER.IDEAL_LO) return "COLD";
+    if (temp > RUBBER.IDEAL_HI) return "HOT";
+    return "WARM";
+  }
+
+  function paintTireHeat(r) {
+    var mat = r.mesh && r.mesh.userData && r.mesh.userData.tireMat;
+    if (!mat || !mat.color || typeof mat.color.setHex !== "function") return;
+    var wear = 1 - clamp((r.tires || 100) / 100, 0, 1);
+    var temp = r.tireTemp != null ? r.tireTemp : rubberIdeal();
+    if (wear > RUBBER.CLIFF || temp > RUBBER.IDEAL_HI + 6) mat.color.setHex(0x9a1c1c);
+    else if (temp < RUBBER.IDEAL_LO) mat.color.setHex(0x2a3344);
+    else mat.color.setHex(0x1a1a1a);
+  }
+
   function applyMotion(r, steer, throttle, brake, reverse, dt, isPlayer) {
     if (!isFinite(r.speed)) r.speed = 0;
     if (!isFinite(r.slide)) r.slide = 0;
@@ -6138,9 +6229,14 @@
     // Tires = sloppy handling on asphalt, never a speed cap. Grass keeps
     // enough steer to crawl back to the pit even when the rears are gone.
     var tireFeel = info.grass ? 0.85 : 0.38 + 0.62 * tire;
+    if (isPlayer) tireFeel *= rubberGrip(r);
     var empty = r.fuel <= 0;
     var maxV = empty ? LIMP_SPEED : SPEED_LIMIT;
     var accel = empty ? LIMP_ACCEL : ACCEL;
+    // Fuel mass is a player-car feel. Bots keep the baked profile, or
+    // a full tank makes them miss every apex they planned.
+    var mass = isPlayer ? carMassMul(r) : 1;
+    accel /= mass;
     var parkedNow = Math.abs(r.speed) <= 0.35;
     var throt = r.throtHold || 0;
     if (throttle && !reverse && (!brake || parkedNow)) {
@@ -6177,6 +6273,7 @@
       var burn = RACE.burn > 0 ? RACE.burn : 1;
       r.fuel -= IDLE_FUEL * burn * dt;
       if (throttle && !empty && r.speed >= 0) r.fuel -= THROTTLE_FUEL * burn * dt;
+      if (throttle && brake && !empty) r.fuel -= THROTTLE_FUEL * MASS.OVERLAP * burn * dt;
       if (r.fuel < 0) r.fuel = 0;
     }
 
@@ -6195,7 +6292,7 @@
     } else if (brake) {
       r.brakeHold = Math.min(1, (r.brakeHold || 0) + dt / BRAKE.RAMP);
       r.brakeHeld = (r.brakeHeld || 0) + dt;
-      var decel = brakeDecelMax(r.speed) * r.brakeHold;
+      var decel = (brakeDecelMax(r.speed) * r.brakeHold) / mass;
       // Skill: hit Space hard early, ease off as you slow. Holding to
       // the apex (full pedal, already slow) locks and understeers.
       var locked =
@@ -6398,6 +6495,8 @@
         wheels[i].holder.rotation.y = wheels[i].front ? turn : 0;
       }
     }
+    tickTireTemp(r, dt, throttle, roll, isPlayer);
+    paintTireHeat(r);
     noteTrackLimits(r, dt);
     noteRaceFeel(r, throttle, brake, dt);
   }
@@ -7763,6 +7862,7 @@
       if (r.pitTimer >= PIT_HOLD) {
         r.fuel = 100;
         r.tires = 100;
+        r.tireTemp = (RUBBER.IDEAL_LO + RUBBER.IDEAL_HI) * 0.5;
         r.burnRefuel = true;
         r.didPit = true;
         r.wantPit = false;
@@ -9050,16 +9150,38 @@
     if (hud.time) hud.time.textContent = formatTime(raceTime);
     var fuel = clamp(player.fuel, 0, 100);
     var tires = clamp(player.tires, 0, 100);
+    var temp = player.tireTemp != null ? player.tireTemp : rubberIdeal();
+    var massMul = carMassMul(player);
     if (hud.fuelFill) {
       hud.fuelFill.style.transform = "scaleX(" + fuel / 100 + ")";
       hud.fuelFill.style.background = fuel < 28 ? "linear-gradient(90deg,#7a1010,#ff4d4d)" : "";
     }
+    if (hud.massFill) {
+      hud.massFill.style.transform = "scaleX(" + clamp((massMul - 1) / MASS.FULL, 0, 1) + ")";
+    }
+    if (hud.massNum) hud.massNum.textContent = fuel > 78 ? "HEAVY" : fuel < 42 ? "LIGHT" : "MID";
     if (hud.tireFill) {
       hud.tireFill.style.transform = "scaleX(" + tires / 100 + ")";
-      hud.tireFill.style.background = tires < 40 ? "linear-gradient(90deg,#8a5a10,#ffd36a)" : "";
+      var wearFrac = 1 - tires / 100;
+      hud.tireFill.style.background =
+        wearFrac > RUBBER.CLIFF || temp > RUBBER.IDEAL_HI
+          ? "linear-gradient(90deg,#7a1010,#ff4d4d)"
+          : tires < 40
+            ? "linear-gradient(90deg,#8a5a10,#ffd36a)"
+            : "";
+    }
+    if (hud.tempFill) {
+      hud.tempFill.style.transform = "scaleX(" + clamp((temp - 20) / 120, 0, 1) + ")";
+      hud.tempFill.style.background =
+        temp > RUBBER.IDEAL_HI
+          ? "linear-gradient(90deg,#7a1010,#ff4d4d)"
+          : temp < RUBBER.IDEAL_LO
+            ? "linear-gradient(90deg,#3a4a88,#7ab0ff)"
+            : "linear-gradient(90deg,#148f8c,#7cffd4)";
     }
     if (hud.fuelNum) hud.fuelNum.textContent = String(Math.round(fuel));
     if (hud.tireNum) hud.tireNum.textContent = String(Math.round(tires));
+    if (hud.tempNum) hud.tempNum.textContent = rubberLabel(temp);
     paintRevs();
 
     // PIT LANE banner is the halfway LEFT box only. The peel mouth
@@ -9848,6 +9970,7 @@
         if (pitTimer >= PIT_HOLD) {
           player.fuel = 100;
           player.tires = 100;
+          player.tireTemp = (RUBBER.IDEAL_LO + RUBBER.IDEAL_HI) * 0.5;
           didPit = true;
           pitUsedVisit = true;
           pitServicing = false;
