@@ -88,6 +88,20 @@
     SPIN_DUMP: 12,
     WEAR: 2.6,
   };
+  // Slice 4: kerbs, grass, track limits, and the pop-up calls.
+  // Grass keeps the crawl-back lock (GRASS_MAX) and also halves throttle
+  // with the existing dump. Three four-wheel cuts add 3s at the flag.
+  var LIMITS = {
+    GRASS_THROT: 0.5,
+    GRASS_GRIP: 0.5,
+    KERB_GRIP: 0.92,
+    KERB_WIGGLE: 14,
+    CUTS: 3,
+    CUT_PENALTY: 3,
+    CUT_HOLD: 0.12,
+    LATE_BOARD: 50,
+    LATE_GAIN: 0.12,
+  };
   var COAST = 2;
   var REVERSE_ACCEL = 7;
   var REVERSE_MAX = 12;
@@ -440,6 +454,8 @@
     tireNum: document.getElementById("tire-num"),
     pitting: document.getElementById("pitting"),
     warn: document.getElementById("warn"),
+    feelPop: document.getElementById("feel-pop"),
+    finishCuts: document.getElementById("finish-cuts"),
     title: document.getElementById("title-screen"),
     countdown: document.getElementById("countdown"),
     startMsg: document.getElementById("start-msg"),
@@ -5327,6 +5343,12 @@
       spinDir: 1,
       spinArm: 0,
       apexSlow: null,
+      offCuts: 0,
+      offAll: false,
+      offHold: 0,
+      feelPop: "",
+      feelKind: "",
+      feelT: 0,
       finished: false,
       finishTime: 0,
     };
@@ -5524,6 +5546,19 @@
     r.spinDir = 1;
     r.spinArm = 0;
     r.apexSlow = null;
+    r.offCuts = 0;
+    r.offAll = false;
+    r.offHold = 0;
+    r.feelPop = "";
+    r.feelKind = "";
+    r.feelT = 0;
+    r.exitWatch = false;
+    r.lateArmed = false;
+    r.latePending = false;
+    r.secI = null;
+    r.secClock = 0;
+    r.secLast = null;
+    r.secBest = null;
     r.finished = false;
     r.finishTime = 0;
     r.wantPit = false;
@@ -5722,7 +5757,7 @@
     r.lap += 1;
     if (r.lap > LAPS) {
       r.finished = true;
-      r.finishTime = raceTime;
+      r.finishTime = raceTime + trackLimitPenalty(r);
       r.lap = LAPS;
     }
   }
@@ -5789,7 +5824,7 @@
       r.lap += 1;
       if (r.lap > LAPS) {
         r.finished = true;
-        r.finishTime = raceTime;
+        r.finishTime = raceTime + trackLimitPenalty(r);
         r.lap = LAPS;
       }
     }
@@ -5957,6 +5992,139 @@
     return out;
   }
 
+  function sampleWheelsOff(r) {
+    var spots = [
+      [-1, -1],
+      [-1, 1],
+      [1, -1],
+      [1, 1],
+    ];
+    var off = 0;
+    var wi;
+    for (wi = 0; wi < spots.length; wi++) {
+      var w = wheelWorld(r, spots[wi][0], spots[wi][1]);
+      var winfo = projectTrack(w.x, w.z);
+      if (pitClaims(w.x, w.z)) continue;
+      if (!winfo.onAsphalt && !winfo.kerb) off += 1;
+    }
+    return off;
+  }
+
+  function trackLimitPenalty(r) {
+    return (r && (r.offCuts || 0) >= LIMITS.CUTS) ? LIMITS.CUT_PENALTY : 0;
+  }
+
+  function popFeel(r, text, kind) {
+    if (!r) return;
+    r.feelPop = text;
+    r.feelKind = kind || "";
+    r.feelT = 1.55;
+  }
+
+  function noteTrackLimits(r, dt) {
+    if (!r || r.finished) return;
+    if (r.pitServicing || inPitLane(r) || inPitGrab(r)) {
+      r.offAll = false;
+      r.offHold = 0;
+      return;
+    }
+    var off = sampleWheelsOff(r);
+    if (off >= 4) {
+      r.offHold = (r.offHold || 0) + dt;
+      if (!r.offAll && r.offHold >= LIMITS.CUT_HOLD) {
+        r.offAll = true;
+        r.offCuts = (r.offCuts || 0) + 1;
+        if (r.kind === "player") popFeel(r, "TRACK LIMIT " + r.offCuts + "/" + LIMITS.CUTS, "warn");
+      }
+    } else {
+      r.offAll = false;
+      r.offHold = 0;
+    }
+  }
+
+  function distToMajor(s) {
+    if (!(TRACK_LEN > 8) || !PATH.length) return 1e9;
+    var i;
+    var best = 1e9;
+    for (i = 0; i < PATH.length; i++) {
+      var name = PATH[i].name || "";
+      if (!isMajorName(name)) continue;
+      var start = PATH[i].startS || 0;
+      var d = start - s;
+      if (d <= 4) d += TRACK_LEN;
+      if (d < best) best = d;
+    }
+    return best;
+  }
+
+  function noteSectors(r, dt, info) {
+    if (!r || !(TRACK_LEN > 80)) return;
+    var origin = lapOriginS();
+    var cur = (info && info.s != null ? info.s : r.s || 0) - origin;
+    if (cur < 0) cur += TRACK_LEN;
+    var len = TRACK_LEN / 3;
+    var idx = Math.floor(cur / Math.max(8, len));
+    if (idx > 2) idx = 2;
+    if (idx < 0) idx = 0;
+    if (r.secI == null) {
+      r.secI = idx;
+      r.secClock = 0;
+      r.secLast = [null, null, null];
+      r.secBest = [null, null, null];
+      return;
+    }
+    r.secClock = (r.secClock || 0) + dt;
+    if (idx === r.secI) return;
+    var prev = r.secI;
+    var t = r.secClock;
+    if (!r.secLast) r.secLast = [null, null, null];
+    if (!r.secBest) r.secBest = [null, null, null];
+    var last = r.secLast[prev];
+    var best = r.secBest[prev];
+    var kind = "";
+    if (best == null || t < best - 0.001) {
+      kind = "purple";
+      r.secBest[prev] = t;
+    } else if (last != null && t < last - 0.001) {
+      kind = "green";
+    }
+    r.secLast[prev] = t;
+    if (kind) popFeel(r, "S" + (prev + 1) + " " + t.toFixed(2), kind);
+    r.secI = idx;
+    r.secClock = 0;
+  }
+
+  function noteRaceFeel(r, throttle, brake, dt) {
+    if (!r || r.finished) return;
+    if ((r.feelT || 0) > 0) {
+      r.feelT -= dt;
+      if (r.feelT < 0) r.feelT = 0;
+    }
+    if (state !== "racing") return;
+    var info = projectTrackNear(r.x, r.z, r.s, r.roadY);
+    var major = isMajorName(info.name) && !info.grass;
+    if (r.exitWatch && !major && !info.grass && throttle && !brake && Math.abs(r.slide || 0) < 1.15 && !(r.spinT > 0) && !r.sliding) {
+      if (r.latePending) {
+        popFeel(r, "LATE BRAKE +" + (r.lateGain || LIMITS.LATE_GAIN).toFixed(2), "late");
+        r.latePending = false;
+      } else {
+        popFeel(r, "CLEAN EXIT", "good");
+      }
+      r.exitWatch = false;
+    }
+    if (major) r.exitWatch = true;
+    if (brake && !(r.brakeHeld > dt + 0.02) && !r.lateArmed) {
+      var d = distToMajor(info.s);
+      if (d > 8 && d < LIMITS.LATE_BOARD) {
+        r.lateArmed = true;
+        r.latePending = true;
+        r.lateGain = LIMITS.LATE_GAIN;
+      }
+    }
+    if (!brake) r.lateArmed = false;
+    noteSectors(r, dt, info);
+  }
+
   function applyMotion(r, steer, throttle, brake, reverse, dt, isPlayer) {
     if (!isFinite(r.speed)) r.speed = 0;
     if (!isFinite(r.slide)) r.slide = 0;
@@ -5965,7 +6133,7 @@
     var onKerb = info.kerb || wheelKerb.count > 0;
     var kerbDepth = wheelKerb.depth;
     if (!kerbDepth && info.kerb) kerbDepth = kerbDepthAt(info);
-    var surface = info.grass ? 0.5 : onKerb ? 0.9 : 1;
+    var surface = info.grass ? LIMITS.GRASS_GRIP : onKerb ? LIMITS.KERB_GRIP : 1;
     var tire = clamp(r.tires / 100, 0, 1);
     // Tires = sloppy handling on asphalt, never a speed cap. Grass keeps
     // enough steer to crawl back to the pit even when the rears are gone.
@@ -5985,6 +6153,9 @@
     // launches (unweld / lights-out) and keeps full bite until the
     // standstill flag clears; rolling W bites over THROTTLE.RAMP.
     if (!parkedNow && !r.unweld) accel *= throt > 0.02 ? throt : 0;
+    // Half-throttle is the racing penalty. Crawl-back to the ribbon
+    // keeps full bite up to GRASS_MAX so a dump is still recoverable.
+    if (info.grass && !reverse && Math.abs(r.speed) > GRASS_MAX) accel *= LIMITS.GRASS_THROT;
     if (isPlayer && state === "racing" && raceTime > GETAWAY_T) {
       launchT = 0;
       launchMul = 1;
@@ -6196,7 +6367,7 @@
     if (onKerb && kerbDepth > 0) {
       var dive = Math.abs(r.speed) / 36;
       var wob = kerbDepth * dive;
-      r.slide += Math.sin((raceTime + r.x * 0.05) * 28) * 14 * wob * dt;
+      r.slide += Math.sin((raceTime + r.x * 0.05) * 28) * LIMITS.KERB_WIGGLE * wob * dt;
       r.heading += Math.sin((raceTime + r.z * 0.04) * 17) * 0.7 * wob * dt;
       var wheelFrac = wheelKerb.count / 4;
       r.tires -= (1.2 + 2.4 * wheelFrac) * dt * speed01 * kerbDepth;
@@ -6227,6 +6398,8 @@
         wheels[i].holder.rotation.y = wheels[i].front ? turn : 0;
       }
     }
+    noteTrackLimits(r, dt);
+    noteRaceFeel(r, throttle, brake, dt);
   }
 
   function steerWheelYaw(steer) {
@@ -8826,6 +8999,13 @@
       var ord = place + (place === 1 ? "st" : place === 2 ? "nd" : place === 3 ? "rd" : "th");
       hud.finishPlace.textContent = ord + " · vs 7 CPUs";
     }
+    if (hud.finishCuts) {
+      var cuts = player.offCuts || 0;
+      var pen = trackLimitPenalty(player);
+      if (cuts >= LIMITS.CUTS) hud.finishCuts.textContent = "Track limits: " + cuts + " cuts · +" + pen.toFixed(0) + "s";
+      else if (cuts) hud.finishCuts.textContent = "Track limits: " + cuts + (cuts === 1 ? " cut" : " cuts");
+      else hud.finishCuts.textContent = "";
+    }
   }
 
   function speedKph(r) {
@@ -8917,6 +9097,11 @@
       hud.warn.classList.toggle("late", lateJoinT > 0);
       hud.warn.classList.toggle("launch", launchCallT > 0 && launchCall !== "DUMP");
       hud.warn.classList.toggle("dump", launchCallT > 0 && launchCall === "DUMP");
+    }
+    if (hud.feelPop) {
+      var feelOn = (player.feelT || 0) > 0 && player.feelPop;
+      hud.feelPop.className = "feel-pop" + (player.feelKind ? " " + player.feelKind : "") + (feelOn ? "" : " hidden");
+      if (feelOn) hud.feelPop.textContent = player.feelPop;
     }
     paintMini();
     paintRaceNames();

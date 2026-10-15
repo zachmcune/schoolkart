@@ -315,6 +315,41 @@ textarea {
   text-align: center;
 }
 
+.feel-pop {
+  padding: 8px 18px;
+  border-radius: 6px;
+  font-size: 28px;
+  letter-spacing: 0.14em;
+  background: rgba(20, 143, 140, 0.92);
+  color: #fff;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
+}
+
+.feel-pop.good {
+  background: rgba(20, 143, 140, 0.94);
+}
+
+.feel-pop.late {
+  background: rgba(26, 18, 14, 0.9);
+  color: #ffe566;
+}
+
+.feel-pop.green {
+  background: rgba(14, 90, 48, 0.94);
+  color: #7cffd4;
+}
+
+.feel-pop.purple {
+  background: rgba(72, 28, 110, 0.94);
+  color: #e4c2ff;
+}
+
+.feel-pop.warn {
+  background: rgba(122, 16, 16, 0.92);
+  color: #fff4d8;
+  font-size: 22px;
+}
+
 .screen {
   position: absolute;
   inset: 0;

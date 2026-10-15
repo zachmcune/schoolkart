@@ -83,6 +83,7 @@ var code = [
   "var BRAKE = { BASE: 14, AERO: 30, RAMP: 0.1, LOCK_V: 30, LOCK_HOLD: 0.6, LOCK_DECEL: 0.7, LOCK_STEER: 0.3, LOCK_WEAR: 2.8, BOARDS: [150, 100, 50], ASSIST: true };",
   "var HANDLING = { MECH_GRIP: 1.4, AERO_GRIP: 2.6, G: 32.4, STEER_IN: 0.12, STEER_OUT: 0.08, TRAIL_MAX: 0.48, TRAIL_GAIN: 1.1, PUSH_BRAKE: 0.85, PUSH_GRIP: 0.72, OVER_SLIDE: 1.3, SLIDE: 16, SLIDE_WIDE: 28, SCRUB: 6.5, WEAR: 3.4, WASH: 0.42 };",
   sliceAssign("THROTTLE"),
+  sliceAssign("LIMITS"),
   "var COAST = 5;",
   "var REVERSE_ACCEL = 18;",
   "var REVERSE_MAX = 12;",
@@ -213,6 +214,13 @@ var code = [
   sliceFn("lineRadiusFor"),
   sliceFn("cornerApexV"),
   sliceFn("majorCorners"),
+  sliceFn("sampleWheelsOff"),
+  sliceFn("trackLimitPenalty"),
+  sliceFn("popFeel"),
+  sliceFn("noteTrackLimits"),
+  sliceFn("distToMajor"),
+  sliceFn("noteSectors"),
+  sliceFn("noteRaceFeel"),
   sliceFn("applyMotion"),
   sliceFn("isDriveableLoop"),
   src.match(/var LAP_ORIGIN = \{[^}]*\};/)[0],
@@ -279,10 +287,16 @@ var code = [
   "  BRAKE: BRAKE,",
   "  HANDLING: HANDLING,",
   "  THROTTLE: THROTTLE,",
+  "  LIMITS: LIMITS,",
+  "  sampleWheelsOff: sampleWheelsOff,",
+  "  trackLimitPenalty: trackLimitPenalty,",
+  "  noteTrackLimits: noteTrackLimits,",
+  "  noteRaceFeel: noteRaceFeel,",
   "  maxLatAccel: maxLatAccel,",
   "  gripApexV: gripApexV,",
   "  cornerApexV: cornerApexV,",
   "  updateLaps: updateLaps,",
+  "  lapOriginS: lapOriginS,",
   "  inPitGrab: inPitGrab,",
   "  inPitLane: inPitLane,",
   "  pitClaims: pitClaims,",
@@ -414,6 +428,12 @@ function blankCar(x, z, h, spd) {
     spinDir: 1,
     spinArm: 0,
     apexSlow: null,
+    offCuts: 0,
+    offAll: false,
+    offHold: 0,
+    feelPop: "",
+    feelKind: "",
+    feelT: 0,
     launchT: 0,
     launchMul: 1,
     lap: 1,
@@ -1621,6 +1641,9 @@ assert(src.indexOf("RAMP: 0.1") !== -1, "brake input ramps in 0.10s");
 assert(src.indexOf("function placeBrakeBoards") !== -1, "3/2/1 boards before major corners");
 assert(src.indexOf("MECH_GRIP: 1.4") !== -1 && src.indexOf("AERO_GRIP: 2.6") !== -1, "corners are a lateral grip budget");
 assert(src.indexOf("THROTTLE.RAMP") !== -1 && src.indexOf("THROTTLE.SPIN_HOLD") !== -1, "exit wheelspin is a throttle ramp, not a reset");
+assert(src.indexOf("KERB_GRIP: 0.92") !== -1 && src.indexOf("GRASS_THROT: 0.5") !== -1, "kerbs 0.92 and grass half-throttle");
+assert(src.indexOf("CLEAN EXIT") !== -1 && src.indexOf("LATE BRAKE +") !== -1, "CLEAN EXIT and LATE BRAKE pops");
+assert(src.indexOf("CUTS: 3") !== -1 && src.indexOf("CUT_PENALTY: 3") !== -1, "three four-wheel cuts add 3s");
 assert(src.indexOf("function maxLatAccel") !== -1, "yaw is capped by lateral grip");
 assert(src.indexOf("var MAX_LAT = 28") !== -1, "custom 90s are not glued to hide a spin");
 assert(src.indexOf("function inChicaneS") !== -1, "chicane S is the S, not the approach slab");
@@ -1927,6 +1950,133 @@ function proveExitSpinHold() {
   assert((car.spinT || 0) < 0.08, "spin ends after ~1.2s, t=" + (car.spinT || 0).toFixed(2));
 }
 proveExitSpinHold();
+
+function proveLimitsFeel() {
+  sim.lockRacePath("");
+  var p = sim.centerlinePoint(80);
+  var nx = -Math.sin(p.h);
+  var nz = Math.cos(p.h);
+  var grass = blankCar(p.x + nx * 22, p.z + nz * 22, p.h, 16);
+  grass.fuel = 100;
+  grass.tires = 100;
+  grass.throtHold = 1;
+  assert(sim.projectTrack(grass.x, grass.z).grass, "offset probe sits on grass");
+  var road = blankCar(p.x, p.z, p.h, 16);
+  road.fuel = 100;
+  road.tires = 100;
+  road.throtHold = 1;
+  var t;
+  for (t = 0; t < 0.2; t += 1 / 60) {
+    sim.applyMotion(grass, 0, true, false, false, 1 / 60, true);
+    sim.applyMotion(road, 0, true, false, false, 1 / 60, true);
+  }
+  assert(road.speed > grass.speed + 2, "grass is half-throttle plus dump, road=" + road.speed.toFixed(2) + " grass=" + grass.speed.toFixed(2));
+  var dump = blankCar(p.x + nx * 22, p.z + nz * 22, p.h, 30);
+  dump.fuel = 100;
+  dump.tires = 100;
+  for (t = 0; t < 1; t += 1 / 60) sim.applyMotion(dump, 0, true, false, false, 1 / 60, true);
+  assert(dump.speed <= 8.7, "grass still dumps to the crawl lock, speed=" + dump.speed.toFixed(2));
+
+  var kerbHit = null;
+  var ks;
+  for (ks = 0; ks < sim.TRACK_LEN && !kerbHit; ks += 4) {
+    var kp = sim.centerlinePoint(ks);
+    if (!kp || !isFinite(kp.h)) continue;
+    var knx = -Math.sin(kp.h);
+    var knz = Math.cos(kp.h);
+    var kinfo = sim.projectTrack(kp.x + knx * 8.7, kp.z + knz * 8.7);
+    if (kinfo.kerb) kerbHit = { p: kp, nx: knx, nz: knz };
+  }
+  assert(kerbHit, "named-corner kerb is on Campus Loop");
+  var kCar = blankCar(kerbHit.p.x + kerbHit.nx * 8.7, kerbHit.p.z + kerbHit.nz * 8.7, kerbHit.p.h, 24);
+  kCar.fuel = 100;
+  kCar.tires = 100;
+  kCar.steerHold = 1;
+  sim.applyMotion(kCar, 1, true, false, false, 1 / 60, true);
+  var aCar = blankCar(kerbHit.p.x, kerbHit.p.z, kerbHit.p.h, 24);
+  aCar.fuel = 100;
+  aCar.tires = 100;
+  aCar.steerHold = 1;
+  sim.applyMotion(aCar, 1, true, false, false, 1 / 60, true);
+  assert(kCar.gripLoad > aCar.gripLoad * 0.98, "kerb 0.92 grip loads the ring vs asphalt");
+  assert(sim.LIMITS.KERB_GRIP === 0.92, "kerb grip tunable is 0.92");
+
+  var cut = blankCar(p.x + nx * 22, p.z + nz * 22, p.h, 6);
+  cut.fuel = 100;
+  cut.tires = 100;
+  assert(sim.sampleWheelsOff(cut) >= 4, "far grass is four wheels off");
+  var n;
+  for (n = 0; n < 3; n++) {
+    cut.x = p.x + nx * 22;
+    cut.z = p.z + nz * 22;
+    cut.offAll = false;
+    cut.offHold = 0;
+    for (t = 0; t < 0.2; t += 1 / 60) sim.applyMotion(cut, 0, true, false, false, 1 / 60, true);
+    assert(cut.offCuts === n + 1, "cut " + (n + 1) + " counted, cuts=" + cut.offCuts);
+    cut.x = p.x;
+    cut.z = p.z;
+    for (t = 0; t < 0.08; t += 1 / 60) sim.applyMotion(cut, 0, true, false, false, 1 / 60, true);
+    assert(!cut.offAll, "back on the ribbon clears the cut latch");
+  }
+  assert(sim.trackLimitPenalty(cut) === 3, "three cuts add 3s at the flag");
+
+  var hpC = sim.centerlinePoint(firstNamedS("hairpin") + 6);
+  var cleanCar = blankCar(hpC.x, hpC.z, hpC.h, 18);
+  cleanCar.fuel = 100;
+  cleanCar.tires = 100;
+  cleanCar.throtHold = 1;
+  sim.applyMotion(cleanCar, 0, true, false, false, 1 / 60, true);
+  assert(cleanCar.exitWatch, "hairpin arms the CLEAN EXIT watch");
+  var kk = sim.centerlinePoint(firstNamedS("kink") + 4);
+  cleanCar.x = kk.x;
+  cleanCar.z = kk.z;
+  cleanCar.s = firstNamedS("kink") + 4;
+  cleanCar.roadY = null;
+  cleanCar.slide = 0;
+  cleanCar.sliding = false;
+  cleanCar.spinT = 0;
+  sim.applyMotion(cleanCar, 0, true, false, false, 1 / 60, true);
+  assert(cleanCar.feelPop === "CLEAN EXIT", "leaving a major on the throttle pops CLEAN EXIT, pop=" + cleanCar.feelPop);
+
+  var kinkS = firstNamedS("kink");
+  var pk = sim.centerlinePoint(kinkS + 4);
+  var late = blankCar(pk.x, pk.z, pk.h, 22);
+  late.fuel = 100;
+  late.tires = 100;
+  late.exitWatch = true;
+  late.latePending = true;
+  late.lateGain = 0.12;
+  late.throtHold = 1;
+  sim.applyMotion(late, 0, true, false, false, 1 / 60, true);
+  assert(String(late.feelPop).indexOf("LATE BRAKE +0.12") !== -1, "late brake pop, got=" + late.feelPop);
+
+  var origin = sim.lapOriginS();
+  var p0 = sim.centerlinePoint(origin + 40);
+  var sec = blankCar(p0.x, p0.z, p0.h, 20);
+  sec.fuel = 100;
+  sec.tires = 100;
+  sim.applyMotion(sec, 0, true, false, false, 1 / 60, true);
+  sec.secI = 0;
+  sec.secClock = 12.4;
+  sec.secBest = [null, null, null];
+  sec.secLast = [null, null, null];
+  var pSec = sim.centerlinePoint(origin + sim.TRACK_LEN / 3 + 40);
+  sec.x = pSec.x;
+  sec.z = pSec.z;
+  sim.applyMotion(sec, 0, true, false, false, 1 / 60, true);
+  assert(sec.feelKind === "purple" && /S1/.test(sec.feelPop || ""), "first sector is purple, pop=" + sec.feelPop);
+  sec.secI = 0;
+  sec.secClock = 12.0;
+  sec.secBest = [11, null, null];
+  sec.secLast = [13, null, null];
+  sec.feelPop = "";
+  sec.feelKind = "";
+  sec.x = pSec.x;
+  sec.z = pSec.z;
+  sim.applyMotion(sec, 0, true, false, false, 1 / 60, true);
+  assert(sec.feelKind === "green", "faster than last but not best is green, kind=" + sec.feelKind);
+}
+proveLimitsFeel();
 
 var hs = firstNamedS("hairpin");
 var hpPt = sim.centerlinePoint(hs + 6);
