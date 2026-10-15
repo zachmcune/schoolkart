@@ -139,11 +139,51 @@ textarea {
 }
 
 .speed-read {
-  min-width: 72px;
+  min-width: 88px;
+}
+
+.grip-meter {
+  position: relative;
+  width: 78px;
+  height: 78px;
+}
+
+.grip-meter svg {
+  position: absolute;
+  inset: 0;
+  width: 78px;
+  height: 78px;
+}
+
+.grip-track {
+  stroke: rgba(244, 239, 230, 0.22);
+}
+
+.grip-arc {
+  stroke: #f4efe6;
+  stroke-linecap: round;
+  transition: stroke 0.12s linear;
+}
+
+.grip-meter.grip-yellow .grip-arc {
+  stroke: #ffe566;
+}
+
+.grip-meter.grip-red .grip-arc {
+  stroke: #ff2a44;
+}
+
+.grip-num {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
 }
 
 #speed {
-  font-size: 40px;
+  font-size: 32px;
   line-height: 0.95;
   color: #fff;
 }
@@ -736,7 +776,7 @@ kbd {
 
 .menu-btn {
   position: absolute;
-  top: max(88px, calc(env(safe-area-inset-top, 0px) + 74px));
+  top: max(118px, calc(env(safe-area-inset-top, 0px) + 104px));
   right: max(16px, env(safe-area-inset-right, 0px));
   z-index: 16;
   pointer-events: auto;

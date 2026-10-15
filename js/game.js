@@ -51,12 +51,33 @@
     BOARDS: [150, 100, 50],
     ASSIST: true,
   };
+  // Slice 2: corners are a lateral grip budget, not magic yaw.
+  // maxLatAccel = (MECH_GRIP + AERO_GRIP * (v/vMax)^2) * G * tires * surface.
+  // G is in game units so Campus hairpin r≈11 needs ~70–90 kph, 90s
+  // ~110–130, chicane a lift, sweeper near-flat on fresh tires.
+  var HANDLING = {
+    MECH_GRIP: 1.4,
+    AERO_GRIP: 2.6,
+    G: 32.4,
+    STEER_IN: 0.12,
+    STEER_OUT: 0.08,
+    TRAIL_MAX: 0.48,
+    TRAIL_GAIN: 1.1,
+    PUSH_BRAKE: 0.85,
+    PUSH_GRIP: 0.72,
+    OVER_SLIDE: 1.3,
+    SLIDE: 16,
+    SLIDE_WIDE: 28,
+    SCRUB: 6.5,
+    WEAR: 3.4,
+    WASH: 0.42,
+  };
   var COAST = 2;
   var REVERSE_ACCEL = 7;
   var REVERSE_MAX = 12;
   var LIMP_SPEED = 13;
   var LIMP_ACCEL = 2;
-  var STEER_RATE = 2.35;
+  var STEER_RATE = 2.8;
   var MAX_LAT = 28;
   var TILT_DEAD = 4;
   var TILT_SPAN = 18;
@@ -395,6 +416,8 @@
     time: document.getElementById("time"),
     speed: document.getElementById("speed"),
     apexChip: document.getElementById("apex-chip"),
+    gripMeter: document.getElementById("grip-meter"),
+    gripArc: document.getElementById("grip-arc"),
     fuelFill: document.getElementById("fuel-fill"),
     tireFill: document.getElementById("tire-fill"),
     fuelNum: document.getElementById("fuel-num"),
@@ -5280,6 +5303,9 @@
       brakeHold: 0,
       brakeHeld: 0,
       locked: false,
+      steerHold: 0,
+      gripLoad: 0,
+      sliding: false,
       finished: false,
       finishTime: 0,
     };
@@ -5469,6 +5495,9 @@
     r.brakeHold = 0;
     r.brakeHeld = 0;
     r.locked = false;
+    r.steerHold = 0;
+    r.gripLoad = 0;
+    r.sliding = false;
     r.finished = false;
     r.finishTime = 0;
     r.wantPit = false;
@@ -5827,13 +5856,46 @@
     return k === "the90" || k === "chicane" || k === "hairpin" || k === "sweeper";
   }
 
+  function handlingVMax() {
+    return SPEED_LIMIT > 1 ? SPEED_LIMIT : MAX_SPEED;
+  }
+
+  function maxLatAccel(v, tireGrip, surfaceMul) {
+    var vmax = handlingVMax();
+    var u = clamp(Math.abs(v) / vmax, 0, 1);
+    var g = (HANDLING.MECH_GRIP + HANDLING.AERO_GRIP * u * u) * HANDLING.G;
+    return g * (tireGrip > 0 ? tireGrip : 1) * (surfaceMul > 0 ? surfaceMul : 1);
+  }
+
+  function gripApexV(radius, tireGrip, surfaceMul) {
+    if (!(radius > 1)) return SPEED_LIMIT;
+    var ts = (tireGrip > 0 ? tireGrip : 1) * (surfaceMul > 0 ? surfaceMul : 1);
+    var vmax = handlingVMax();
+    var a0 = HANDLING.MECH_GRIP * HANDLING.G * ts;
+    var k = (HANDLING.AERO_GRIP * HANDLING.G * ts) / (vmax * vmax);
+    var den = 1 - radius * k;
+    if (den < 0.08) return SPEED_LIMIT;
+    var v = Math.sqrt(Math.max(4, (radius * a0) / den));
+    if (v > SPEED_LIMIT) v = SPEED_LIMIT;
+    if (v < 8) v = 8;
+    return v;
+  }
+
+  function lineRadiusFor(name, radius) {
+    var k = cornerKind(name);
+    var r = radius > 0 ? radius : 18;
+    if (k === "hairpin") return r + ASPHALT * 0.12;
+    if (k === "the90") return r + ASPHALT * 0.7;
+    if (k === "chicane") return r + ASPHALT * 0.22;
+    if (k === "sweeper") return r + ASPHALT * 0.4;
+    return r + ASPHALT * 0.35;
+  }
+
   function cornerApexV(name, radius) {
     var k = cornerKind(name);
-    if (k === "hairpin") return 16.5;
-    if (k === "chicane") return 21;
-    if (k === "the90") return 23;
-    if (k === "sweeper") return Math.min(SPEED_LIMIT * 0.72, Math.max(32, (radius || 40) * 0.55));
-    return 24;
+    var v = gripApexV(lineRadiusFor(name, radius), 1, 1);
+    var margin = k === "sweeper" ? 0.97 : k === "hairpin" ? 0.9 : k === "chicane" ? 0.88 : 0.92;
+    return v * margin;
   }
 
   function majorCorners() {
@@ -5848,6 +5910,10 @@
         var left = 0;
         if (PATH[i].type === "arc") left = PATH[i].a1 >= PATH[i].a0 ? 1 : -1;
         var rad = PATH[i].r || 18;
+        var j;
+        for (j = i + 1; j < PATH.length && (PATH[j].name || "") === name; j++) {
+          if (PATH[j].type === "arc" && PATH[j].r > 0 && PATH[j].r < rad) rad = PATH[j].r;
+        }
         var apex = cornerApexV(name, rad);
         out.push({
           n: n,
@@ -5930,7 +5996,6 @@
       r.locked = locked;
       if (locked) {
         decel *= BRAKE.LOCK_DECEL;
-        steer *= BRAKE.LOCK_STEER;
         r.tires -= BRAKE.LOCK_WEAR * dt;
       }
       if (r.speed > 0) r.speed -= decel * dt;
@@ -5985,25 +6050,49 @@
     // wash out — max W cannot snap a 90. Reverse uses |speed|.
     var roll = Math.abs(r.speed);
     var bite = roll < 0.35 ? 0 : clamp(roll / 9, 0.5, 1);
-    var wash = 1 - 0.7 * speed01;
+    var wash = 1 - HANDLING.WASH * clamp(roll / handlingVMax(), 0, 1);
     var yawFromSpeed = bite * wash;
-    var maxYaw = STEER_RATE * yawFromSpeed * tireFeel * surface;
-    var latDemand = Math.abs(steer) * Math.abs(r.speed) * 0.155;
-    var maxLat = MAX_LAT * tireFeel * surface;
-    if (!info.grass && (info.name === "hairpin" || info.name === "source" || info.name === "t1") && r.speed > 17) {
-      var hpOver = (r.speed - 17) / 14;
-      r.slide += (steer !== 0 ? steer : 1) * hpOver * 22 * dt;
-      if (hpOver > 0.3) r.tires -= 2.8 * dt * hpOver;
+    var targetSteer = clamp(steer, -1, 1);
+    var sh = r.steerHold || 0;
+    var toward = targetSteer * sh >= 0 && Math.abs(targetSteer) > Math.abs(sh);
+    var tau = toward ? HANDLING.STEER_IN : HANDLING.STEER_OUT;
+    var ds = targetSteer - sh;
+    var maxStep = dt / Math.max(0.02, tau);
+    if (ds > maxStep) ds = maxStep;
+    if (ds < -maxStep) ds = -maxStep;
+    r.steerHold = sh + ds;
+    var wheel = r.steerHold;
+    var wantYaw = STEER_RATE * yawFromSpeed * Math.abs(wheel) * tireFeel * surface;
+    if (wheel < 0) wantYaw = -wantYaw;
+    if (r.speed < 0) wantYaw = -wantYaw;
+    // Light trail-brake: slightly sharper rotation. Full pedal + full
+    // wheel is a push (understeer) even before lockup.
+    var hold = r.brakeHold || 0;
+    if (hold > 0.12 && hold < HANDLING.TRAIL_MAX && !r.locked && Math.abs(wheel) > 0.25) {
+      wantYaw *= HANDLING.TRAIL_GAIN;
     }
-    // The S never dumps or crushes A/D. Too fast is a mistimed line:
-    // yaw rate cannot follow the kinks, so you run wide. Space is still
-    // how you make time to turn. inChicaneS is identity, not a lock.
-    if (latDemand > maxLat && Math.abs(steer) > 0.05) {
-      var slip = (latDemand - maxLat) / Math.max(6, maxLat);
-      maxYaw *= 1 / (1 + slip * 2.1);
-      r.slide += steer * slip * 12 * dt;
-      r.tires -= 3.6 * dt * (0.4 + slip);
-    } else if (Math.abs(steer) > 0.45 && r.speed > 22) {
+    if (r.locked) wantYaw *= BRAKE.LOCK_STEER;
+    var gripMul = hold >= HANDLING.PUSH_BRAKE && Math.abs(wheel) > 0.7 && !r.locked ? HANDLING.PUSH_GRIP : 1;
+    var aLat = maxLatAccel(r.speed, tireFeel, surface) * gripMul;
+    var latDemand = Math.abs(wantYaw) * roll;
+    var load = aLat > 0.4 ? latDemand / aLat : 0;
+    r.gripLoad = load;
+    var yaw = wantYaw;
+    r.sliding = false;
+    if (roll > 0.35 && latDemand > aLat) {
+      yaw = (wantYaw < 0 ? -1 : 1) * (aLat / roll);
+      var extra = load;
+      var outSign = wantYaw > 0 ? -1 : 1;
+      if (r.speed < 0) outSign = -outSign;
+      r.slide += outSign * HANDLING.SLIDE * (extra - 0.15) * dt;
+      r.speed -= HANDLING.SCRUB * (extra - 1) * dt * Math.max(0.4, speed01);
+      if (r.speed < 0 && !reverse) r.speed = 0;
+      r.tires -= HANDLING.WEAR * extra * dt;
+      r.sliding = extra > 1.02;
+      if (extra > HANDLING.OVER_SLIDE && roll > 18) {
+        r.slide += outSign * HANDLING.SLIDE_WIDE * (extra - HANDLING.OVER_SLIDE) * dt;
+      }
+    } else if (Math.abs(wheel) > 0.45 && roll > 22) {
       r.tires -= 0.85 * dt * speed01;
     }
     if (r.tires < TIRE_FLOOR) r.tires = TIRE_FLOOR;
@@ -6023,7 +6112,7 @@
     var bumpEase = 1 - Math.pow(0.08, dt);
     r.kerbBump = (r.kerbBump || 0) + (bumpTarget - (r.kerbBump || 0)) * bumpEase;
 
-    r.heading += steer * maxYaw * dt * (r.speed < 0 ? -1 : 1);
+    r.heading += yaw * dt;
     r.x += Math.cos(r.heading) * r.speed * dt;
     r.z += Math.sin(r.heading) * r.speed * dt;
     r.x += -Math.sin(r.heading) * r.slide * dt;
@@ -6039,7 +6128,7 @@
     var wheels = r.mesh.userData.wheels;
     if (wheels) {
       var spin = r.speed * dt * 2.4;
-      var turn = steerWheelYaw(steer);
+      var turn = steerWheelYaw(r.steerHold != null ? r.steerHold : steer);
       for (var i = 0; i < wheels.length; i++) {
         wheels[i].spinner.rotation.z -= spin;
         wheels[i].holder.rotation.y = wheels[i].front ? turn : 0;
@@ -6344,15 +6433,11 @@
   }
 
   function apexFromRadius(radius, tireFeel, margin) {
-    // Solve v = radius * yaw(v) against applyMotion's own yaw model,
-    //   yaw = STEER_RATE * (1 - 0.7 * v / MAX_SPEED) * tireFeel
-    // so a corner speed is a fact about the car and the arc, not a
-    // hand-tuned number that only fits one circuit.
+    // Same grip budget applyMotion uses: v^2 / r <= maxLatAccel(v).
     if (!(radius > 0)) return SPEED_LIMIT;
     if (!(tireFeel > 0)) tireFeel = 1;
     if (!(margin > 0)) margin = AI_GRIP;
-    var k = STEER_RATE * tireFeel * margin;
-    var v = (radius * k) / (1 + (0.7 * radius * k) / MAX_SPEED);
+    var v = gripApexV(radius, tireFeel, 1) * margin;
     if (v > SPEED_LIMIT) v = SPEED_LIMIT;
     if (v < 11) v = 11;
     return v;
@@ -6360,12 +6445,9 @@
 
   function apexLimit(lineR, centerR, name, tireFeel) {
     var v = apexFromRadius(lineR, tireFeel, AI_GRIP);
-    // applyMotion injects slide on hairpin-named arcs above 17, so a
-    // tight 180 has to be slower than pure yaw allows. Scaled by radius
-    // so a fat editor-tile hairpin still gets carried.
     if (cornerKind(name) === "hairpin") {
       var rad = centerR > 0 && centerR < 400 ? centerR : lineR;
-      var hp = 17 + Math.max(0, rad - 12) * 0.35;
+      var hp = gripApexV(rad, tireFeel, 1) * 0.9;
       if (v > hp) v = hp;
     }
     return v;
@@ -7627,11 +7709,13 @@
     // slide term so a car that starts washing out catches itself.
     var desiredH = Math.atan2(tz - r.z, tx - r.x);
     var err = aiWrap(desiredH - r.heading);
-    var yawNow =
+    var yawNow = Math.min(
       STEER_RATE *
-      clamp(Math.abs(r.speed) / 9, 0.5, 1) *
-      (1 - 0.7 * clamp(Math.abs(r.speed) / MAX_SPEED, 0, 1)) *
-      tireFeelOf(tire01);
+        clamp(Math.abs(r.speed) / 9, 0.5, 1) *
+        (1 - HANDLING.WASH * clamp(Math.abs(r.speed) / handlingVMax(), 0, 1)) *
+        tireFeelOf(tire01),
+      maxLatAccel(r.speed, tireFeelOf(tire01), 1) / Math.max(6, Math.abs(r.speed))
+    );
     var ff = 0;
     if (yawNow > 0.05 && !hunt.on && !peeling) {
       ff = clamp((r.speed * raceAt(r.s + look * 0.5).kap) / yawNow, -1, 1);
@@ -8214,6 +8298,13 @@
       spawnFx("lockup", ll.x, 0.2, ll.z, back * 2.8, 0.85, side * -1.4);
       return;
     }
+    if (r.sliding && spd > 2) {
+      if (r.fxT < 0.08) return;
+      r.fxT = 0;
+      var sr = wheelWorld(r, 1, steer >= 0 ? 1 : -1);
+      spawnFx("slip", sr.x, 0.16, sr.z, back * 2.6, 0.22, side * 2.2);
+      return;
+    }
     if (r.fxT < 0.16) return;
     r.fxT = 0;
     if (worn) {
@@ -8673,6 +8764,14 @@
     _hudX = player.x;
     _hudZ = player.z;
     if (hud.speed) hud.speed.textContent = String(motionKph(player, moved, lastDt));
+    if (hud.gripMeter && hud.gripArc) {
+      var load = clamp(player.gripLoad || 0, 0, 1.35);
+      var circ = 106.8;
+      hud.gripArc.style.strokeDashoffset = String(circ * (1 - clamp(load, 0, 1)));
+      hud.gripMeter.classList.remove("grip-yellow", "grip-red");
+      if (player.sliding || load > 1) hud.gripMeter.classList.add("grip-red");
+      else if (load >= 0.8) hud.gripMeter.classList.add("grip-yellow");
+    }
     updateBrakeAssist();
     if (hud.lap) hud.lap.textContent = player.lap + "/" + LAPS;
     if (hud.time) hud.time.textContent = formatTime(raceTime);
