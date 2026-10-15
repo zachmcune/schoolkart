@@ -62,6 +62,7 @@ var code = [
   "var ACCEL = 5;",
   sliceAssign("BRAKE"),
   sliceAssign("HANDLING"),
+  sliceAssign("THROTTLE"),
   "var COAST = 2;",
   "var REVERSE_ACCEL = 7;",
   "var REVERSE_MAX = 12;",

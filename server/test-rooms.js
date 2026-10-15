@@ -252,6 +252,7 @@ waitHealth()
                   assert(js.indexOf("var ACCEL = 5") !== -1 && js.indexOf("var COAST = 2") !== -1, "slow wind-up; coast bleeds");
                   assert(js.indexOf("BASE: 14") !== -1 && js.indexOf("AERO: 30") !== -1, "aero brake tunables");
                   assert(js.indexOf("MECH_GRIP: 1.4") !== -1 && js.indexOf("AERO_GRIP: 2.6") !== -1, "aero grip tunables");
+                  assert(js.indexOf("THROTTLE.SPIN_HOLD") !== -1 && js.indexOf("THROTTLE.RAMP") !== -1, "throttle ramp and exit spin");
                   assert(js.indexOf("function maxLatAccel") !== -1 && js.indexOf("function gripApexV") !== -1, "lateral grip budget");
                   assert(js.indexOf("function placeBrakeBoards") !== -1, "3/2/1 boards on Campus Loop");
                   assert(js.indexOf("LOCK_V: 30") !== -1 && js.indexOf("kind === \"lockup\"") !== -1, "lockup smoke and pedal hold");

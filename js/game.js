@@ -72,6 +72,22 @@
     WEAR: 3.4,
     WASH: 0.42,
   };
+  // Slice 3: throttle ramps, and full W + full steer off an apex
+  // fishtails. Hold it and you spin ~1.2s — no teleport reset.
+  // Straighten then W is the fast exit.
+  var THROTTLE = {
+    RAMP: 0.16,
+    DROP: 0.1,
+    EXIT_STEER: 0.72,
+    EXIT_PICK: 2,
+    FISH: 22,
+    FISH_YAW: 1.15,
+    SPIN_IN: 0.32,
+    SPIN_HOLD: 1.2,
+    SPIN_YAW: 2.35,
+    SPIN_DUMP: 12,
+    WEAR: 2.6,
+  };
   var COAST = 2;
   var REVERSE_ACCEL = 7;
   var REVERSE_MAX = 12;
@@ -5304,8 +5320,13 @@
       brakeHeld: 0,
       locked: false,
       steerHold: 0,
+      throtHold: 0,
       gripLoad: 0,
       sliding: false,
+      spinT: 0,
+      spinDir: 1,
+      spinArm: 0,
+      apexSlow: null,
       finished: false,
       finishTime: 0,
     };
@@ -5496,8 +5517,13 @@
     r.brakeHeld = 0;
     r.locked = false;
     r.steerHold = 0;
+    r.throtHold = 0;
     r.gripLoad = 0;
     r.sliding = false;
+    r.spinT = 0;
+    r.spinDir = 1;
+    r.spinArm = 0;
+    r.apexSlow = null;
     r.finished = false;
     r.finishTime = 0;
     r.wantPit = false;
@@ -5947,6 +5973,18 @@
     var empty = r.fuel <= 0;
     var maxV = empty ? LIMP_SPEED : SPEED_LIMIT;
     var accel = empty ? LIMP_ACCEL : ACCEL;
+    var parkedNow = Math.abs(r.speed) <= 0.35;
+    var throt = r.throtHold || 0;
+    if (throttle && !reverse && (!brake || parkedNow)) {
+      throt = Math.min(1, throt + dt / Math.max(0.04, THROTTLE.RAMP));
+    } else {
+      throt = Math.max(0, throt - dt / Math.max(0.04, THROTTLE.DROP));
+    }
+    r.throtHold = throt;
+    // Ramp is traction off an apex, not a dead getaway. Parked W still
+    // launches (unweld / lights-out) and keeps full bite until the
+    // standstill flag clears; rolling W bites over THROTTLE.RAMP.
+    if (!parkedNow && !r.unweld) accel *= throt > 0.02 ? throt : 0;
     if (isPlayer && state === "racing" && raceTime > GETAWAY_T) {
       launchT = 0;
       launchMul = 1;
@@ -6094,6 +6132,61 @@
       }
     } else if (Math.abs(wheel) > 0.45 && roll > 22) {
       r.tires -= 0.85 * dt * speed01;
+    }
+    // Slice 3: power-on oversteer after an apex. Mid-corner T# hold
+    // (speed not picking up) stays a grip-budget problem. Pegged W+A
+    // while accelerating off the slow point fishtails; hold it and
+    // spinT runs ~1.2s with no teleport.
+    if (isMajorName(info.name) && !info.grass) {
+      if (r.apexSlow == null || roll < r.apexSlow) r.apexSlow = roll;
+      r.apexHold = 1.5;
+    } else {
+      r.apexHold = (r.apexHold || 0) - dt;
+      if (r.apexHold <= 0) {
+        r.apexSlow = null;
+        r.apexHold = 0;
+      }
+    }
+    var pickingUp =
+      throttle &&
+      !brake &&
+      !reverse &&
+      r.apexSlow != null &&
+      roll > r.apexSlow + THROTTLE.EXIT_PICK;
+    var exitRisk = 0;
+    if (pickingUp && throt > 0.7 && Math.abs(wheel) > THROTTLE.EXIT_STEER && roll > 6 && roll < handlingVMax() * 0.62) {
+      exitRisk = (Math.abs(wheel) - THROTTLE.EXIT_STEER) / Math.max(0.08, 1 - THROTTLE.EXIT_STEER);
+      if (exitRisk > 1) exitRisk = 1;
+      exitRisk *= throt;
+    }
+    if ((r.spinT || 0) > 0) {
+      r.spinT -= dt;
+      if (r.spinT < 0) r.spinT = 0;
+      yaw = (r.spinDir || 1) * THROTTLE.SPIN_YAW;
+      r.sliding = true;
+      r.gripLoad = Math.max(r.gripLoad || 0, 1.25);
+      r.speed -= THROTTLE.SPIN_DUMP * dt;
+      if (r.speed < 3.5 && !reverse) r.speed = 3.5;
+      r.slide += (r.spinDir || 1) * THROTTLE.FISH * 1.4 * dt;
+      r.tires -= THROTTLE.WEAR * 1.6 * dt;
+    } else if (exitRisk > 0.08) {
+      var inSign = wheel > 0 ? 1 : -1;
+      var fish = exitRisk * exitRisk;
+      r.slide += -inSign * THROTTLE.FISH * fish * dt;
+      yaw += inSign * THROTTLE.FISH_YAW * fish;
+      r.speed -= 5.5 * fish * dt;
+      if (r.speed < 0 && !reverse) r.speed = 0;
+      r.tires -= THROTTLE.WEAR * fish * dt;
+      r.sliding = fish > 0.28;
+      r.gripLoad = Math.max(r.gripLoad || 0, 0.7 + fish * 0.6);
+      r.spinArm = (r.spinArm || 0) + dt * fish;
+      r.spinDir = inSign;
+      if (r.spinArm > THROTTLE.SPIN_IN && fish > 0.45) {
+        r.spinT = THROTTLE.SPIN_HOLD;
+        r.spinArm = 0;
+      }
+    } else {
+      r.spinArm = Math.max(0, (r.spinArm || 0) - dt * 2.4);
     }
     if (r.tires < TIRE_FLOOR) r.tires = TIRE_FLOOR;
     if (tire < 0.45) r.slide += (Math.random() - 0.5) * 4.2 * dt;
@@ -8277,7 +8370,7 @@
     var sl = Math.abs(r.slide);
     var steer = inp ? inp.steer : 0;
     var worn = r.tires < 42 && spd > 8;
-    var spinning = sl > 5.2;
+    var spinning = sl > 5.2 || (r.spinT || 0) > 0;
     var hard = Math.abs(steer) > 0.55 && spd > 20 && sl > 0.85;
     var back = -Math.cos(r.heading);
     var side = -Math.sin(r.heading);

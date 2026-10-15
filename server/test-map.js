@@ -30,6 +30,23 @@ function sliceFromTo(start, endName) {
   return src.slice(a, b);
 }
 
+function sliceAssign(name) {
+  var needle = "var " + name + " = {";
+  var idx = src.indexOf(needle);
+  if (idx < 0) throw new Error("missing " + name);
+  var i = src.indexOf("{", idx);
+  var depth = 0;
+  var j;
+  for (j = i; j < src.length; j++) {
+    if (src[j] === "{") depth += 1;
+    else if (src[j] === "}") {
+      depth -= 1;
+      if (depth === 0) return src.slice(idx, j + 1) + ";";
+    }
+  }
+  throw new Error("unclosed " + name);
+}
+
 function assert(cond, msg) {
   if (!cond) throw new Error(msg);
 }
@@ -65,6 +82,7 @@ var code = [
   "var ACCEL = 16;",
   "var BRAKE = { BASE: 14, AERO: 30, RAMP: 0.1, LOCK_V: 30, LOCK_HOLD: 0.6, LOCK_DECEL: 0.7, LOCK_STEER: 0.3, LOCK_WEAR: 2.8, BOARDS: [150, 100, 50], ASSIST: true };",
   "var HANDLING = { MECH_GRIP: 1.4, AERO_GRIP: 2.6, G: 32.4, STEER_IN: 0.12, STEER_OUT: 0.08, TRAIL_MAX: 0.48, TRAIL_GAIN: 1.1, PUSH_BRAKE: 0.85, PUSH_GRIP: 0.72, OVER_SLIDE: 1.3, SLIDE: 16, SLIDE_WIDE: 28, SCRUB: 6.5, WEAR: 3.4, WASH: 0.42 };",
+  sliceAssign("THROTTLE"),
   "var COAST = 5;",
   "var REVERSE_ACCEL = 18;",
   "var REVERSE_MAX = 12;",
@@ -260,6 +278,7 @@ var code = [
   "  majorCorners: majorCorners,",
   "  BRAKE: BRAKE,",
   "  HANDLING: HANDLING,",
+  "  THROTTLE: THROTTLE,",
   "  maxLatAccel: maxLatAccel,",
   "  gripApexV: gripApexV,",
   "  cornerApexV: cornerApexV,",
@@ -388,8 +407,13 @@ function blankCar(x, z, h, spd) {
     brakeHeld: 0,
     locked: false,
     steerHold: 0,
+    throtHold: 0,
     gripLoad: 0,
     sliding: false,
+    spinT: 0,
+    spinDir: 1,
+    spinArm: 0,
+    apexSlow: null,
     launchT: 0,
     launchMul: 1,
     lap: 1,
@@ -1596,6 +1620,7 @@ assert(src.indexOf("BASE: 14") !== -1 && src.indexOf("AERO: 30") !== -1, "Space 
 assert(src.indexOf("RAMP: 0.1") !== -1, "brake input ramps in 0.10s");
 assert(src.indexOf("function placeBrakeBoards") !== -1, "3/2/1 boards before major corners");
 assert(src.indexOf("MECH_GRIP: 1.4") !== -1 && src.indexOf("AERO_GRIP: 2.6") !== -1, "corners are a lateral grip budget");
+assert(src.indexOf("THROTTLE.RAMP") !== -1 && src.indexOf("THROTTLE.SPIN_HOLD") !== -1, "exit wheelspin is a throttle ramp, not a reset");
 assert(src.indexOf("function maxLatAccel") !== -1, "yaw is capped by lateral grip");
 assert(src.indexOf("var MAX_LAT = 28") !== -1, "custom 90s are not glued to hide a spin");
 assert(src.indexOf("function inChicaneS") !== -1, "chicane S is the S, not the approach slab");
@@ -1656,6 +1681,13 @@ sim.applyMotion(steerRamp, 1, true, false, false, 0.06, true);
 assert(steerRamp.steerHold > 0.4 && steerRamp.steerHold < 0.6, "A/D ramps in ~0.12s, hold=" + steerRamp.steerHold.toFixed(2));
 sim.applyMotion(steerRamp, 0, true, false, false, 0.03, true);
 assert(steerRamp.steerHold > 0.05 && steerRamp.steerHold < 0.4, "A/D ramps out ~0.08s, hold=" + steerRamp.steerHold.toFixed(2));
+
+var gasRamp = blankCar(0, -80, 0, 20);
+gasRamp.throtHold = 0;
+sim.applyMotion(gasRamp, 0, true, false, false, 0.08, true);
+assert(gasRamp.throtHold > 0.4 && gasRamp.throtHold < 0.65, "W ramps in ~0.16s, hold=" + gasRamp.throtHold.toFixed(2));
+sim.applyMotion(gasRamp, 0, false, false, false, 0.03, true);
+assert(gasRamp.throtHold > 0.05 && gasRamp.throtHold < 0.45, "W ramps out ~0.10s, hold=" + gasRamp.throtHold.toFixed(2));
 
 var rampCar = blankCar(0, -80, 0, 40);
 sim.applyMotion(rampCar, 0, false, true, false, 0.05, true);
@@ -1745,6 +1777,74 @@ var hpFlat = driveHairpin(48, false, 1.15);
 assert(hpFlat.grass || !hpFlat.on || hpFlat.off > 8.6, "hairpin flat-out always goes wide, off=" + hpFlat.off.toFixed(1));
 var hpBraked = driveHairpin(22, false, 1.15);
 assert(hpBraked.on && hpBraked.off < 9.8, "hairpin at T# speed stays on, off=" + hpBraked.off.toFixed(1) + " spd=" + hpBraked.speed.toFixed(1));
+
+function hairpinExitDrive(style) {
+  var hs = firstNamedS("hairpin");
+  var p = sim.centerlinePoint(hs + 32);
+  var tgt = sim.centerlinePoint(hs + 32 + 30);
+  var car = blankCar(p.x, p.z, p.h, 18);
+  car.fuel = 100;
+  car.tires = 100;
+  car.steerHold = style === "fish" ? 1 : 0;
+  car.throtHold = style === "fish" ? 1 : 0;
+  car.apexSlow = 14;
+  car.apexHold = 1.5;
+  var t;
+  var peakSlide = 0;
+  var sawSpin = false;
+  for (t = 0; t < 4.2; t += 1 / 60) {
+    var steer = 0;
+    var gas = true;
+    if (style === "fish") {
+      steer = 1;
+      gas = true;
+    } else if (t < 0.14) {
+      steer = 0;
+      gas = false;
+    } else {
+      steer = 0;
+      gas = true;
+    }
+    sim.applyMotion(car, steer, gas, false, false, 1 / 60, true);
+    if (Math.abs(car.slide) > peakSlide) peakSlide = Math.abs(car.slide);
+    if ((car.spinT || 0) > 0.2) sawSpin = true;
+    if (Math.hypot(car.x - tgt.x, car.z - tgt.z) < 7) {
+      return {
+        t: t,
+        slide: peakSlide,
+        spin: sawSpin,
+        spinT: car.spinT || 0,
+        dist: Math.hypot(car.x - tgt.x, car.z - tgt.z),
+        name: sim.projectTrack(car.x, car.z).name,
+        spd: car.speed,
+      };
+    }
+  }
+  var end = sim.projectTrack(car.x, car.z);
+  return {
+    t: 4.2,
+    slide: peakSlide,
+    spin: sawSpin,
+    spinT: car.spinT || 0,
+    dist: Math.hypot(car.x - tgt.x, car.z - tgt.z),
+    name: end.name,
+    spd: car.speed,
+    s0: p.s || hs + 20,
+  };
+}
+var hpFish = hairpinExitDrive("fish");
+var hpClean = hairpinExitDrive("clean");
+assert(
+  hpFish.spin || hpFish.slide > 2.2 || hpFish.spinT > 0.2,
+  "full W + full steer out of the 180 fishtails, slide=" + hpFish.slide.toFixed(2) + " spin=" + hpFish.spin
+);
+assert(hpClean.t < 2.8, "straighten-then-W still arrives, t=" + hpClean.t.toFixed(2));
+assert(
+  hpClean.t + 0.3 <= hpFish.t,
+  "straighten-then-W is >=0.3s faster on the exit, clean=" + hpClean.t.toFixed(2) + " fish=" + hpFish.t.toFixed(2)
+);
+assert(src.indexOf("r.spinT = THROTTLE.SPIN_HOLD") !== -1, "held exit spin is ~1.2s with no reset");
+assert(src.indexOf("recoverIfVoid") === -1, "spin does not snap the car back onto the ribbon");
 assert(majors[0].name === "the90" && majors.some(function (c) { return c.name === "hairpin"; }), "boards cover the 90 and the 180");
 assert(src.indexOf("150, 100, 50") !== -1, "boards sit at 150 / 100 / 50");
 
@@ -1791,6 +1891,42 @@ assert(chiLift.peakSlide < 2.4, "chicane at target speed stays tidy, slide=" + c
 var sweepCar = holdWOn("sweeper", 40, 0.7);
 assert(sweepCar.peakSlide < 2.2, "sweeper carries on fresh tires, slide=" + sweepCar.peakSlide.toFixed(2));
 assert(sim.projectTrack(sweepCar.x, sweepCar.z).onAsphalt, "sweeper carry stays on the ribbon");
+
+function proveExitSpinHold() {
+  var hsSpin = firstNamedS("hairpin");
+  var pSpin = sim.centerlinePoint(hsSpin + 32);
+  var car = blankCar(pSpin.x, pSpin.z, pSpin.h, 18);
+  car.fuel = 100;
+  car.tires = 100;
+  car.steerHold = 1;
+  car.throtHold = 1;
+  car.apexSlow = 14;
+  car.apexHold = 1.5;
+  var tSpin;
+  var armed = false;
+  var spin0 = 0;
+  var x0 = car.x;
+  var z0 = car.z;
+  for (tSpin = 0; tSpin < 1.4; tSpin += 1 / 60) {
+    sim.applyMotion(car, 1, true, false, false, 1 / 60, true);
+    if (!armed && (car.spinT || 0) > 0.5) {
+      armed = true;
+      spin0 = car.spinT;
+      x0 = car.x;
+      z0 = car.z;
+      break;
+    }
+  }
+  assert(armed, "held W+steer out of the 180 arms a spin");
+  assert(spin0 > 1.05 && spin0 <= 1.25, "SPIN_HOLD is ~1.2s, t=" + spin0.toFixed(2));
+  var hold;
+  for (hold = 0; hold < 1.0; hold += 1 / 60) sim.applyMotion(car, 1, true, false, false, 1 / 60, true);
+  assert((car.spinT || 0) > 0.05, "spin still running at 1.0s, t=" + (car.spinT || 0).toFixed(2));
+  assert(Math.hypot(car.x - x0, car.z - z0) > 1, "spin moves the car instead of a teleport reset");
+  for (hold = 0; hold < 0.45; hold += 1 / 60) sim.applyMotion(car, 1, true, false, false, 1 / 60, true);
+  assert((car.spinT || 0) < 0.08, "spin ends after ~1.2s, t=" + (car.spinT || 0).toFixed(2));
+}
+proveExitSpinHold();
 
 var hs = firstNamedS("hairpin");
 var hpPt = sim.centerlinePoint(hs + 6);
@@ -2004,6 +2140,11 @@ function copyCar(c) {
   o.slide = c.slide || 0;
   o.hitYawT = c.hitYawT || 0;
   o.steerHold = c.steerHold || 0;
+  o.throtHold = c.throtHold || 0;
+  o.spinT = c.spinT || 0;
+  o.spinDir = c.spinDir || 1;
+  o.spinArm = c.spinArm || 0;
+  o.apexSlow = c.apexSlow;
   o.brakeHold = c.brakeHold || 0;
   o.brakeHeld = c.brakeHeld || 0;
   o.locked = !!c.locked;
