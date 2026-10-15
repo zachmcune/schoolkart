@@ -115,7 +115,7 @@ waitHealth()
         assert(html.indexOf('rel="manifest"') !== -1, "web app manifest link");
         assert(html.indexOf("apple-mobile-web-app-capable") !== -1, "iOS home screen capable");
         assert(html.indexOf('apple-mobile-web-app-title" content="SchoolKart"') !== -1, "iOS title");
-        assert(html.indexOf('SK_BUILD = "mp101"') !== -1, "cache bump mp101");
+        assert(html.indexOf('SK_BUILD = "mp102"') !== -1, "cache bump mp102");
         assert(html.indexOf('id="apex-chip"') !== -1, "corner target chip near the speedo");
         assert(html.indexOf('id="grip-meter"') !== -1, "grip ring around the speedo");
         assert(html.indexOf('id="feel-pop"') !== -1, "CLEAN EXIT / sector callout");
@@ -163,7 +163,7 @@ waitHealth()
           .then(function (sr) {
             return sr.text().then(function (sw) {
               assert(sr.status === 200, "sw 200");
-              assert(sw.indexOf('BUILD = "mp101"') !== -1, "SW build matches cache");
+              assert(sw.indexOf('BUILD = "mp102"') !== -1, "SW build matches cache");
               assert(/cache:\s*"no-store"/.test(sw), "network-first no-store");
               assert(sw.indexOf("websocket") !== -1, "SW leaves websocket alone");
             });
